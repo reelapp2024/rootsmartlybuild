@@ -1,0 +1,60 @@
+# Dependencies - ignore node_modules everywhere
+/node_modules
+**/node_modules/
+**/.git
+# Backend - ignore node_modules, env files, and git folder, but track source files
+backend/node_modules/
+backend/.env*
+backend/.env
+backend/.git/
+
+# Apps - ignore node_modules, env files, and git folders, but track source files
+apps/customSites/node_modules/
+apps/customSites/.env*
+apps/customSites/.env
+apps/customSites/.git/
+
+apps/geniebuild/node_modules/
+apps/geniebuild/.env*
+apps/geniebuild/.env
+apps/geniebuild/.git/
+
+# Ignore all other apps directories (only track customSites and geniebuild)
+apps/site/
+apps/smartlybuildadmin/
+apps/website/
+apps/website-next/
+
+# dependencies
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files (general pattern - covers all .env files)
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
