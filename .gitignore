@@ -1,30 +1,9 @@
-# Dependencies - ignore node_modules everywhere
-/node_modules
+# Global dependencies and secrets
+node_modules/
 **/node_modules/
-**/.git
-
-# Backend - ignore node_modules, env files, and git folder, but track source files
-backend/node_modules/
-backend/.env*
-backend/.env
-backend/.git/
-
-# Apps - ignore node_modules, env files, and git folders, but track source files
-apps/customSites/node_modules/
-apps/customSites/.env*
-apps/customSites/.env
-apps/customSites/.git/
-
-apps/geniebuild/node_modules/
-apps/geniebuild/.env*
-apps/geniebuild/.env
-apps/geniebuild/.git/
-
-# NEW: Track website but ignore its node_modules, env, and git folders
-apps/website/node_modules/
-apps/website/.env*
-apps/website/.env
-apps/website/.git/
+**/.git/
+.env
+.env.*
 
 # Ignore all other apps directories (only track customSites, geniebuild, and website)
 apps/site/
@@ -53,10 +32,6 @@ apps/website-next/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# local env files (general pattern - covers all .env files)
-.env*.local
-.env
 
 # vercel
 .vercel
