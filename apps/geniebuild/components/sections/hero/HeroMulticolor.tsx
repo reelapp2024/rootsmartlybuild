@@ -47,6 +47,10 @@ export const HeroMulticolor: React.FC<HeroProps> = ({
   const styleAny = styles as any;
   const themeColors = {
     ...styles,
+    // Merge theme data for fallbacks
+    titleColor: styles.titleColor || themeData?.heading,
+    textColor: styles.textColor || themeData?.description,
+    subtitleColor: styles.subtitleColor || styles.textColor || themeData?.description,
     buttonFontWeight: styleAny.buttonFontWeight || styleAny.fontWeight,
     buttonFontSize: styleAny.buttonSize || styleAny.buttonFontSize || styleAny.fontSize,
     buttonAlign: styleAny.buttonAlign || styles.textAlign,
@@ -82,7 +86,7 @@ export const HeroMulticolor: React.FC<HeroProps> = ({
         htmlTag: (styles.titleHeadingTag || 'h1') as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
       },
       style: {
-        color: styles.titleColor || ''
+        color: styles.titleColor || themeData?.heading || ''
       }
     };
   };
@@ -97,7 +101,7 @@ export const HeroMulticolor: React.FC<HeroProps> = ({
         textSize: 'large' as 'base' | 'small' | 'large' | 'xl'
       },
       style: {
-        color: styles.subtitleColor || styles.textColor || ''
+        color: styles.subtitleColor || styles.textColor || themeData?.description || ''
       }
     };
   };

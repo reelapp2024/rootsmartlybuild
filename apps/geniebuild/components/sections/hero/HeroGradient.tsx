@@ -2,6 +2,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../types';
 import { ElementsSection } from '../ElementsSection';
+import { useTheme } from '@ui/blocks';
 
 interface HeroProps {
   section: Section;
@@ -15,6 +16,7 @@ interface HeroProps {
 
 export const HeroGradient: React.FC<HeroProps> = ({ section, onTextEdit, buttonClass, onElementSelect, onElementUpdate, selectedElementId, readOnly = false }) => {
   const { content, styles } = section;
+  const { themeData } = useTheme();
   
   // Element IDs - must match what App.tsx expects
   const titleId = `${section.id}-hero-title`;
@@ -31,6 +33,10 @@ export const HeroGradient: React.FC<HeroProps> = ({ section, onTextEdit, buttonC
   const styleAny = styles as any;
   const themeColors = {
     ...styles, // Include all section.styles properties
+    // Merge theme data for fallbacks
+    titleColor: styles.titleColor || themeData?.heading,
+    textColor: styles.textColor || themeData?.description,
+    subtitleColor: styles.subtitleColor || styles.textColor || themeData?.description,
     // Explicitly map button style properties for clarity
     buttonFontWeight: styleAny.buttonFontWeight || styleAny.fontWeight,
     buttonFontSize: styleAny.buttonSize || styleAny.buttonFontSize || styleAny.fontSize,
@@ -65,7 +71,7 @@ export const HeroGradient: React.FC<HeroProps> = ({ section, onTextEdit, buttonC
         htmlTag: (styles.titleHeadingTag || 'h1') as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
       },
       style: {
-        color: styles.titleColor || ''
+        color: styles.titleColor || themeData?.heading || ''
       }
     };
   };
@@ -81,7 +87,7 @@ export const HeroGradient: React.FC<HeroProps> = ({ section, onTextEdit, buttonC
         textSize: 'base' as 'base' | 'small' | 'large' | 'xl'
       },
       style: {
-        color: styles.subtitleColor || styles.textColor || ''
+        color: styles.subtitleColor || styles.textColor || themeData?.description || ''
       }
     };
   };

@@ -150,9 +150,15 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
       }
       if (isCustomColor(styles.backgroundColor)) {
         bgStyles.backgroundColor = styles.backgroundColor;
-      } else if (!styles.backgroundColor && themeData?.surface) {
-        // Use theme surface color as default background if no background is set
-        bgStyles.backgroundColor = themeData.surface;
+      } else {
+        // Fall back to theme surface color if no background is set (including empty string, null, undefined)
+        const hasBackground = styles.backgroundColor && styles.backgroundColor.trim() !== '';
+        if (!hasBackground && themeData?.surface) {
+          bgStyles.backgroundColor = themeData.surface;
+        } else if (hasBackground && !isCustomColor(styles.backgroundColor)) {
+          // Keep Tailwind class-based backgrounds
+          bgStyles.backgroundColor = undefined;
+        }
       }
     }
     
@@ -161,7 +167,7 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
 
   const inlineStyles: React.CSSProperties = {
     ...getBackgroundStyles(),
-    ...(isCustomColor(styles.textColor) ? { color: styles.textColor } : {}),
+    ...(isCustomColor(styles.textColor) ? { color: styles.textColor } : { color: themeData?.description }),
     ...(!isTailwindClass(styles.marginTop) ? { marginTop: styles.marginTop } : {}),
     ...(!isTailwindClass(styles.marginBottom) ? { marginBottom: styles.marginBottom } : {}),
     ...(!isTailwindClass(styles.marginLeft) ? { marginLeft: styles.marginLeft } : {}),
@@ -230,20 +236,34 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
     const legacyOpacity = styles.overlayOpacityValue !== undefined ? styles.overlayOpacityValue : styles.overlayOpacity;
     const legacyBlend = styles.overlayBlendMode;
     
-    const overlayColor = bgOverlay?.color || legacyColor;
+    // 3. Check if section has background image (for theme fallback)
+    const hasBackgroundImage = styles.background?.type === 'image' || !!styles.backgroundImage;
+    
+    // 4. Fallback to theme overlay if background image exists and no explicit overlay is set
+    const overlayColor = bgOverlay?.color || legacyColor || (hasBackgroundImage ? themeData?.overlay?.color : undefined);
     const hasOverlay = overlayColor && overlayColor !== 'transparent';
     
     if (hasOverlay && bgOverlay?.enabled !== false) {
-      const rawOpacityStr = bgOverlay?.opacity !== undefined ? bgOverlay.opacity : (legacyOpacity !== undefined ? legacyOpacity : 0.5);
+      // Fallback opacity: bgOverlay -> legacy -> theme -> default 0.5
+      const rawOpacityStr = bgOverlay?.opacity !== undefined 
+        ? bgOverlay.opacity 
+        : (legacyOpacity !== undefined 
+          ? legacyOpacity 
+          : (themeData?.overlay?.opacity !== undefined 
+            ? themeData.overlay.opacity 
+            : 0.5));
       const parsedOpacity = typeof rawOpacityStr === 'string' ? parseFloat(rawOpacityStr) : rawOpacityStr;
       const finalOpacity = parsedOpacity > 1 ? parsedOpacity / 100 : parsedOpacity;
+      
+      // Fallback blend mode: bgOverlay -> legacy -> theme -> 'normal'
+      const blendMode = bgOverlay?.blendMode || legacyBlend || themeData?.overlay?.blend || 'normal';
       
       return {
         show: true,
         style: {
           backgroundColor: overlayColor,
           opacity: finalOpacity,
-          mixBlendMode: (bgOverlay?.blendMode || legacyBlend || 'normal') as any
+          mixBlendMode: blendMode as any
         }
       };
     }
