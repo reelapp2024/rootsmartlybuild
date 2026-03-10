@@ -1,0 +1,11 @@
+node_modules
+.env
+/uploads/cover_photos
+/uploads/posts
+/uploads/product_images
+/uploads/profile_pics
+/uploads/short_video
+/uploads/comments/media
+/uploads/files
+/public/images
+/public/sitemaps

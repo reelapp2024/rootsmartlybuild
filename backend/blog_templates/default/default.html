@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+  <title>{title}</title>
+  <meta name="description" content="{metaDescription}" />
+  <link rel="canonical" href="{canonicalUrl}" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="{ogTitle}" />
+  <meta property="og:description" content="{ogDescription}" />
+  <meta property="og:url" content="{ogUrl}" />
+  <meta property="og:image" content="{ogImage}" />
+  <meta property="og:site_name" content="{siteName}" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{twitterTitle}" />
+  <meta name="twitter:description" content="{twitterDescription}" />
+  <meta name="twitter:image" content="{twitterImage}" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <!-- THEME ASSETS -->
+  <link rel="stylesheet" href="https://apis.smartlybuild.dev/blogresources/css/type1blogs.css">
+  <script src="https://apis.smartlybuild.dev/blogresources/js/type1blogs.js" defer></script>
+
+  <!-- JSON-LD: WebSite -->
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"WebSite",
+    "name":"{siteName}",
+    "url":"{siteUrl}",
+    "publisher":{"@type":"Organization","name":"{siteName}","logo":{"@type":"ImageObject","url":"{logoUrl}"}},
+    "sameAs":[
+      "{youtubeUrl}",
+      "{linkedinUrl}",
+      "{twitterUrl}"
+    ],
+    "potentialAction":{
+      "@type":"SearchAction",
+      "target":"{searchUrl}?q={search_term_string}",
+      "query-input":"required name=search_term_string"
+    }
+  }
+  </script>
+
+  <!-- JSON-LD: Breadcrumbs -->
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+    {"@type":"ListItem","position":1,"name":"Home","item":"{siteUrl}"},
+    {"@type":"ListItem","position":2,"name":"Guides","item":"{guidesUrl}"},
+    {"@type":"ListItem","position":3,"name":"{breadcrumbTitle}","item":"{canonicalUrl}"}
+  ]}
+  </script>
+
+  <!-- JSON-LD: Article -->
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"Article",
+    "headline":"{articleHeadline}",
+    "description":"{articleDescription}",
+    "mainEntityOfPage":{"@type":"WebPage","@id":"{canonicalUrl}"},
+    "image":"{articleImage}",
+    "author":{"@type":"Person","name":"{authorName}","jobTitle":"{authorJobTitle}"},
+    "reviewedBy":{"@type":"Person","name":"{reviewerName}","jobTitle":"{reviewerJobTitle}"},
+    "publisher":{"@type":"Organization","name":"{siteName}","logo":{"@type":"ImageObject","url":"{logoUrl}"}},
+    "datePublished":"{datePublished}",
+    "dateModified":"{dateModified}",
+    "speakable":{
+      "@type":"SpeakableSpecification",
+      "cssSelector":["#quick-answer p", "#verdict .bl-verdict-txt"]
+    }
+  }
+  </script>
+
+  <!-- JSON-LD: FAQ (Optional, only included if FAQs exist) -->
+
+
+</head>
+<body>
+
+  <!-- ===== HERO ===== -->
+  <section class="bl-hero" aria-label="Article intro">
+    <div class="bl-wrap">
+      <div class="bl-eyebrow">{eyebrow}</div>
+      <h1 class="bl-h1">{mainTitle}</h1>
+
+      <div class="bl-meta">
+        <span>By {authorName}</span><span class="bl-dot"></span>
+        <span>Reviewed by {reviewerName}, {reviewerJobTitle}</span><span class="bl-dot"></span>
+        <time datetime="{datePublished}">Updated {dateUpdated}</time><span class="bl-dot"></span>
+        <span class="bl-readtime" id="blReadTime">{readTime}</span>
+        <span id="bl-wc-wrap"><span class="bl-dot"></span><span id="blWordCount">{wordCount}</span></span>
+      </div>
+
+      <div class="bl-grid">
+        <!-- Direct answer + CTA -->
+        <div>
+          <div class="bl-qa" id="quick-answer" aria-live="polite">
+            <div class="bl-badge">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              DIRECT ANSWER
+            </div>
+            <p>{quickAnswer}</p>
+            <div class="bl-cta">
+              <a class="bl-btn bl-btn-primary" href="#main-content">Explore Content</a>
+              <a class="bl-btn bl-btn-ghost" href="#toc">Table of Contents</a>
+              <button class="bl-btn bl-btn-copy" type="button" data-copy-target="#quick-answer p">Copy Answer</button>
+            </div>
+          </div>
+        </div>
+
+        <figure class="bl-figure">
+          <img
+            src="{heroImage}"
+            alt="{heroImageAlt}"
+            width="1600" height="900"
+            sizes="(min-width: 860px) 48vw, 100vw"
+            srcset="{heroImageSrcset}"
+            loading="eager" decoding="async" fetchpriority="high">
+          <figcaption class="bl-figcap">{heroCaption}</figcaption>
+        </figure>
+      </div>
+
+      <!-- Affiliation / transparency -->
+      <div class="bl-card bl-mini" style="margin-top:12px">
+        <div class="mini-badge">DISCLOSURE</div>
+        <p>{disclosure}</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Tabs ===== -->
+  <div id="tabs-sentinel" aria-hidden="true"></div>
+  <nav id="tabs" class="bl-tabs" aria-label="Page tabs">
+    <div class="bl-wrap bl-tabs-inner">
+      <ul role="tablist" class="bl-tablist">
+        <li role="presentation"><a role="tab" href="#learn"        class="bl-tab" aria-selected="false">Introduction</a></li>
+        <li role="presentation"><a role="tab" href="#main-content" class="bl-tab" aria-selected="false">Main Content</a></li>
+        <li role="presentation"><a role="tab" href="#faq"          class="bl-tab" aria-selected="false">FAQ</a></li>
+        <li role="presentation"><a role="tab" href="#author"       class="bl-tab" aria-selected="false">Author</a></li>
+        <li role="presentation"><a role="tab" href="#comments"     class="bl-tab" aria-selected="false">Comments</a></li>
+        <li role="presentation"><a role="tab" href="#related"      class="bl-tab" aria-selected="false">Related</a></li>
+        <li role="presentation"><a role="tab" href="#verdict"      class="bl-tab" aria-selected="false">Verdict</a></li>
+      </ul>
+      <span class="bl-tab-indicator" aria-hidden="true"></span>
+    </div>
+  </nav>
+  <div class="bl-tabs-spacer" aria-hidden="true"></div>
+
+  <!-- ===== MAIN ===== -->
+  <section class="bl-sections" aria-label="Contents">
+    <div class="bl-wrap bl-layout">
+      <!-- Sidebar -->
+      <aside class="bl-sidebar" aria-label="Quick info">
+        <div class="bl-card bl-mini facts-card">
+          <div class="mini-badge">FAST FACTS</div>
+          <ul class="bl-bullets">{fastFacts}</ul>
+        </div>
+      </aside>
+
+      <!-- Content -->
+      <div class="bl-section-stack" id="main-content">
+        <!-- TABLE OF CONTENTS -->
+        <article id="toc" class="bl-card" aria-labelledby="toc-title">
+          <h2 id="toc-title" class="bl-h2">Table of Contents</h2>
+          <ol class="bl-toc">{tocItems}</ol>
+        </article>
+
+        <!-- INTRODUCTION -->
+        <article id="learn" class="bl-card" aria-labelledby="learn-title">
+          <h2 id="learn-title" class="bl-h2">Introduction</h2>
+          <p>{introContent}</p>
+        </article>
+
+        <!-- MAIN CONTENT (Dynamic Sections) -->
+        {mainContent}
+
+        <!-- FAQ -->
+        <section id="faq" aria-label="Frequently asked questions">
+          <h2 class="bl-h2">Frequently Asked Questions (FAQ)</h2>
+          {faqHtml}
+        </section>
+
+        <!-- AUTHOR BOX -->
+        
+
+        <!-- COMMENTS & REVIEWS -->
+        <section id="comments" class="bl-card bl-comments" aria-label="Comments and reviews">
+          <h2 class="bl-h2">Comments & Reviews</h2>
+          <div class="bl-review-summary" aria-live="polite">
+            <strong id="bl-rating-avg">—</strong> out of 5 · <span id="bl-rating-count">0</span> review(s)
+          </div>
+          <form id="bl-comment-form" class="bl-comment-form" novalidate>
+            <div class="bl-row">
+              <label for="bl-name">Name</label>
+              <input id="bl-name" name="name" type="text" placeholder="Your name" required>
+            </div>
+            <fieldset class="bl-row bl-rating" aria-label="Rating out of 5">
+              <legend>Rating</legend>
+              <div class="bl-stars">
+                <input type="radio" id="star5" name="rating" value="5"><label for="star5" title="5 stars">★</label>
+                <input type="radio" id="star4" name="rating" value="4"><label for="star4" title="4 stars">★</label>
+                <input type="radio" id="star3" name="rating" value="3"><label for="star3" title="3 stars">★</label>
+                <input type="radio" id="star2" name="rating" value="2"><label for="star2" title="2 stars">★</label>
+                <input type="radio" id="star1" name="rating" value="1" checked><label for="star1" title="1 star">★</label>
+              </div>
+            </fieldset>
+            <div class="bl-row">
+              <label for="bl-text">Comment</label>
+              <textarea id="bl-text" name="text" rows="4" placeholder="Share your experience…" required></textarea>
+            </div>
+            <div class="bl-row">
+              <button class="bl-btn bl-btn-primary" type="submit">Post Review</button>
+              <button class="bl-btn bl-btn-ghost" type="button" id="bl-clear-comments">Clear (local)</button>
+            </div>
+          </form>
+          <div id="bl-comments-list" class="bl-comments-list" aria-live="polite"></div>
+        </section>
+
+        <!-- RELATED ARTICLES -->
+        <section id="related" class="bl-card bl-related" aria-label="Related articles">
+          <h2 class="bl-h2">Related Articles</h2>
+          <div class="bl-related-grid">{relatedArticles}</div>
+        </section>
+
+        <!-- Verdict -->
+        <section id="verdict" class="bl-verdict" aria-label="Final recommendation">
+          <h2 class="bl-h2">Verdict</h2>
+          <p class="bl-verdict-txt">{verdict}</p>
+          <a class="bl-btn bl-btn-primary" href="#main-content">Explore More</a>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- Bottom Reading Progress -->
+  <div class="bl-progress" id="blProgress" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <span class="bar"></span>
+    <div class="info" aria-hidden="true">
+      <strong id="blPct">0%</strong>
+      <span id="blMsg">Let’s begin</span>
+    </div>
+  </div>
+
+</body>
+</html>

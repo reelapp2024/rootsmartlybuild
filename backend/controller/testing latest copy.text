@@ -1,0 +1,284 @@
+const axios = require('axios');
+const Redis = require('ioredis'); // Use ioredis for Redis client
+const Bull = require('bull');
+const GptContent = require("../models/GptContent");
+const express = require('express');
+const router = express.Router();
+
+// Redis Client - using ioredis now
+const client = new Redis({
+  host: 'localhost',  // Your Redis connection details
+  port: 6379,         // Adjust according to your Redis configuration
+});
+
+client.on('error', (err) => {
+  console.log('Redis error:', err);
+});
+
+// Bull Queue Setup
+const queue = new Bull('ytcontentQueue', {
+  redis: {
+    host: 'localhost',
+    port: 6379, // Adjust according to your Redis configuration
+  },
+});
+
+// Increase the max listeners to avoid MaxListenersExceededWarning
+queue.setMaxListeners(100); // Increase the limit as needed
+
+// Track task statuses
+let completedTasks = 0;
+let totalTasks = 0;
+
+// Function to get OpenAI response
+const getResponseFromOpenAI = async (prompt) => {
+  const response = await axios.post(
+    'https://api.openai.com/v1/chat/completions',
+    {
+      model: "gpt-3.5-turbo",
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 3000,
+      temperature: 0.7,
+    },
+    {
+      headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+    }
+  );
+
+  return response.data.choices[0].message.content.trim();
+};
+
+// Worker for processing the jobs
+queue.process(async (job) => {
+  const { title, serialNo, niche } = job.data;
+
+  // Prepare the prompt for OpenAI
+  const prompol = `
+    Create a 40-second YouTube short on a topic = ${title} with limited words (maximum 300) that are readable in 40 seconds. Please provide me with up-to-date information that is easy to understand and has good content that should include interesting facts, real numbers, and real data. Make sure to include a separate title and description. Don't add any links to websites and YouTube channels in the content and don't use emojis. Please don't miss the last line for CTA. Please don't add steps. And make sure all the content should be in Hindi and according to 2025 and the Indian audience.
+
+    Make sure output will be similar like;
+
+    Title:
+    भारत के सबसे खूबसूरत पेट-फ्रेंडली सनसेट पॉइंट्स
+
+    Description:
+    अगर आप अपने पेट के साथ सनसेट का मजा लेना चाहते हैं, तो ये भारत के सबसे खूबसूरत पेट-फ्रेंडली सनसेट पॉइंट्स हैं.
+
+    Script (40-Second YouTube Short):
+    "क्या आप जानते हैं कि भारत में 10 से ज्यादा सनसेट पॉइंट्स अब पेट-फ्रेंडली हो चुके हैं? अगर आप अपने पेट के साथ सनसेट का मजा लेना चाहते हैं, तो ये जगहें आपके लिए परफेक्ट हैं।
+
+    कन्याकुमारी: यहां पेट्स के साथ सनसेट का मजा लें।
+
+    गोवा का पालोलेम बीच: पेट्स के साथ बीच पर सनसेट का अनुभव।
+
+    उदयपुर का लेक पिचोला: यहां पेट्स के साथ लेकसाइड सनसेट का मजा लें।
+
+    मसूरी का लाल टिब्बा: पेट्स के साथ हिल स्टेशन पर सनसेट का अनुभव।
+
+    2025 तक, भारत में पेट-फ्रेंडली सनसेट पॉइंट्स की संख्या 15% बढ़ने की उम्मीद है। तो, कब प्लान कर रहे हैं अपने पेट के साथ सनसेट ट्रिप? कमेंट में बताएं!"
+
+    CTA:
+    "अगर आपको यह जानकारी पसंद आई हो, तो इस वीडियो को लाइक करें और हमारे चैनल को सब्सक्राइब करें."
+  `;
+
+  const prompt= `Create a 30-second YouTube short on a given topic: ${title} with limited words (maximum 250) that are readable in 30 seconds. Please provide up-to-date information that is easy to understand, engaging, and valuable for the Indian audience in 2025. Ensure the content includes interesting facts, fun facts, real numbers, and actual data. 
+
+  Make sure to include:
+  - A separate and engaging **title** related to the topic.
+  - A well-written **description** that hooks the audience.
+  - High-quality content in a **conversational yet informative** tone.
+  - **No links** to websites or YouTube channels.
+  - **No emojis**.
+  - A **final CTA (Call to Action)** in the last line.
+  
+  Do **not** include steps or a step-by-step guide.
+  
+  ### **Expected Output Format**  
+  Title: चंद्रमा पर पृथ्वी की छाया गहरी क्यों होती है?  
+  Description: जानिए क्यों चंद्रमा पर पृथ्वी की छाया गहरी और रहस्यमयी दिखती है। इस खगोलीय घटना के पीछे का विज्ञान और रोचक तथ्य जानने के लिए यह वीडियो देखें।  
+  Content:  
+  जब चंद्रग्रहण होता है, तो पृथ्वी सूर्य और चंद्रमा के बीच आ जाती है। इस दौरान, पृथ्वी की छाया चंद्रमा पर पड़ती है, जिसे प्रच्छाया (Umbra) कहते हैं। यह छाया गहरी इसलिए होती है क्योंकि पृथ्वी सूर्य की रोशनी को पूरी तरह रोक देती है।  
+  
+  **रोचक तथ्य:**  
+  - चंद्रमा पर छाया का तापमान -173°C तक गिर सकता है।  
+  - 2025 में भारत में 7 सितंबर को पूर्ण चंद्रग्रहण देखा जा सकेगा।  
+  - यह केवल पूर्णिमा की रात को ही होता है।  
+  
+  **मजेदार जानकारी:**  
+  चंद्रग्रहण के दौरान, चंद्रमा लाल रंग का दिखता है, जिसे "ब्लड मून" कहते हैं। यह पृथ्वी के वायुमंडल द्वारा सूर्य की रोशनी के बिखराव के कारण होता है।  
+  
+  **CTA:** ऐसी ही खगोलीय घटनाओं को सरल भाषा में समझने के लिए चैनल को सब्सक्राइब करें!  
+  `;  
+
+  const prompt2=`Create a 30-second YouTube Short on a given topic ${title} with limited words (maximum 250) that are readable in 30 seconds. Provide up-to-date information that is easy to understand with interesting facts, fun facts, real numbers, and real data. 
+
+The content should be tailored for the **Indian audience in 2025** and should maintain **high engagement**. Make sure to include:  
+- **A separate title and description**  
+- **Concise but impactful content**  
+- **No links, steps, or unnecessary details**  
+- **A strong conclusion that sparks curiosity or discussion**  
+- **Simple language for easy readability in 30 seconds**  
+
+Example:  
+
+**Title:** आर्टिफिशियल इंटेलिजेंस (AI) का भविष्य: भारत 2025  
+**Description:** 2025 में भारत AI में दुनिया का नेतृत्व कर रहा है। जानिए कैसे AI स्टार्टअप्स, नई तकनीकों और इनोवेशन के साथ भारत का भविष्य बदल रहा है।  
+**Content:**  
+भारत AI में तेजी से आगे बढ़ रहा है! 2025 में भारतीय कंपनियां AI पर **79% ज्यादा बजट खर्च कर रही हैं**—जो दुनिया में सबसे ज्यादा है।  
+पिछले साल भारतीय AI स्टार्टअप्स ने **$560 मिलियन** जुटाए, जो **2023 से 125% अधिक** है।  
+AI हेल्थकेयर, एजुकेशन और बिजनेस ऑटोमेशन में बड़ा बदलाव ला रहा है। छोटे शहर जैसे **जयपुर और कोयंबटूर** इनोवेशन हब बन रहे हैं।  
+AI से **नए उद्योग और नौकरियां** बन रही हैं, जिससे भारत की इकोनॉमी तेजी से बढ़ रही है।  
+**क्या आप इस AI-ड्रिवन फ्यूचर के लिए तैयार हैं?**  
+`
+  
+
+  try {
+    // Generate content from OpenAI
+    const openAiResponse = await getResponseFromOpenAI(prompt);
+
+    // Store the content in Redis temporarily (1 hour)
+    client.setex(title, 3600, openAiResponse); // Store the content in Redis for 1 hour
+
+    // Save to MongoDB
+    const newContent = new GptContent({
+      title,
+      serialNo,
+      content: openAiResponse,
+      niche, // Store the niche as well
+    });
+    await newContent.save();
+
+    // Update the count for completed tasks
+    completedTasks++;
+
+    console.log(`Completed: ${completedTasks}, Pending: ${totalTasks - completedTasks}`);
+
+    return openAiResponse;
+
+  } catch (error) {
+    console.error(`Error processing title "${title}":`, error);
+    throw new Error(`Error processing title: ${title}`);
+  }
+});
+
+// Controller to handle multiple titles
+module.exports = {
+    ytcontent: async (req, res) => {
+      const { multititles, niche } = req.body;  // Expecting an array of titles and a niche
+      const titles = multititles ? JSON.parse(multititles) : [];
+  
+      if (!niche || !multititles) {
+        return res.status(400).json({ message: "You must provide niche and multititles." });
+      }
+  
+      // Validate input
+      if (!Array.isArray(titles) || titles.length < 1) {
+        return res.status(400).json({ message: "You must provide an array of titles." });
+      }
+  
+      try {
+        // Initialize results array
+        const results = [];
+  
+        // Reset the task counters
+        completedTasks = 0;
+        totalTasks = titles.length;
+  
+        // Set initial pending tasks to the total tasks
+        let pendingTasks = totalTasks;
+  
+        // Get the highest serial number for the niche
+        const lastContent = await GptContent.findOne({ niche }).sort({ serialNo: -1 });
+  
+        // Set the starting serial number
+        let serialNoStart = lastContent ? lastContent.serialNo + 1 : 1;
+  
+        // Process each title by adding a job to the Bull queue
+        for (let i = 0; i < titles.length; i++) {
+          const title = titles[i];
+          
+          // Add job to the queue for processing
+          const job = await queue.add({ title, serialNo: serialNoStart + i, niche });
+  
+          // Wait for the job to complete and fetch the result
+          job.finished().then((content) => {
+            results.push({ title, content });
+  
+            // Update completed tasks and pending tasks dynamically
+            completedTasks++;
+            pendingTasks = totalTasks - completedTasks; // Calculate pending tasks
+  
+            // Log task completion
+            console.log(`Completed: ${completedTasks}, Pending: ${pendingTasks}`);
+  
+            // When all jobs are processed, return the response
+            if (results.length === titles.length) {
+              return res.status(200).json({
+                message: "Content generated and stored successfully for multiple titles.",
+                results,
+              });
+            }
+          }).catch((error) => {
+            console.error('Error processing job:', error);
+            return res.status(500).json({ message: "An error occurred while processing your request." });
+          });
+        }
+  
+      } catch (error) {
+        console.error('Error generating content for multiple titles:', error);
+        return res.status(500).json({ message: "An error occurred while processing your request." });
+      }
+    },
+
+    allnichecontent: async (req, res) => {
+      const { niche } = req.body; // Expecting niche as input
+  
+      if (!niche) {
+          return res.status(400).json({ message: "You must provide a niche." });
+      }
+  
+      try {
+          // Fetch all content from the database for the given niche, sorted by serialNo
+          const contentItems = await GptContent.find({ niche }).sort({ serialNo: 1 });
+  
+          if (!contentItems || contentItems.length === 0) {
+              return res.status(404).json({ message: `No content found for niche: ${niche}` });
+          }
+  
+          // Prepare the result array where each item will contain serialNo and content
+          const resultArray = contentItems.map((item, index) => {
+              // Ensure content is treated as a string
+              let formattedContent = String(item.content);
+  
+              // Replace backslashes (\) with new lines (\n)
+              formattedContent = formattedContent.replace(/\\/g, '\n');
+  
+              // Replace all occurrences of '\n' characters encoded as text (in case stored incorrectly)
+              formattedContent = formattedContent.replace(/\\n/g, '\n');
+  
+              // Trim extra spaces
+              formattedContent = formattedContent.trim();
+  
+              return {
+                  serialNo: index + 1, // Ensuring serialNo starts from 1 and increments
+                  content: formattedContent
+              };
+          });
+  
+          // Return the array of objects with serialNo and content
+          res.status(200).json({
+              message: "Content fetched successfully.",
+              content: resultArray, // Return the formatted array
+          });
+  
+      } catch (error) {
+          console.error('Error fetching content for niche:', error);
+          return res.status(500).json({ message: "An error occurred while fetching content for the niche." });
+      }
+  },
+  
+  
+  
+  
+  };
+  

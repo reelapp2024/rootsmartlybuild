@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en-US">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#ecfdf5" />
+
+  <title>{title}</title>
+  <meta name="description" content="{metaDescription}" />
+  <link rel="canonical" href="{canonicalUrl}" />
+
+  <!-- Social -->
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="{ogTitle}" />
+  <meta property="og:description" content="{ogDescription}" />
+  <meta property="og:url" content="{ogUrl}" />
+  <meta property="og:image" content="{ogImage}" />
+  <meta property="og:site_name" content="{siteName}" />
+  <meta property="og:locale" content="en_US" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{twitterTitle}" />
+  <meta name="twitter:description" content="{twitterDescription}" />
+  <meta name="twitter:image" content="{twitterImage}" />
+
+  <!-- Fonts & Core CSS -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <!-- (Note: replace these with your nx bundles when ready) -->
+  <link rel="stylesheet" href="https://apis.smartlybuild.dev/blogresources/css/type1blogs.css">
+  <script src="https://apis.smartlybuild.dev/blogresources/js/type1blogs.js" defer></script>
+</head>
+
+<body>
+
+  <!-- ===== HERO ===== -->
+  <section class="nx-hero" aria-label="Article intro">
+    <div class="nx-wrap">
+      <div class="nx-eyebrow nx-kicker">{eyebrow}</div>
+      <h1 class="nx-h1">{mainTitle}</h1>
+
+      <div class="nx-meta">
+        <span>By <strong>{authorName}</strong></span><span class="nx-dot"></span>
+        <span>Reviewed by <strong>{reviewedBy}</strong></span><span class="nx-dot"></span>
+        <time datetime="{datePublished}">{dateHuman}</time><span class="nx-dot"></span>
+        <span class="nx-readtime" id="nxReadTime">{readTime}</span>
+        <span id="nx-wc-wrap"><span class="nx-dot"></span><span id="nxWordCount">{wordCount}</span></span>
+      </div>
+
+      <div class="nx-grid">
+        <!-- Direct answer + CTA -->
+        <div>
+          <div class="nx-qa" id="nxQuickAnswer" aria-live="polite">
+            <div class="nx-badge">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+              DIRECT ANSWER
+            </div>
+            <p>{quickAnswer}</p>
+            <div class="nx-cta">
+              <a class="nx-btn nx-btn-primary" href="#nxBenefits">See Top Benefits</a>
+              <a class="nx-btn nx-btn-ghost" href="#nxConsiderations">Know the Risks</a>
+              <button class="nx-btn nx-btn-copy" type="button" data-copy-target="#nxQuickAnswer p">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hero Image -->
+        <figure class="nx-figure ww-hero-figure">
+          <img src="{heroImage}" alt="{heroImageAlt}" width="1600" height="900" sizes="(min-width: 860px) 48vw, 100vw"
+            srcset="{heroImageSrcset}" loading="eager" decoding="async" fetchpriority="high">
+          <figcaption class="nx-figcap">{heroCaption}</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== MAIN ===== -->
+  <section class="nx-sections" aria-label="Contents">
+    <div class="nx-wrap nx-layout">
+      <!-- Sidebar -->
+      <aside class="nx-sidebar" aria-label="Quick info">
+        <div class="nx-card nx-mini nx-facts-card">
+          <div class="nx-mini-badge">FAST FACTS</div>
+          <ul class="nx-bullets">{fastFactsHtml}</ul>
+        </div>
+        <div class="nx-card nx-mini nx-voice-card" id="nxVoicePrompts">
+          <div class="nx-mini-badge">VOICE</div>
+          <h3 class="nx-h4">Voice Prompts</h3>
+          <ul class="nx-bullets">{voicePromptsHtml}</ul>
+        </div>
+      </aside>
+
+      <!-- Content -->
+      <div class="nx-section-stack" id="nxMainContent">
+
+        <!-- Table of Contents -->
+        <article id="nxToc" class="nx-card nx-table-of-contents" aria-labelledby="nx-toc-title">
+          <h2 id="nx-toc-title" class="nx-h2">Table of Contents</h2>
+          {tocHtml}
+        </article>
+
+        <!-- Introduction -->
+        <article id="nxIntro" class="nx-card" aria-labelledby="nx-intro-title">
+          <h2 id="nx-intro-title" class="nx-h2">What You Will Learn / Introduction</h2>
+          {introHtml}
+        </article>
+
+        <!-- Basics -->
+        <article id="nxBasics" class="nx-card" aria-labelledby="nx-basics-title">
+          <h2 id="nx-basics-title" class="nx-h2">{basicsTitle}</h2>
+          {basicsHtml}
+        </article>
+
+        <!-- Benefits -->
+        <section id="nxBenefits" class="nx-card" aria-label="Top benefits">
+          <h2 class="nx-h2">{benefitsTitle}</h2>
+          {benefitsHtml}
+        </section>
+
+        <!-- Considerations -->
+        <section id="nxConsiderations" class="nx-card" aria-label="Important considerations">
+          <h2 class="nx-h2">{considerationsTitle}</h2>
+          {considerationsHtml}
+        </section>
+
+        <!-- FAQ -->
+        <section id="nxFaqs" class="nx-card ww-faq" aria-label="Frequently asked questions">
+          <h2 class="nx-h2">Frequently Asked Questions</h2>
+          {faqHtml}
+        </section>
+
+        <!-- Verdict -->
+        <section id="nxVerdict" class="nx-verdict nx-card" aria-label="Final recommendation">
+          <h2 class="nx-h2">{verdictTitle}</h2>
+          <p class="nx-verdict-txt">{verdictText}</p>
+          <div class="nx-cta" style="margin-top:8px">
+            <a class="nx-btn nx-btn-primary" href="#nxBenefits">Review the Benefits</a>
+            <a class="nx-btn nx-btn-ghost" href="#nxConsiderations">Plan for the Risks</a>
+            <button class="nx-btn nx-btn-copy" type="button" data-copy-target="#nxQuickAnswer p">Copy Direct
+              Answer</button>
+          </div>
+        </section>
+
+        <!-- Author Box -->
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Bottom Reading Progress -->
+  <div class="nx-progress" id="nxProgress" role="progressbar" aria-label="Reading progress" aria-valuemin="0"
+    aria-valuemax="100" aria-valuenow="0">
+    <span class="nx-bar"></span>
+    <div class="nx-info" aria-hidden="true">
+      <strong id="nxPct">0%</strong>
+      <span id="nxMsg">Let’s begin</span>
+    </div>
+  </div>
+
+</body>
+</html>

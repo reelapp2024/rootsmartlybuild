@@ -1,0 +1,8 @@
+{
+  "name": "GenieBuild AI Website Builder",
+  "description": "A powerful, AI-driven website builder that allows you to create and edit templates using natural language or direct manipulation.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

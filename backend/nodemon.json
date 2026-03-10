@@ -1,0 +1,26 @@
+{
+  "ignore": [
+    "uploads",
+    "uploads/*",
+    "temp",
+    "temp/*",
+    "deploy-temp",
+    "deploy-temp/*",
+    "public",
+    "public/*",
+    "keys",
+    "keys/*",
+    "**/*.zip",
+    "**/*.html",
+    "**/*.css",
+    "**/*.jpg",
+    "**/*.png",
+       "additional/temp_extract_*",
+    "additional/temp_extract_*/**"
+  ],
+  "verbose": true,
+  
+  "quiet": true
+
+
+}

@@ -1,0 +1,1570 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Default Blue Theme */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+    
+    /* Enhanced Blue theme gradients */
+    --hero-gradient-from: 217 91% 60%;
+    --hero-gradient-via: 224 76% 48%;
+    --hero-gradient-to: 230 85% 55%;
+    --cta-gradient-from: 24 95% 53%;
+    --cta-gradient-via: 15 90% 58%;
+    --cta-gradient-to: 0 84% 60%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Ocean theme colors for blue */
+    --ocean-light: 210 85% 92%;
+    --ocean-medium: 220 75% 75%;
+    --ocean-deep: 230 90% 35%;
+    --wave-blue: 210 100% 70%;
+    --splash-blue: 200 95% 85%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 217 91% 60%;
+    --cta-primary-via: 224 76% 48%;
+    --cta-primary-to: 230 85% 55%;
+    --cta-hover-from: 224 85% 55%;
+    --cta-hover-via: 230 80% 45%;
+    --cta-hover-to: 235 90% 50%;
+  }
+
+  .theme-green {
+    /* Fixed Green Theme - Light backgrounds with green primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 142 71% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 120 40% 94%;
+    --accent-foreground: 140 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 120 30% 88%;
+    --input: 120 25% 92%;
+    --ring: 142 71% 45%;
+    
+    /* Enhanced Green theme gradients */
+    --hero-gradient-from: 142 71% 45%;
+    --hero-gradient-via: 158 64% 52%;
+    --hero-gradient-to: 120 70% 60%;
+    --cta-gradient-from: 110 80% 40%;
+    --cta-gradient-via: 130 75% 45%;
+    --cta-gradient-to: 142 71% 45%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Nature theme colors for green */
+    --nature-light: 120 60% 92%;
+    --nature-medium: 130 70% 75%;
+    --nature-dark: 140 80% 25%;
+    --forest-green: 150 85% 30%;
+    --leaf-green: 110 75% 45%;
+    --mint-green: 160 65% 70%;
+    --grass-green: 100 60% 50%;
+    --emerald-green: 160 85% 35%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 142 71% 45%;
+    --cta-primary-via: 158 64% 52%;
+    --cta-primary-to: 120 70% 60%;
+    --cta-hover-from: 150 75% 40%;
+    --cta-hover-via: 165 68% 47%;
+    --cta-hover-to: 125 75% 55%;
+  }
+
+  .theme-black {
+    /* Fixed Black Theme - Light backgrounds with black/dark primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 0 0% 15%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 0 0% 94%;
+    --accent-foreground: 0 0% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 0 0% 88%;
+    --input: 0 0% 92%;
+    --ring: 0 0% 15%;
+    
+    /* Enhanced Black theme gradients */
+    --hero-gradient-from: 0 0% 20%;
+    --hero-gradient-via: 0 0% 15%;
+    --hero-gradient-to: 220 20% 10%;
+    --cta-gradient-from: 280 100% 60%;
+    --cta-gradient-via: 300 90% 55%;
+    --cta-gradient-to: 320 100% 50%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Elegant theme colors for black */
+    --charcoal-light: 0 0% 85%;
+    --charcoal-medium: 0 0% 60%;
+    --charcoal-dark: 0 0% 25%;
+    --slate-elegant: 220 15% 20%;
+    --midnight-black: 230 25% 8%;
+    --silver-accent: 0 0% 75%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 0 0% 20%;
+    --cta-primary-via: 220 15% 20%;
+    --cta-primary-to: 230 25% 8%;
+    --cta-hover-from: 0 0% 15%;
+    --cta-hover-via: 220 20% 15%;
+    --cta-hover-to: 235 30% 5%;
+  }
+
+  .theme-purple {
+    /* Purple Theme - Light backgrounds with purple primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 270 40% 94%;
+    --accent-foreground: 270 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 270 30% 88%;
+    --input: 270 25% 92%;
+    --ring: 262 83% 58%;
+    
+    /* Enhanced Purple theme gradients */
+    --hero-gradient-from: 262 83% 58%;
+    --hero-gradient-via: 280 70% 50%;
+    --hero-gradient-to: 290 75% 45%;
+    --cta-gradient-from: 245 95% 60%;
+    --cta-gradient-via: 260 90% 55%;
+    --cta-gradient-to: 275 85% 50%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Purple theme specific colors */
+    --violet-light: 270 60% 92%;
+    --violet-medium: 280 70% 75%;
+    --violet-dark: 285 80% 25%;
+    --amethyst: 275 85% 60%;
+    --lavender: 260 65% 80%;
+    --plum: 300 70% 50%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 262 83% 58%;
+    --cta-primary-via: 280 70% 50%;
+    --cta-primary-to: 290 75% 45%;
+    --cta-hover-from: 270 88% 53%;
+    --cta-hover-via: 285 75% 45%;
+    --cta-hover-to: 295 80% 40%;
+  }
+
+  .theme-orange {
+    /* Orange Theme - Light backgrounds with orange primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 24 95% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 30 40% 94%;
+    --accent-foreground: 30 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 30 30% 88%;
+    --input: 30 25% 92%;
+    --ring: 24 95% 53%;
+    
+    /* Enhanced Orange theme gradients */
+    --hero-gradient-from: 24 95% 53%;
+    --hero-gradient-via: 35 90% 58%;
+    --hero-gradient-to: 45 85% 60%;
+    --cta-gradient-from: 15 100% 55%;
+    --cta-gradient-via: 25 95% 50%;
+    --cta-gradient-to: 35 90% 45%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Orange theme specific colors */
+    --sunset-light: 30 60% 92%;
+    --sunset-medium: 35 70% 75%;
+    --sunset-dark: 40 80% 25%;
+    --tangerine: 25 90% 60%;
+    --peach: 15 85% 75%;
+    --amber: 45 95% 50%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 24 95% 53%;
+    --cta-primary-via: 35 90% 58%;
+    --cta-primary-to: 45 85% 60%;
+    --cta-hover-from: 20 100% 48%;
+    --cta-hover-via: 30 95% 53%;
+    --cta-hover-to: 40 90% 55%;
+  }
+
+  .theme-red {
+    /* Red Theme - Light backgrounds with red primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 0 84% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 0 40% 94%;
+    --accent-foreground: 0 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 0 30% 88%;
+    --input: 0 25% 92%;
+    --ring: 0 84% 60%;
+    
+    /* Enhanced Red theme gradients */
+    --hero-gradient-from: 0 84% 60%;
+    --hero-gradient-via: 10 80% 55%;
+    --hero-gradient-to: 20 85% 50%;
+    --cta-gradient-from: 350 90% 60%;
+    --cta-gradient-via: 0 85% 55%;
+    --cta-gradient-to: 15 80% 50%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Red theme specific colors */
+    --crimson-light: 0 60% 92%;
+    --crimson-medium: 5 70% 75%;
+    --crimson-dark: 10 80% 25%;
+    --ruby: 350 85% 50%;
+    --rose: 5 80% 70%;
+    --cherry: 15 90% 45%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 0 84% 60%;
+    --cta-primary-via: 10 80% 55%;
+    --cta-primary-to: 20 85% 50%;
+    --cta-hover-from: 355 89% 55%;
+    --cta-hover-via: 5 85% 50%;
+    --cta-hover-to: 15 90% 45%;
+  }
+
+  .theme-cyan {
+    /* Cyan Theme - Light backgrounds with cyan primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 188 94% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 180 40% 94%;
+    --accent-foreground: 180 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 180 30% 88%;
+    --input: 180 25% 92%;
+    --ring: 188 94% 42%;
+    
+    /* Enhanced Cyan theme gradients */
+    --hero-gradient-from: 188 94% 42%;
+    --hero-gradient-via: 195 85% 50%;
+    --hero-gradient-to: 205 80% 55%;
+    --cta-gradient-from: 175 90% 45%;
+    --cta-gradient-via: 185 85% 40%;
+    --cta-gradient-to: 195 80% 35%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Cyan theme specific colors */
+    --aqua-light: 180 60% 92%;
+    --aqua-medium: 185 70% 75%;
+    --aqua-dark: 190 80% 25%;
+    --teal: 175 85% 40%;
+    --turquoise: 185 75% 55%;
+    --azure: 195 90% 60%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 188 94% 42%;
+    --cta-primary-via: 195 85% 50%;
+    --cta-primary-to: 205 80% 55%;
+    --cta-hover-from: 185 99% 37%;
+    --cta-hover-via: 192 90% 45%;
+    --cta-hover-to: 200 85% 50%;
+  }
+
+  .theme-yellow {
+    /* Yellow Theme - Light backgrounds with yellow primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 48 96% 53%;
+    --primary-foreground: 0 0% 10%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 50 40% 94%;
+    --accent-foreground: 50 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 50 30% 88%;
+    --input: 50 25% 92%;
+    --ring: 48 96% 53%;
+    
+    /* Enhanced Yellow theme gradients */
+    --hero-gradient-from: 48 96% 53%;
+    --hero-gradient-via: 55 90% 58%;
+    --hero-gradient-to: 65 85% 60%;
+    --cta-gradient-from: 40 95% 50%;
+    --cta-gradient-via: 50 90% 55%;
+    --cta-gradient-to: 60 85% 60%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Yellow theme specific colors */
+    --sunshine-light: 50 60% 92%;
+    --sunshine-medium: 55 70% 75%;
+    --sunshine-dark: 60 80% 25%;
+    --gold: 45 85% 50%;
+    --lemon: 55 90% 70%;
+    --canary: 60 95% 65%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 48 96% 53%;
+    --cta-primary-via: 55 90% 58%;
+    --cta-primary-to: 65 85% 60%;
+    --cta-hover-from: 45 100% 48%;
+    --cta-hover-via: 52 95% 53%;
+    --cta-hover-to: 62 90% 55%;
+  }
+
+  .theme-pink {
+    /* Pink Theme - Light backgrounds with pink primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 328 85% 70%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 320 40% 94%;
+    --accent-foreground: 320 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 320 30% 88%;
+    --input: 320 25% 92%;
+    --ring: 328 85% 70%;
+    
+    --hero-gradient-from: 328 85% 70%;
+    --hero-gradient-via: 335 80% 65%;
+    --hero-gradient-to: 340 85% 60%;
+    --cta-gradient-from: 315 90% 65%;
+    --cta-gradient-via: 325 85% 60%;
+    --cta-gradient-to: 335 80% 55%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 328 85% 70%;
+    --cta-primary-via: 335 80% 65%;
+    --cta-primary-to: 340 85% 60%;
+    --cta-hover-from: 325 90% 65%;
+    --cta-hover-via: 332 85% 60%;
+    --cta-hover-to: 338 90% 55%;
+  }
+
+  .theme-indigo {
+    /* Indigo Theme - Light backgrounds with indigo primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 240 40% 94%;
+    --accent-foreground: 240 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 240 30% 88%;
+    --input: 240 25% 92%;
+    --ring: 239 84% 67%;
+    
+    --hero-gradient-from: 239 84% 67%;
+    --hero-gradient-via: 245 80% 62%;
+    --hero-gradient-to: 250 85% 57%;
+    --cta-gradient-from: 230 90% 70%;
+    --cta-gradient-via: 240 85% 65%;
+    --cta-gradient-to: 250 80% 60%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 239 84% 67%;
+    --cta-primary-via: 245 80% 62%;
+    --cta-primary-to: 250 85% 57%;
+    --cta-hover-from: 236 89% 62%;
+    --cta-hover-via: 242 85% 57%;
+    --cta-hover-to: 247 90% 52%;
+  }
+
+  .theme-teal {
+    /* Teal Theme - Light backgrounds with teal primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 162 73% 46%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 160 40% 94%;
+    --accent-foreground: 160 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 160 30% 88%;
+    --input: 160 25% 92%;
+    --ring: 162 73% 46%;
+    
+    --hero-gradient-from: 162 73% 46%;
+    --hero-gradient-via: 168 70% 50%;
+    --hero-gradient-to: 175 75% 55%;
+    --cta-gradient-from: 155 80% 50%;
+    --cta-gradient-via: 165 75% 45%;
+    --cta-gradient-to: 175 70% 40%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 162 73% 46%;
+    --cta-primary-via: 168 70% 50%;
+    --cta-primary-to: 175 75% 55%;
+    --cta-hover-from: 159 78% 41%;
+    --cta-hover-via: 165 75% 45%;
+    --cta-hover-to: 172 80% 50%;
+  }
+
+  .theme-lime {
+    /* Lime Theme - Light backgrounds with lime primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 84 81% 44%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 80 40% 94%;
+    --accent-foreground: 80 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 80 30% 88%;
+    --input: 80 25% 92%;
+    --ring: 84 81% 44%;
+    
+    --hero-gradient-from: 84 81% 44%;
+    --hero-gradient-via: 90 75% 50%;
+    --hero-gradient-to: 95 80% 55%;
+    --cta-gradient-from: 75 85% 48%;
+    --cta-gradient-via: 85 80% 44%;
+    --cta-gradient-to: 95 75% 40%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 84 81% 44%;
+    --cta-primary-via: 90 75% 50%;
+    --cta-primary-to: 95 80% 55%;
+    --cta-hover-from: 81 86% 39%;
+    --cta-hover-via: 87 80% 45%;
+    --cta-hover-to: 92 85% 50%;
+  }
+
+  .theme-rose {
+    /* Rose Theme - Light backgrounds with rose primary elements */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 351 81% 64%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 350 40% 94%;
+    --accent-foreground: 350 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 350 30% 88%;
+    --input: 350 25% 92%;
+    --ring: 351 81% 64%;
+    
+    --hero-gradient-from: 351 81% 64%;
+    --hero-gradient-via: 356 76% 60%;
+    --hero-gradient-to: 2 80% 55%;
+    --cta-gradient-from: 345 85% 68%;
+    --cta-gradient-via: 355 80% 64%;
+    --cta-gradient-to: 5 75% 60%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 351 81% 64%;
+    --cta-primary-via: 356 76% 60%;
+    --cta-primary-to: 2 80% 55%;
+    --cta-hover-from: 348 86% 59%;
+    --cta-hover-via: 353 81% 55%;
+    --cta-hover-to: 359 85% 50%;
+  }
+
+  .theme-sky {
+    /* Sky Theme - Light sky blue with soft white background */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 200 40% 94%;
+    --accent-foreground: 200 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 200 30% 88%;
+    --input: 200 25% 92%;
+    --ring: 199 89% 48%;
+    
+    --hero-gradient-from: 199 89% 48%;
+    --hero-gradient-via: 205 85% 55%;
+    --hero-gradient-to: 210 80% 60%;
+    --cta-gradient-from: 192 95% 45%;
+    --cta-gradient-via: 200 90% 50%;
+    --cta-gradient-to: 208 85% 55%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 199 89% 48%;
+    --cta-primary-via: 205 85% 55%;
+    --cta-primary-to: 210 80% 60%;
+    --cta-hover-from: 196 94% 43%;
+    --cta-hover-via: 202 90% 50%;
+    --cta-hover-to: 207 85% 55%;
+  }
+
+  .theme-mint {
+    /* Mint Theme - Fresh mint green with cream background */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 158 58% 49%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 155 40% 94%;
+    --accent-foreground: 155 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 155 30% 88%;
+    --input: 155 25% 92%;
+    --ring: 158 58% 49%;
+    
+    --hero-gradient-from: 158 58% 49%;
+    --hero-gradient-via: 165 62% 56%;
+    --hero-gradient-to: 172 67% 62%;
+    --cta-gradient-from: 150 65% 46%;
+    --cta-gradient-via: 160 60% 52%;
+    --cta-gradient-to: 170 65% 58%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 158 58% 49%;
+    --cta-primary-via: 165 62% 56%;
+    --cta-primary-to: 172 67% 62%;
+    --cta-hover-from: 155 63% 44%;
+    --cta-hover-via: 162 67% 51%;
+    --cta-hover-to: 169 72% 57%;
+  }
+
+  .theme-lavender {
+    /* Lavender Theme - Gentle purple with off-white background */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 270 50% 72%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 270 40% 94%;
+    --accent-foreground: 270 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 270 30% 88%;
+    --input: 270 25% 92%;
+    --ring: 270 50% 72%;
+    
+    --hero-gradient-from: 270 50% 72%;
+    --hero-gradient-via: 276 55% 77%;
+    --hero-gradient-to: 282 60% 82%;
+    --cta-gradient-from: 264 55% 69%;
+    --cta-gradient-via: 272 50% 75%;
+    --cta-gradient-to: 280 55% 80%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 270 50% 72%;
+    --cta-primary-via: 276 55% 77%;
+    --cta-primary-to: 282 60% 82%;
+    --cta-hover-from: 267 55% 67%;
+    --cta-hover-via: 273 60% 72%;
+    --cta-hover-to: 279 65% 77%;
+  }
+
+  .theme-coral {
+    /* Coral Theme - Warm coral/salmon with cream background */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 11 92% 68%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 15 40% 94%;
+    --accent-foreground: 15 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 15 30% 88%;
+    --input: 15 25% 92%;
+    --ring: 11 92% 68%;
+    
+    --hero-gradient-from: 11 92% 68%;
+    --hero-gradient-via: 16 87% 73%;
+    --hero-gradient-to: 21 82% 78%;
+    --cta-gradient-from: 6 97% 65%;
+    --cta-gradient-via: 13 92% 70%;
+    --cta-gradient-to: 19 87% 75%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 11 92% 68%;
+    --cta-primary-via: 16 87% 73%;
+    --cta-primary-to: 21 82% 78%;
+    --cta-hover-from: 8 97% 63%;
+    --cta-hover-via: 13 92% 68%;
+    --cta-hover-to: 18 87% 73%;
+  }
+
+  .theme-gold {
+    /* Gold Theme - Golden yellow with ivory background */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 43 74% 52%;
+    --primary-foreground: 0 0% 10%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 45 40% 94%;
+    --accent-foreground: 45 70% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 45 30% 88%;
+    --input: 45 25% 92%;
+    --ring: 43 74% 52%;
+    
+    --hero-gradient-from: 43 74% 52%;
+    --hero-gradient-via: 48 79% 57%;
+    --hero-gradient-to: 53 84% 62%;
+    --cta-gradient-from: 38 79% 49%;
+    --cta-gradient-via: 45 74% 55%;
+    --cta-gradient-to: 51 79% 60%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 43 74% 52%;
+    --cta-primary-via: 48 79% 57%;
+    --cta-primary-to: 53 84% 62%;
+    --cta-hover-from: 40 79% 47%;
+    --cta-hover-via: 45 84% 52%;
+    --cta-hover-to: 50 89% 57%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    
+    /* Theme-responsive plumbing text colors for dark mode */
+    --plumbing-text-light: 210 40% 98%;
+    --plumbing-text-dark: 222.2 84% 4.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border transition-all duration-300 ease-in-out;
+  }
+
+  body {
+    @apply bg-background text-foreground transition-all duration-300 ease-in-out font-poppins;
+  }
+  
+  /* SEO-Optimized Heading Typography */
+  h1 {
+    @apply font-poppins font-bold text-4xl md:text-5xl lg:text-6xl xl:text-7xl text-foreground leading-tight tracking-tight;
+  }
+
+  h2 {
+    @apply font-poppins font-bold text-2xl md:text-3xl lg:text-4xl text-foreground leading-tight tracking-tight;
+  }
+
+  h3 {
+    @apply font-poppins font-semibold text-xl md:text-2xl lg:text-3xl text-foreground leading-snug;
+  }
+
+  h4 {
+    @apply font-poppins font-semibold text-lg md:text-xl lg:text-2xl text-foreground leading-snug;
+  }
+
+  h5 {
+    @apply font-poppins font-medium text-base md:text-lg lg:text-xl text-foreground leading-normal;
+  }
+
+  h6 {
+    @apply font-poppins font-medium text-sm md:text-base lg:text-lg text-foreground leading-normal;
+  }
+
+  p {
+    @apply font-poppins text-base md:text-lg text-muted-foreground leading-relaxed;
+  }
+  
+  .theme-default,
+  .theme-green,
+  .theme-black,
+  .theme-purple,
+  .theme-orange,
+  .theme-red,
+  .theme-cyan,
+  .theme-yellow,
+  .theme-pink,
+  .theme-indigo,
+  .theme-teal,
+  .theme-lime,
+  .theme-rose,
+  .theme-sky,
+  .theme-mint,
+  .theme-lavender,
+  .theme-coral,
+  .theme-gold {
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .theme-default *,
+  .theme-green *,
+  .theme-black *,
+  .theme-purple *,
+  .theme-orange *,
+  .theme-red *,
+  .theme-cyan *,
+  .theme-yellow *,
+  .theme-pink *,
+  .theme-indigo *,
+  .theme-teal *,
+  .theme-lime *,
+  .theme-rose *,
+  .theme-sky *,
+  .theme-mint *,
+  .theme-lavender *,
+  .theme-coral *,
+  .theme-gold * {
+    transition: color 0.3s ease-in-out, background-color 0.3s ease-in-out, border-color 0.3s ease-in-out, transform 0.2s ease-in-out;
+  }
+}
+
+/* Enhanced Theme-responsive plumbing text utility classes */
+.text-plumbing-light {
+  color: hsl(var(--plumbing-text-light));
+}
+
+.text-plumbing-dark {
+  color: hsl(var(--plumbing-text-dark));
+}
+
+.text-plumbing-responsive {
+  color: hsl(var(--plumbing-text-light));
+  transition: color 0.3s ease-in-out;
+}
+
+.dark .text-plumbing-responsive {
+  color: hsl(var(--plumbing-text-dark));
+}
+
+/* Theme-Responsive CTA Button Classes */
+.btn-cta-primary {
+  background: linear-gradient(135deg, hsl(var(--cta-primary-from)), hsl(var(--cta-primary-via)), hsl(var(--cta-primary-to)));
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-cta-primary:hover {
+  background: linear-gradient(135deg, hsl(var(--cta-hover-from)), hsl(var(--cta-hover-via)), hsl(var(--cta-hover-to)));
+  transform: scale(1.05);
+}
+
+.btn-cta-border {
+  border: 2px solid hsl(var(--primary) / 0.5);
+  box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+}
+
+.btn-cta-glow {
+  box-shadow: 0 0 30px hsl(var(--primary) / 0.4);
+}
+
+.btn-cta-glow:hover {
+  box-shadow: 0 0 40px hsl(var(--primary) / 0.6);
+}
+
+/* Full Width Section Classes */
+.section-full-width {
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  margin-right: calc(-50vw + 50%);
+}
+
+/* Enhanced Animation Keyframes */
+@keyframes hero-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes border-dance {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(255, 255, 255, 0.4);
+  }
+}
+
+@keyframes float-bounce {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-15px) rotate(2deg);
+  }
+  75% {
+    transform: translateY(-8px) rotate(-1deg);
+  }
+}
+
+@keyframes morphing-shape {
+  0%, 100% {
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
+    transform: rotate(90deg) scale(1.1);
+  }
+  50% {
+    border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
+    transform: rotate(180deg) scale(0.9);
+  }
+  75% {
+    border-radius: 70% 30% 40% 60% / 40% 70% 60% 30%;
+    transform: rotate(270deg) scale(1.05);
+  }
+}
+
+@keyframes heading-slide-up {
+  0% {
+    opacity: 0;
+    transform: translateY(60px) rotateX(30deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotateX(0deg);
+  }
+}
+
+@keyframes subtitle-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes benefits-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-50px) rotateY(-15deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) rotateY(0deg);
+  }
+}
+
+@keyframes cta-zoom-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.7) rotateZ(-5deg);
+  }
+  50% {
+    transform: scale(1.05) rotateZ(2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotateZ(0deg);
+  }
+}
+
+@keyframes badge-bounce {
+  0% {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.6) rotateZ(-10deg);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-15px) scale(1.1) rotateZ(5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotateZ(0deg);
+  }
+}
+
+@keyframes card-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(50px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes text-slide-left {
+  0% {
+    opacity: 0;
+    transform: translateX(-60px) skewX(10deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) skewX(0deg);
+  }
+}
+
+@keyframes image-slide-right {
+  0% {
+    opacity: 0;
+    transform: translateX(60px) rotateY(20deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) rotateY(0deg);
+  }
+}
+
+@keyframes stat-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes bg-rotate {
+  0% {
+    transform: rotate(6deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(366deg) scale(1.1);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotateZ(0deg);
+  }
+  33% {
+    transform: translateY(-10px) rotateZ(1deg);
+  }
+  66% {
+    transform: translateY(-5px) rotateZ(-1deg);
+  }
+}
+
+@keyframes float-delayed {
+  0%, 100% {
+    transform: translateY(0px) rotateZ(0deg);
+  }
+  33% {
+    transform: translateY(-15px) rotateZ(2deg);
+  }
+  66% {
+    transform: translateY(-8px) rotateZ(-2deg);
+  }
+}
+
+@keyframes card-scale-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) rotateY(30deg);
+  }
+  50% {
+    transform: scale(1.05) rotateY(-5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotateY(0deg);
+  }
+}
+
+@keyframes icon-bounce {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-8px) rotate(10deg) scale(1.1);
+  }
+}
+
+@keyframes icon-bounce-delayed {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translateY(-12px) rotate(-10deg) scale(1.15);
+  }
+}
+
+@keyframes feature-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slide-up {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) translateY(-100px);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.1) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* Enhanced Animation Classes */
+.animate-hero-fade-in {
+  animation: hero-fade-in 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-gradient-shift {
+  animation: gradient-shift 4s ease infinite;
+  background-size: 200% 200%;
+}
+
+.animate-border-dance {
+  animation: border-dance 3s ease infinite;
+  background-size: 300% 300%;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+
+.animate-float-bounce {
+  animation: float-bounce 4s ease-in-out infinite;
+}
+
+.animate-morphing-shape {
+  animation: morphing-shape 10s ease-in-out infinite;
+}
+
+.animate-heading-slide-up {
+  animation: heading-slide-up 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-subtitle-fade-in {
+  animation: subtitle-fade-in 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-benefits-slide-in {
+  animation: benefits-slide-in 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-cta-zoom-in {
+  animation: cta-zoom-in 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-badge-bounce {
+  animation: badge-bounce 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-card-fade-up {
+  animation: card-fade-up 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-text-slide-left {
+  animation: text-slide-left 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-image-slide-right {
+  animation: image-slide-right 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-stat-fade-up {
+  animation: stat-fade-up 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-bg-rotate {
+  animation: bg-rotate 25s linear infinite;
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float-delayed 4s ease-in-out infinite;
+  animation-delay: 1.5s;
+}
+
+.animate-card-scale-in {
+  animation: card-scale-in 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-icon-bounce {
+  animation: icon-bounce 3s ease-in-out infinite;
+}
+
+.animate-icon-bounce-delayed {
+  animation: icon-bounce-delayed 3s ease-in-out infinite;
+  animation-delay: 0.8s;
+}
+
+.animate-feature-fade-up {
+  animation: feature-fade-up 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-wiggle {
+  animation: wiggle 1s ease-in-out infinite;
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out infinite;
+}
+
+/* Interactive Animation Classes */
+.hover-float:hover {
+  transform: translateY(-10px) scale(1.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+  transition: all 0.3s ease-in-out;
+}
+
+.hover-bounce:hover {
+  animation: bounce-in 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-wiggle:hover {
+  animation: wiggle 0.8s ease-in-out;
+}
+
+.hover-pulse:hover {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Staggered Animation Classes */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }
+.stagger-6 { animation-delay: 0.6s; }
+.stagger-7 { animation-delay: 0.7s; }
+.stagger-8 { animation-delay: 0.8s; }
+
+/* Theme Transition Classes */
+.theme-transition {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Enhanced gradient utilities for themes */
+.bg-hero-gradient {
+  background: linear-gradient(135deg, hsl(var(--hero-gradient-from)), hsl(var(--hero-gradient-via)), hsl(var(--hero-gradient-to)));
+}
+
+.bg-cta-gradient {
+  background: linear-gradient(135deg, hsl(var(--cta-gradient-from)), hsl(var(--cta-gradient-via)), hsl(var(--cta-gradient-to)));
+}
+
+.bg-animated-gradient {
+  background: linear-gradient(-45deg, hsl(var(--hero-gradient-from)), hsl(var(--hero-gradient-via)), hsl(var(--hero-gradient-to)), hsl(var(--cta-gradient-from)));
+  background-size: 400% 400%;
+}
+
+/* Enhanced Glassmorphism Effects */
+.glass-card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(20px);
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+}
+
+.glass-button {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
+
+/* Mobile Responsive Animations */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .animate-hero-fade-in,
+  .animate-heading-slide-up,
+  .animate-subtitle-fade-in {
+    animation-duration: 0.8s;
+  }
+  
+  .animate-float,
+  .animate-float-delayed {
+    animation-duration: 3s;
+  }
+}
+
+p {
+  font-size: 15px !important;
+}
+.text-4xl{
+    font-size: 2.5rem !important;
+    line-height: 1.32 !important;
+  }
+
+
+  .text-5xl {
+    font-size: 3.5rem;
+    line-height: 1.5;
+}

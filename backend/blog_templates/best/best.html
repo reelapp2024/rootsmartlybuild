@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en-US">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+  <title>{title}</title>
+  <meta name="description" content="{metaDescription}" />
+  <link rel="canonical" href="{canonicalUrl}" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="{ogTitle}" />
+  <meta property="og:description" content="{ogDescription}" />
+  <meta property="og:url" content="{ogUrl}" />
+  <meta property="og:image" content="{ogImage}" />
+  <meta property="og:site_name" content="{siteName}" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{twitterTitle}" />
+  <meta name="twitter:description" content="{twitterDescription}" />
+  <meta name="twitter:image" content="{twitterImage}" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <!-- THEME ASSETS (replace with your nx bundles when ready) -->
+  <link rel="stylesheet" href="https://apis.smartlybuild.dev/blogresources/css/type1blogs.css">
+  <script src="https://apis.smartlybuild.dev/blogresources/js/type1blogs.js" defer></script>
+
+</head>
+
+<body>
+
+  <!-- ===== HERO ===== -->
+  <section class="nx-hero" aria-label="Article intro">
+    <div class="nx-wrap">
+      <div class="nx-eyebrow">{eyebrow}</div>
+      <h1 class="nx-h1">
+        <span class="nx-h1-em">{title}</span>
+      </h1>
+
+      <div class="nx-meta">
+        <span>By {authorName} (the name of the auther)</span><span class="nx-dot"></span>
+        <time datetime="{datePublished}">Updated {dateUpdated}</time><span class="nx-dot"></span>
+        <span class="nx-readtime" id="nxReadTime">{readTime}</span>
+        <span id="nx-wc-wrap"><span class="nx-dot"></span><span id="nxWordCount">{wordCount}</span></span>
+      </div>
+
+      <div class="nx-grid">
+        <!-- Direct answer + CTA -->
+        <div>
+          <div class="nx-qa" id="nxQuickAnswer" aria-live="polite">
+            <div class="nx-badge">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+              DIRECT ANSWER
+            </div>
+            <p>{quickAnswer}</p>
+            <div class="nx-cta">
+              <a class="nx-btn nx-btn-primary" href="#nxTopProducts">See Top Picks</a>
+              <a class="nx-btn nx-btn-ghost" href="#nxToc">Table of Contents</a>
+              <button class="nx-btn nx-btn-copy" type="button" data-copy-target="#nxQuickAnswer p">Copy Answer</button>
+            </div>
+          </div>
+        </div>
+
+        <figure class="nx-figure">
+          <img src="{heroImage}" alt="{heroImageAlt}" width="1600" height="900" sizes="(min-width: 860px) 48vw, 100vw"
+            srcset="{heroImageSrcset}" loading="eager" decoding="async" fetchpriority="high">
+          <figcaption class="nx-figcap">{heroCaption}</figcaption>
+        </figure>
+      </div>
+
+      <!-- Affiliation / transparency -->
+      <div class="nx-card nx-mini" style="margin-top:12px">
+        <div class="nx-mini-badge">DISCLOSURE</div>
+        <p>{disclosure}</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Tabs ===== -->
+  <div id="nxTabsSentinel" aria-hidden="true"></div>
+  <nav id="nxTabs" class="nx-tabs" aria-label="Page tabs">
+    <div class="nx-wrap nx-tabs-inner">
+      <ul role="tablist" class="nx-tablist">
+        <li role="presentation"><a role="tab" href="#nxLearn" class="nx-tab" aria-selected="false">What You’ll Learn</a></li>
+        <li role="presentation"><a role="tab" href="#nxIntro" class="nx-tab" aria-selected="false">Why Trust Us</a></li>
+        <li role="presentation"><a role="tab" href="#nxCriteria" class="nx-tab" aria-selected="false">Ranking Criteria</a></li>
+        <li role="presentation"><a role="tab" href="#nxTopProducts" class="nx-tab" aria-selected="false">Top Picks</a></li>
+        <li role="presentation"><a role="tab" href="#nxComparison" class="nx-tab" aria-selected="false">Comparison</a></li>
+        <li role="presentation"><a role="tab" href="#nxBuyersGuide" class="nx-tab" aria-selected="false">Buyer’s Guide</a></li>
+        <li role="presentation"><a role="tab" href="#nxFaq" class="nx-tab" aria-selected="false">FAQ</a></li>
+        <li role="presentation"><a role="tab" href="#nxAuthor" class="nx-tab" aria-selected="false">Author</a></li>
+        <li role="presentation"><a role="tab" href="#nxComments" class="nx-tab" aria-selected="false">Comments</a></li>
+        <li role="presentation"><a role="tab" href="#nxRelated" class="nx-tab" aria-selected="false">Related</a></li>
+        <li role="presentation"><a role="tab" href="#nxVerdict" class="nx-tab" aria-selected="false">Verdict</a></li>
+      </ul>
+      <span class="nx-tab-indicator" aria-hidden="true"></span>
+    </div>
+  </nav>
+  <div class="nx-tabs-spacer" aria-hidden="true"></div>
+
+  <!-- ===== MAIN ===== -->
+  <section class="nx-sections" aria-label="Contents">
+    <div class="nx-wrap nx-layout">
+      <!-- Sidebar -->
+      <aside class="nx-sidebar" aria-label="Quick info">
+        <div class="nx-card nx-mini nx-facts-card">
+          <div class="nx-mini-badge">FAST FACTS</div>
+          <ul class="nx-bullets">{fastFacts}</ul>
+        </div>
+
+        <div class="nx-card nx-mini nx-voice-card" id="nxVoicePrompts">
+          <div class="nx-mini-badge">VOICE</div>
+          <h3 class="nx-h4">Ask your assistant</h3>
+          <ul class="nx-bullets">{voicePrompts}</ul>
+          <!-- <div class="nx-voice-status" id="nxVoiceStatus" aria-live="polite">Voice: <strong>Checking…</strong></div>
+          <button id="nx-voice-mic" class="nx-btn nx-btn-ghost" type="button" aria-label="Ask by voice">🎤 Start voice</button> -->
+        </div>
+      </aside>
+
+      <!-- Content -->
+      <div class="nx-section-stack" id="nxMainContent">
+        <!-- TABLE OF CONTENTS -->
+        <article id="nxToc" class="nx-card" aria-labelledby="nx-toc-title">
+          <h2 id="nx-toc-title" class="nx-h2">Table of Contents</h2>
+          <ol class="nx-toc">{tocItems}</ol>
+        </article>
+
+        <!-- WHAT YOU WILL LEARN / INTRO -->
+        <article id="nxLearn" class="nx-card" aria-labelledby="nx-learn-title">
+          <h2 id="nx-learn-title" class="nx-h2">What You Will Learn / Introduction</h2>
+          <p>{introContent}</p>
+        </article>
+
+        <!-- WHY TRUST -->
+        <article id="nxIntro" class="nx-card" aria-labelledby="nx-intro-title">
+          <h2 id="nx-intro-title" class="nx-h2">Why You Can Trust Our Picks</h2>
+          <p>{whyTrust}</p>
+        </article>
+
+        <!-- RANKING CRITERIA -->
+        <article id="nxCriteria" class="nx-card" aria-labelledby="nx-criteria-title">
+          <h2 id="nx-criteria-title" class="nx-h2">Our Ranking Criteria: How We Evaluated the Best</h2>
+          <ul class="nx-bullets">{criteria}</ul>
+        </article>
+
+        <!-- TOP PRODUCTS -->
+        <section id="nxTopProducts" aria-label="Top products/services">
+          <h2 class="nx-h2">The Top {numItems} Product/Service Picks</h2>
+          {productsHtml}
+        </section>
+
+        <!-- COMPARISON -->
+        <section id="nxComparison" aria-label="At a glance comparison">
+          <h2 class="nx-h2">At a Glance: Product/Service Comparison Table</h2>
+          <div class="nx-table-wrap">
+            <table class="nx-table">
+              <caption class="nx-sr-only">Comparison of top {category} essentials</caption>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Main Use</th>
+                  <th>Typical Price</th>
+                  <th>Skill Level</th>
+                  <th>Best For</th>
+                </tr>
+              </thead>
+              <tbody>{comparisonTable}</tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- BUYER'S GUIDE -->
+        <section id="nxBuyersGuide" aria-label="Buyer’s guide">
+          <h2 class="nx-h2">Buyer’s Guide: Key Factors to Consider Before You Buy</h2>
+
+          <article class="nx-card" id="nxTypes">
+            <h3 class="nx-h3">Understanding the Types according to Product/Service topic</h3>
+            <p>{typesIntro}</p>
+            <ul class="nx-bullets">{typesList}</ul>
+          </article>
+
+          <article class="nx-card" id="nxMatching">
+            <h3 class="nx-h3">Matching the Product/Service to Your Topic</h3>
+            <p>{matchingIntro}</p>
+            <ul class="nx-bullets">{matchingList}</ul>
+          </article>
+
+          <article class="nx-card" id="nxProInstall">
+            <h3 class="nx-h3">The Importance of Professional Installation</h3>
+            <p>{proInstallIntro}</p>
+            <ul class="nx-bullets">{proInstallList}</ul>
+          </article>
+        </section>
+
+        <!-- FAQ -->
+        <section id="nxFaq" aria-label="Frequently asked questions">
+          <h2 class="nx-h2">Frequently Asked Questions (FAQ)</h2>
+          {faqHtml}
+        </section>
+
+        <!-- References -->
+        <section class="nx-card nx-mini" id="nxRefs" aria-label="References">
+          <div class="nx-mini-badge">REFERENCES</div>
+          <ol class="nx-bullets">{references}</ol>
+        </section>
+
+        <!-- Author Box -->
+        <!-- (add if needed) -->
+
+        <!-- COMMENTS & REVIEWS -->
+        <!-- (add if needed) -->
+
+        <!-- Verdict -->
+        <section id="nxVerdict" class="nx-verdict" aria-label="Final recommendation">
+          <h2 class="nx-h2">The Verdict: Our Top Recommendation & Your Next Step</h2>
+          <p class="nx-verdict-txt">{verdict}</p>
+          <a class="nx-btn nx-btn-primary" href="#nxTopProducts">Shop the Picks</a>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- Bottom Reading Progress -->
+  <div class="nx-progress" id="nxProgress" role="progressbar" aria-label="Reading progress" aria-valuemin="0"
+    aria-valuemax="100" aria-valuenow="0">
+    <span class="nx-bar"></span>
+    <div class="nx-info" aria-hidden="true">
+      <strong id="nxPct">0%</strong>
+      <span id="nxMsg">Let’s begin</span>
+    </div>
+  </div>
+
+</body>
+</html>

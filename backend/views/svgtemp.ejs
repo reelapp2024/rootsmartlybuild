@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SVG Viewer</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <h1>SVG Viewer</h1>
+
+  <!-- File Upload Form -->
+  <form action="/upload" method="POST" enctype="multipart/form-data">
+    <input type="file" name="svgFile" accept=".svg" required />
+    <button type="submit">Upload SVG</button>
+  </form>
+
+  <!-- Display SVG -->
+  <% if (svgFile) { %>
+    <h2>Preview:</h2>
+    <div style="border: 1px solid #ddd; padding: 10px;">
+      <embed src="<%= svgFile %>" type="image/svg+xml" width="500" height="300" />
+    </div>
+  <% } %>
+</body>
+</html>

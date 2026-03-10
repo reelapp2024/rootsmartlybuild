@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dynamic Location Highlighter</title>
+  <style>
+    #map {
+      height: 500px;
+      width: 100%;
+    }
+    #location-input {
+      width: 300px;
+      padding: 8px;
+      margin: 10px 0;
+    }
+    #highlight-btn {
+      padding: 8px 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Highlight a Location on the Map</h1>
+  <input id="location-input" type="text" placeholder="Enter City, State, Country" />
+  <button id="highlight-btn">Highlight Location</button>
+  <div id="map"></div>
+
+  <script>
+    let map;
+    let geocoder;
+    let marker;
+    let polygon;
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        zoom: 5,
+        center: { lat: 20.5937, lng: 78.9629 }, // Default view centered on India
+      });
+
+      geocoder = new google.maps.Geocoder();
+
+      document.getElementById("highlight-btn").addEventListener("click", function() {
+        const location = document.getElementById("location-input").value;
+        if (location) {
+          highlightLocation(location);
+        } else {
+          alert("Please enter a location.");
+        }
+      });
+    }
+
+    function highlightLocation(locationName) {
+      geocoder.geocode({ address: locationName }, function(results, status) {
+        if (status === google.maps.GeocoderStatus.OK) {
+          map.setCenter(results[0].geometry.location);
+          if (marker) marker.setMap(null); // Remove previous marker
+          marker = new google.maps.Marker({
+            map: map,
+            position: results[0].geometry.location,
+            title: locationName,
+          });
+
+          // Optionally, draw a polygon to highlight the area
+          if (locationName.toLowerCase().includes("himachal pradesh")) {
+            const himachalCoords = [
+              { lat: 32.0841, lng: 76.7597 },
+              { lat: 32.0841, lng: 78.2091 },
+              { lat: 33.5152, lng: 78.2091 },
+              { lat: 33.5152, lng: 76.7597 },
+            ];
+            if (polygon) polygon.setMap(null); // Remove previous polygon
+            polygon = new google.maps.Polygon({
+              paths: himachalCoords,
+              strokeColor: "#FF0000",
+              strokeOpacity: 0.8,
+              strokeWeight: 2,
+              fillColor: "#FF0000",
+              fillOpacity: 0.35,
+            });
+            polygon.setMap(map);
+          }
+        } else {
+          alert("Geocode was not successful for the following reason: " + status);
+        }
+      });
+    }
+  </script>
+
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAD2CvhsfZAo_i_B2plhRzZ8l2BWXupM7s&callback=initMap&libraries=geometry,places"
+    async
+    defer
+  ></script>
+
+</body>
+</html>

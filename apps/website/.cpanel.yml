@@ -1,0 +1,10 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/plugandp/public_html/demo3.logicaldottech.com
+    - /bin/cp -R * $DEPLOYPATH/
+    - cd $DEPLOYPATH
+    - npm install
+    - npm run build
+    - /bin/cp -R dist/* $DEPLOYPATH/
+    - /bin/rm -rf dist node_modules package-lock.json

@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#ecfdf5" />
+
+  <title>{title}</title>
+  <meta name="description" content="{metaDescription}" />
+  <link rel="canonical" href="{canonicalUrl}" />
+
+  <!-- OG -->
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="{ogTitle}" />
+  <meta property="og:description" content="{ogDescription}" />
+  <meta property="og:url" content="{ogUrl}" />
+  <meta property="og:image" content="{ogImage}" />
+  <meta property="og:site_name" content="{siteName}" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{twitterTitle}" />
+  <meta name="twitter:description" content="{twitterDescription}" />
+  <meta name="twitter:image" content="{twitterImage}" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <!-- CSS + Core JS (replace with nx bundles when ready) -->
+  <link rel="stylesheet" href="https://apis.smartlybuild.dev/blogresources/css/type1blogs.css">
+  <script src="https://apis.smartlybuild.dev/blogresources/js/type1blogs.js" defer></script>
+
+  <!-- Core JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"WebSite",
+    "name":"{siteName}",
+    "url":"{siteUrl}",
+    "publisher":{"@type":"Organization","name":"{siteName}","logo":{"@type":"ImageObject","url":"{logoUrl}" }},
+    "potentialAction":{"@type":"SearchAction","target":"{searchUrl}?q={search_term_string}","query-input":"required name=search_term_string"}
+  }
+  </script>
+  <script type="application/ld+json">
+  {breadcrumbJson}
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"Article",
+    "headline":"{articleHeadline}",
+    "description":"{articleDescription}",
+    "mainEntityOfPage":{"@type":"WebPage","@id":"{canonicalUrl}"},
+    "image":"{articleImage}",
+    "author":{"@type":"Person","name":"{authorName}"},
+    "publisher":{"@type":"Organization","name":"{siteName}","logo":{"@type":"ImageObject","url":"{logoUrl}" }},
+    "datePublished":"{datePublished}","dateModified":"{dateModified}"
+  }
+  </script>
+
+  <!-- JSON-LD: AggregateRating (optional) -->
+</head>
+
+<body>
+
+  <!-- ===== HERO ===== -->
+  <section class="nx-hero" aria-label="Article intro">
+    <div class="nx-wrap">
+      <div class="nx-eyebrow">{eyebrow}</div>
+      <h1 class="nx-h1">{mainTitle}</h1>
+
+      <div class="nx-meta">
+        <span>By {authorName}</span><span class="nx-dot"></span>
+        <span>{reviewedBy}</span><span class="nx-dot"></span>
+        <time datetime="{datePublished}">{dateHuman}</time><span class="nx-dot"></span>
+        <span class="nx-readtime" id="nxReadTime">{readTime}</span>
+        <span id="nx-wc-wrap"><span class="nx-dot"></span><span id="nxWordCount">{wordCount}</span></span>
+      </div>
+
+      <div class="nx-grid">
+        <div>
+          <div class="nx-qa" id="nxQuickAnswer" aria-live="polite">
+            <div class="nx-badge">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 7L9 18l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round" />
+              </svg>
+              QUICK VERDICT
+            </div>
+            <p>{quickAnswer}</p>
+            <audio id="nxTldrAudio" preload="none" src="{tldrAudioUrl}"></audio>
+            <div class="nx-cta">
+              <a class="nx-btn nx-btn-primary" href="#nxQuickVerdict">See Quick Verdict Table</a>
+              <a class="nx-btn nx-btn-ghost" href="#nxToc">Head-to-Head</a>
+              <button class="nx-btn nx-btn-copy" type="button" data-copy-target="#nxQuickAnswer p">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <figure class="nx-figure">
+          <img src="{heroImage}" alt="{heroImageAlt}" width="1600" height="900" sizes="(min-width: 860px) 48vw, 100vw"
+            srcset="{heroImageSrcset}" loading="eager" decoding="async" fetchpriority="high">
+          <figcaption class="nx-figcap">{heroCaption}</figcaption>
+        </figure>
+      </div>
+
+      <!-- Theme switcher -->
+      <div class="nx-theme-switcher" style="margin-top:10px">
+        <span class="nx-sr-only">Theme</span>
+        <button class="nx-swatch" aria-label="Emerald theme" data-theme="emerald" title="Emerald"></button>
+        <button class="nx-swatch" aria-label="Blue theme" data-theme="blue" title="Blue"></button>
+        <button class="nx-swatch" aria-label="Violet theme" data-theme="violet" title="Violet"></button>
+        <button class="nx-swatch" aria-label="Orange theme" data-theme="orange" title="Orange"></button>
+        <button class="nx-swatch" aria-label="Rose theme" data-theme="rose" title="Rose"></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Tabs ===== -->
+  <div id="nxTabsSentinel" aria-hidden="true"></div>
+  <nav id="nxTabs" class="nx-tabs" aria-label="Page tabs">
+    <div class="nx-wrap nx-tabs-inner">
+      <ul role="tablist" class="nx-tablist">
+        <li role="presentation"><a role="tab" href="#nxToc" class="nx-tab is-active">Contents</a></li>
+        <li role="presentation"><a role="tab" href="#nxIntro" class="nx-tab">Intro</a></li>
+        <li role="presentation"><a role="tab" href="#nxQuickVerdict" class="nx-tab">Quick Verdict</a></li>
+        <li role="presentation"><a role="tab" href="#nxCaseA" class="nx-tab">{caseALabel}</a></li>
+        <li role="presentation"><a role="tab" href="#nxCaseB" class="nx-tab">{caseBLabel}</a></li>
+        <li role="presentation"><a role="tab" href="#nxHeadToHead" class="nx-tab">Head-to-Head</a></li>
+        <li role="presentation"><a role="tab" href="#nxRecommendation" class="nx-tab">Recommendation</a></li>
+        <li role="presentation"><a role="tab" href="#nxVerdict" class="nx-tab">Verdict</a></li>
+      </ul>
+      <span class="nx-tab-indicator" aria-hidden="true"></span>
+    </div>
+  </nav>
+  <div class="nx-tabs-spacer" aria-hidden="true"></div>
+
+  <!-- ===== MAIN ===== -->
+  <section class="nx-sections" aria-label="Contents and intro">
+    <div class="nx-wrap nx-layout">
+      <!-- Sidebar -->
+      <aside class="nx-sidebar" aria-label="Quick info">
+        <div class="nx-card nx-mini nx-tools-card">
+          <div class="nx-mini-badge">SUMMARY</div>
+          <h3 class="nx-h4">{summaryTitle}</h3>
+          {summaryBulletsHtml}
+        </div>
+
+        <div class="nx-card nx-mini nx-facts-card">
+          <div class="nx-mini-badge">FACTS</div>
+          <h3 class="nx-h4">Quick Facts</h3>
+          {fastFactsHtml}
+        </div>
+
+        <div class="nx-card nx-mini nx-voice-card">
+          <div class="nx-mini-badge">VOICE</div>
+          <h3 class="nx-h4">Ask by Voice</h3>
+          {voicePromptsHtml}
+        </div>
+      </aside>
+
+      <!-- Content -->
+      <div class="nx-section-stack" id="nxMainContent">
+
+        <!-- TOC -->
+        <article id="nxToc" class="nx-card">
+          <h2 class="nx-h2">Table of Contents</h2>
+          {tocHtml}
+        </article>
+
+        <!-- Intro -->
+        <article id="nxIntro" class="nx-card" aria-labelledby="nx-intro-title">
+          <h2 id="nx-intro-title" class="nx-h2">{introTitle}</h2>
+          {introHtml}
+        </article>
+
+        <!-- Quick Verdict Table -->
+        <section id="nxQuickVerdict" aria-label="Quick verdict comparison">
+          <h2 class="nx-h2">{quickVerdictTitle}</h2>
+          {comparisonTableHtml}
+          <p class="nx-note">{quickVerdictNote}</p>
+        </section>
+
+        <!-- Deep Dive: A -->
+        <section id="nxCaseA" aria-label="Deep dive {caseALabel}">
+          <h2 class="nx-h2">{caseATitle}</h2>
+          {caseAHtml}
+        </section>
+
+        <!-- Deep Dive: B -->
+        <section id="nxCaseB" aria-label="Deep dive {caseBLabel}">
+          <h2 class="nx-h2">{caseBTitle}</h2>
+          {caseBHtml}
+        </section>
+
+        <!-- Head-to-Head -->
+        <section id="nxHeadToHead" aria-label="Head to head">
+          <h2 class="nx-h2">{headToHeadTitle}</h2>
+          {headToHeadHtml}
+        </section>
+
+        <!-- Recommendation -->
+        <section id="nxRecommendation" aria-label="Recommendation">
+          <h2 class="nx-h2">{recommendationTitle}</h2>
+
+          <article class="nx-card">
+            <h3 class="nx-h3">{chooseATitle}</h3>
+            {chooseAListHtml}
+          </article>
+
+          <article class="nx-card">
+            <h3 class="nx-h3">{chooseBTitle}</h3>
+            {chooseBListHtml}
+          </article>
+
+          <article class="nx-card">
+            <h3 class="nx-h3">{hybridTitle}</h3>
+            {hybridHtml}
+          </article>
+        </section>
+
+        <!-- Verdict -->
+        <section id="nxVerdict" class="nx-verdict" aria-label="Verdict">
+          <h2 class="nx-h2">{verdictTitle}</h2>
+          {verdictHtml}
+          <a class="nx-btn nx-btn-primary" href="#nxQuickVerdict">{verdictCtaLabel}</a>
+        </section>
+
+        <!-- Author Box -->
+        <!-- add if needed -->
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Bottom Reading Progress -->
+  <div class="nx-progress" id="nxProgress" role="progressbar" aria-label="Reading progress" aria-valuemin="0"
+    aria-valuemax="100" aria-valuenow="0">
+    <span class="nx-bar"></span>
+    <div class="nx-info" aria-hidden="true">
+      <strong id="nxPct">0%</strong>
+      <span id="nxMsg">Let’s begin</span>
+    </div>
+  </div>
+
+</body>
+</html>

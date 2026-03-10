@@ -1,0 +1,1562 @@
+// ====================== PART 1/4 ======================
+// aiblogsQueue.js — full file (part 1/4)
+
+// Core deps
+const Bull = require('bull');
+const axios = require('axios');
+const redis = require('redis');
+require('dotenv').config();
+const path = require('path');
+const fs = require('fs').promises;
+
+// === Path helpers for blog templates ===
+function templatePath(type) {
+    const t = String(type || 'default').toLowerCase();
+    if (t === 'best') return path.join(__dirname, '../blog_templates/best/best.html');
+    if (t === 'comparison') return path.join(__dirname, '../blog_templates/comparison/comparison.html');
+    if (t === 'how') return path.join(__dirname, '../blog_templates/how/how.html');
+    if (t === 'what') return path.join(__dirname, '../blog_templates/what/what.html');
+    return path.join(__dirname, '../blog_templates/default/default.html');
+}
+
+async function loadTemplate(templateType) {
+    const file = templatePath(templateType);
+    try {
+        return await fs.readFile(file, 'utf-8');
+    } catch {
+        const fallback = templatePath('default');
+        return await fs.readFile(fallback, 'utf-8');
+    }
+}
+
+// ===== BEGIN helpers (kept as in your code) =====
+function isSafeHttpUrl(u = "") {
+    try {
+        const { protocol } = new URL(u);
+        return protocol === "http:" || protocol === "https:";
+    } catch { return false; }
+}
+
+function hostnameLabel(u = "") { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } }
+
+const clean = (s) => String(s || '').trim();
+const ensureOrigin = (d) => {
+    const domain = clean(d);
+    if (!domain) return 'https://example.com';
+    if (/^https?:\/\//i.test(domain)) return domain.replace(/\/+$/, '');
+    const formatted = `https://${domain.replace(/^\/+|\/+$/g, '')}`;
+    try { new URL(formatted); return formatted; } catch { return 'https://example.com'; }
+};
+const slugifyText = (s) => clean(s).toLowerCase().normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+const normDash = (s) => slugifyText(s).replace(/\s+/g, '-');
+const tokensFrom = (s) => slugifyText(s).split(' ').filter(Boolean);
+const pathParts = (u) => {
+    try {
+        const { pathname } = new URL(u);
+        return decodeURIComponent(pathname || '').toLowerCase().split('/').filter(Boolean);
+    } catch {
+        return String(u).toLowerCase().split('/').filter(Boolean);
+    }
+};
+
+const _esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function fillAllPlaceholders(tpl, dict) {
+    let out = String(tpl);
+    for (const [key, val] of Object.entries(dict)) {
+        out = out.replace(new RegExp(_esc(`{${key}}`), 'g'), String(val ?? ''));
+    }
+    return out;
+}
+const containsAll = (hay, needles) => needles.every(nd => hay.includes(nd));
+const toTitleCase = (str) => str.replace(/\b[a-z]/g, c => c.toUpperCase());
+const wc = (s) => String(s || '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+
+const deriveSize = (url) => {
+    const m1 = url.match(/[-_](\d{2,4})x(\d{2,4})(?=\.)/i);
+    if (m1) return { w: +m1[1], h: +m1[2] };
+    const m2 = url.match(/[_-](\d{3,5})(?=\.)/);
+    if (m2) { const w = +m2[1]; return { w, h: Math.round(w * 0.62) }; }
+    const m3 = url.match(/\/w[_-]?(\d{3,5}),h[_-]?(\d{3,5})\//i);
+    if (m3) return { w: +m3[1], h: +m3[2] };
+    return { w: 1200, h: 800 };
+};
+
+const bestAlt = (url, projectName = '', serviceType = '') => {
+    const parts = pathParts(url);
+    const last = parts[parts.length - 1] || '';
+    const base = last.replace(/\.[a-z0-9]+$/i, '');
+    const readable = base.replace(/[-_]+/g, ' ').trim();
+    const ctx = serviceType || projectName;
+    return readable ? `${toTitleCase(readable)} – ${ctx}` : `${projectName} ${ctx}`.trim();
+};
+const withImgAttrs = (html, projectName, serviceType) => html.replace(/<img\b([^>]*)>/gi, (_m, attrs) => {
+    let tag = attrs;
+    const has = (n) => new RegExp(`\\b${n}\\s*=`, 'i').test(tag);
+    const get = (n) => { const mm = tag.match(new RegExp(`${n}\\s*=\\s*["']([^"']+)["']`, 'i')); return mm ? mm[1] : ''; };
+    const src = get('src');
+    if (!src) return `<img${attrs}>`;
+    if (!has('alt')) {
+        const alt = bestAlt(src, projectName, serviceType).replace(/"/g, '&quot;');
+        tag += ` alt="${alt}"`;
+    }
+    const { w, h } = deriveSize(src);
+    if (!has('width')) tag += ` width="${w}"`;
+    if (!has('height')) tag += ` height="${h}"`;
+    const ar = (w && h) ? (w / h).toFixed(3) : '1.500';
+    const styleExists = get('style');
+    const responsive = `max-width:800px;width:100%;height:auto;aspect-ratio:${ar}`;
+    if (!styleExists) tag += ` style="${responsive}"`;
+    else if (!/max-width|aspect-ratio|height:auto/i.test(styleExists)) tag = tag.replace(/style=["'][^"']*["']/, m => m.replace(/["']$/, `; ${responsive}"`));
+    if (!has('loading')) tag += ` loading="lazy"`;
+    if (!has('decoding')) tag += ` decoding="async"`;
+    return `<img${tag}>`;
+});
+
+// === comparison render helpers (kept)
+function esc(s) { return String(s || '').replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c])); }
+function bulletsHtml(arr) {
+    const items = (arr || []).map(li => `<li>${esc(li)}</li>`).join('');
+    return `<ul class="bl-bullets">${items}</ul>`;
+}
+function buildComparisonTocHtml(caseALabel, caseBLabel) {
+    return `
+  <ol class="bl-toc">
+    <li><a href="#intro">What You Will Learn / Introduction</a></li>
+    <li><a href="#quick-verdict">At a Glance — Quick Verdict</a></li>
+    <li><a href="#case-a">Deep Dive: ${esc(caseALabel || 'Option A')}</a></li>
+    <li><a href="#case-b">Deep Dive: ${esc(caseBLabel || 'Option B')}</a></li>
+    <li><a href="#head-to-head">Head-to-Head Breakdown</a></li>
+    <li><a href="#recommendation">Which Is Right for You?</a></li>
+    <li><a href="#verdict">The Verdict & The Smartest Stack</a></li>
+  </ol>`.trim();
+}
+function buildWhatQuickAnswerPrompt(title, serviceType) {
+    return `
+Return ONLY valid JSON: {"quickAnswer": string}
+Rules for quickAnswer:
+- Plain text (no HTML/quotes/emojis).
+- 2–3 sentences, 180–350 characters total.
+- Start with a direct answer to "${title}".
+- Include "${serviceType || title}" in the first sentence.
+- Mention 1–2 key benefits and 1 risk/consideration.
+- Be specific and self-contained.`.trim();
+}
+function buildQuickVerdictTable(rows, aLabel, bLabel) {
+    const body = (rows || []).map(r => `<tr><td>${esc(r.factor)}</td><td>${esc(r.a)}</td><td>${esc(r.b)}</td></tr>`).join('');
+    return `
+  <div class="bl-table-wrap">
+    <table class="bl-table">
+      <thead>
+        <tr><th>Factor</th><th>${esc(aLabel || 'Option A')}</th><th>${esc(bLabel || 'Option B')}</th></tr>
+      </thead>
+      <tbody>${body}</tbody>
+    </table>
+  </div>`.trim();
+}
+function buildHeadToHeadHtml(sections) {
+    return (sections || []).map((s, i) => `
+    <article class="bl-card">
+      <h3 class="bl-h3">${i + 1}) ${esc(s.title || '')}</h3>
+      <p>${esc(s.content || '')}</p>
+    </article>
+  `).join('');
+}
+const anchorTextFor = (url, locationHints, serviceType) => {
+    const parts = pathParts(url);
+    const hasServices = parts.includes('services');
+    let svc = serviceType;
+    if (hasServices) {
+        const idx = parts.indexOf('services');
+        svc = parts[idx + 1] || serviceType;
+    }
+    const locHit = locationHints.find(loc => containsAll(parts.join(' '), loc.split(' ')));
+    const svcReadable = svc ? toTitleCase(svc.replace(/-/g, ' ')) : 'Services';
+    return locHit ? `${svcReadable} in ${toTitleCase(locHit)}` : svcReadable;
+};
+const ensureInBodyAnchors = (html, wantUrls, minCount, locationHints, serviceType) => {
+    let out = html;
+    const already = new Set(Array.from(html.matchAll(/<a\b[^>]*href=["']([^"']+)["']/gi)).map(m => m[1]));
+    const needed = wantUrls.filter(u => !already.has(u)).slice(0, Math.max(0, minCount - already.size));
+    if (!needed.length) return { html: out, added: [] };
+
+    const blocks = out.split(/(<\/?(?:p|h2|h3|li|section|div)[^>]*>)/gi);
+    const added = [];
+
+    const tryInsert = (blockIdx, url) => {
+        const anchorText = anchorTextFor(url, locationHints, serviceType);
+        if (!anchorText) return false;
+        const re = new RegExp(`\\b(${anchorText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b`, 'i');
+        if (!/^</.test(blocks[blockIdx]) && re.test(blocks[blockIdx])) {
+            blocks[blockIdx] = blocks[blockIdx].replace(re, `<a href="${url}" rel="noopener noreferrer nofollow">$1</a>`);
+            added.push(url);
+            return true;
+        }
+        if (!/^</.test(blocks[blockIdx]) && /[a-z]/i.test(blocks[blockIdx])) {
+            blocks[blockIdx] = `${blocks[blockIdx]} <span><a href="${url}" rel="noopener noreferrer nofollow">${anchorText}</a>.</span>`;
+            added.push(url);
+            return true;
+        }
+        return false;
+    };
+
+    let bi = 0;
+    for (const url of needed) {
+        let placed = false;
+        for (; bi < blocks.length && !placed; bi++) {
+            if (/(^<\/?(p|h2|h3|li|section|div)\b)/i.test(blocks[bi])) continue;
+            placed = tryInsert(bi, url);
+        }
+        if (!placed && bi < blocks.length) {
+            blocks[bi] += ` <span><a href="${url}" rel="noopener noreferrer nofollow">${anchorTextFor(url, locationHints, serviceType)}</a>.</span>`;
+            added.push(url);
+        }
+    }
+    out = blocks.join('');
+    return { html: out, added };
+};
+
+// ===== REFERENCES SANITIZER =====
+function cleanReferences(refs) {
+    const banned = new Set(['example.com', 'www.example.com', 'test.com', 'www.test.com', 'sample.com', 'www.sample.com', 'localhost']);
+    const cleaned = (Array.isArray(refs) ? refs : [])
+        .map(u => String(u || '').trim()).filter(Boolean)
+        .map(u => {
+            try {
+                const url = new URL(u);
+                if (url.protocol !== 'https:') return '';
+                if (banned.has(url.hostname.toLowerCase())) return '';
+                ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'ref', 'fbclid', 'gclid', 'igshid'].forEach(p => url.searchParams.delete(p));
+                url.hash = '';
+                return url.toString();
+            } catch { return ''; }
+        }).filter(Boolean)
+        .filter((u, i, a) => a.indexOf(u) === i);
+    const referencesHtml = cleaned
+        .map(u => `<li><a class="bl-external" target="_blank" rel="noopener" href="${u}">${hostnameLabel(u)}</a></li>`).join('');
+    return { cleanedRefs: cleaned, referencesHtml };
+}
+
+// Simple cache for site links
+const siteLinksCache = new Map();
+async function getSiteLinksForProject(projectId, domain) {
+    const cacheKey = `${projectId}:${domain}`;
+    if (siteLinksCache.has(cacheKey)) return siteLinksCache.get(cacheKey);
+
+    const Slug = require('../models/slug');
+    const Service = require('../models/service');
+
+    const rawSlugs = await Slug.distinct('slug', { projectId });
+    const locationSlugs = [...new Set(
+        rawSlugs.filter(s => typeof s === 'string' && s.trim())
+            .map(s => `/${s.trim().replace(/^\/+/, '')}`)
+    )].sort();
+
+    const staticSlugs = ['/', '/privacy-policy', '/about', '/contact', '/terms-conditions', '/services', '/areas'];
+    const rawServiceNames = await Service.distinct('service_name', { projectId });
+    const serviceSlugs = rawServiceNames.map(clean).filter(Boolean).map(normDash).filter(Boolean);
+    const servicePageSlugs = serviceSlugs.map(s => `/services/${s}`);
+    const locationServiceSlugs = locationSlugs.flatMap(loc => serviceSlugs.map(s => `${loc.replace(/\/$/, '')}/services/${s}`));
+    const allSlugs = [...new Set([...staticSlugs, ...locationSlugs, ...servicePageSlugs, ...locationServiceSlugs])];
+
+    const siteLinks = allSlugs.map(slug => {
+        try { return new URL(slug.replace(/^\/*/, '/'), domain + '/').href; }
+        catch { return null; }
+    }).filter(Boolean);
+
+    siteLinksCache.set(cacheKey, siteLinks);
+    return siteLinks;
+}
+
+// Allowed types + style rule
+const ALLOWED_TYPES = new Set(['best', 'comparison', 'how', 'what']);
+function styleRuleFrom(typeRaw) {
+    const t = String(typeRaw || '').toLowerCase();
+    if (!ALLOWED_TYPES.has(t)) throw new Error(`Invalid type "${t}". Allowed: best, comparison, how, what`);
+    if (t === 'comparison') return 'H1 must include "vs" or "versus"; include a concise comparison table and a verdict.';
+    if (t === 'how') return 'H1 must start with "How to"; include a numbered list of steps.';
+    if (t === 'what') return 'H1 must start with "What is"; include a plain-English definition, key points, and examples.';
+    return 'Make it a listicle with "Top <N>" or "Best <N>" and numbered H2 items.';
+}
+
+// Structural checks (unchanged)
+function hasSteps(html) {
+    const art = (html || '').match(/<article[^>]*class=["'][^"']*\bbl-step\b[^"']*["'][^>]*>/gi) || [];
+    const ols = (html || '').match(/<ol[^>]*class=["'][^"']*\bbl-numlist\b[^"']*["'][^>]*>/gi) || [];
+    return art.length >= 4 && ols.length >= 4;
+}
+function hasPlaceholders(html) {
+    return /(\.\.\.|…|\bTBD\b|\bplaceholder\b|\blorem ipsum\b|Your text here)/i.test(String(html || ''));
+}
+function hasFaqs(html) {
+    const qs = (html || '').match(/<h3[^>]*class=["'][^"']*\bbl-h3\b[^"']*["'][^>]*>/gi) || [];
+    const ps = (html || '').match(/<p>/gi) || [];
+    return qs.length >= 3 && ps.length >= 3;
+}
+
+// === HOW checks (unchanged logic) ===
+function howLengthIssues(m) {
+    const issues = [];
+    const need = (k, min, max) => {
+        const n = wc(m[k]);
+        if (n < min || n > max) issues.push(`${k} ${n}w (need ${min}-${max})`);
+        if (hasPlaceholders(m[k])) issues.push(`${k} has placeholders ("..." or similar)`);
+    };
+    need('introHtml', 100, 180);
+    need('prepHtml', 100, 200);
+    need('proHelpHtml', 100, 180);
+    need('conclusionHtml', 100, 180);
+
+    if (!m.whyHtml) {
+        issues.push('whyHtml missing');
+    } else if (!m.whyHtml.includes('<ul class="bl-bullets">') || (m.whyHtml.match(/<li\b/gi) || []).length !== 4) {
+        issues.push('whyHtml invalid: must be <ul class="bl-bullets"> with exactly 4 <li> items');
+    } else {
+        const liRegex = /<li><strong>\w+(?:\s+\w+){1,4}:<\/strong>\s+\w+(?:\s+\w+){7,15}<\/li>/g;
+        if ((m.whyHtml.match(liRegex) || []).length !== 4) {
+            issues.push('whyHtml invalid: each <li> must have <strong>2–5 word label:</strong> 8–16 word description');
+        }
+    }
+
+    if (!m.mistakesHtml) {
+        issues.push('mistakesHtml missing');
+    } else if (!m.mistakesHtml.includes('<section id="mistakes"') || !m.mistakesHtml.includes('<ul class="bl-bullets">') || (m.mistakesHtml.match(/<li\b/gi) || []).length !== 4) {
+        issues.push('mistakesHtml invalid: must be <section> with <h2>Common Mistakes to Avoid</h2> and <ul class="bl-bullets"> with 4 <li> items');
+    } else {
+        const liRegex = /<li><strong>\w+(?:\s+\w+){1,4}:<\/strong>\s+\w+(?:\s+\w+){7,15}<\/li>/g;
+        if ((m.mistakesHtml.match(liRegex) || []).length !== 4) {
+            issues.push('mistakesHtml invalid: each <li> must have <strong>2–5 word label:</strong> 8–16 word description');
+        }
+    }
+
+    if (!m.stepsHtml) {
+        issues.push('stepsHtml missing');
+    } else {
+        const artCount = (m.stepsHtml.match(/<article class="bl-step">/gi) || []).length;
+        if (artCount !== 4) issues.push(`stepsHtml must have exactly 4 <article class="bl-step"> (got ${artCount})`);
+        const olCount = (m.stepsHtml.match(/<ol class="bl-numlist">/gi) || []).length;
+        if (olCount !== 4) issues.push(`stepsHtml must have 4 <ol class="bl-numlist"> (got ${olCount})`);
+        const asideCount = (m.stepsHtml.match(/<aside class="bl-protip">/gi) || []).length;
+        if (asideCount !== 4) issues.push(`stepsHtml must have 4 <aside class="bl-protip"> (got ${asideCount})`);
+        const h3Count = (m.stepsHtml.match(/<h3 class="bl-h3">Step \d — /gi) || []).length;
+        if (h3Count !== 4) issues.push(`stepsHtml must have 4 <h3>Step X — Title</h3> (got ${h3Count})`);
+        const liPerOl = m.stepsHtml.split(/<ol class="bl-numlist">/).slice(1).map(s => (s.match(/<li>/gi) || []).length);
+        if (liPerOl.some(n => n < 2 || n > 4)) issues.push('stepsHtml <ol> must have 2–4 <li> each');
+    }
+    if (hasPlaceholders(m.stepsHtml)) issues.push('stepsHtml has placeholders ("..." or similar)');
+
+    if (!hasFaqs(m.faqHtml)) {
+        issues.push('faqHtml needs 3–5 FAQs as <h3.bl-h3>Q</h3><p>100–150 words</p>');
+    } else if (hasPlaceholders(m.faqHtml)) {
+        issues.push('faqHtml has placeholders ("..." or similar)');
+    }
+    return issues;
+}
+
+// === BEST checks (unchanged) ===
+function bestLengthIssues(m) {
+    const issues = [];
+    if (wc(m.introContent) < 120 || wc(m.introContent) > 220) {
+        issues.push(`introContent ${wc(m.introContent)}w (need 120–220)`);
+    }
+    if (wc(m.whyTrust) < 120 || wc(m.whyTrust) > 220) {
+        issues.push(`whyTrust ${wc(m.whyTrust)}w (need 120–220)`);
+    }
+    if (!Array.isArray(m.criteria) || m.criteria.filter(Boolean).length < 5) {
+        issues.push(`criteria < 5 (got ${Array.isArray(m.criteria) ? m.criteria.length : 0})`);
+    }
+    if (!Array.isArray(m.faqs) || m.faqs.length < 3) {
+        issues.push(`faqs < 3 (got ${Array.isArray(m.faqs) ? m.faqs.length : 0})`);
+    } else {
+        m.faqs.forEach((f, i) => {
+            const a = wc(f?.answer);
+            if (a < 80 || a > 160) issues.push(`faqs[${i}].answer ${a}w (need 80–150)`);
+            if (!f?.question || !f?.answer) issues.push(`faqs[${i}] missing question/answer`);
+        });
+    }
+    return issues;
+}
+
+// === COMPARISON checks (unchanged) ===
+function comparisonLengthIssues(m) {
+    const issues = [];
+    const arrLen = (a) => Array.isArray(a) ? a.filter(Boolean).length : 0;
+
+    if ((wc(m.quickAnswer) || 0) < 40 || (wc(m.quickAnswer) || 0) > 120) issues.push(`quickAnswer ${wc(m.quickAnswer)}w (need 40–120)`);
+    if (arrLen(m.summaryBullets) < 3) issues.push(`summaryBullets < 3 (got ${arrLen(m.summaryBullets)})`);
+    if (arrLen(m.fastFacts) < 3) issues.push(`fastFacts < 3 (got ${arrLen(m.fastFacts)})`);
+
+    if (wc(m.introHtml) < 120 || wc(m.introHtml) > 220) issues.push(`introHtml ${wc(m.introHtml)}w (need 120–220)`);
+    if (!Array.isArray(m.comparisonTable) || m.comparisonTable.length < 6) {
+        issues.push(`comparisonTable < 6 (got ${m.comparisonTable ? m.comparisonTable.length : 0})`);
+    } else {
+        m.comparisonTable.forEach((r, i) => {
+            if (!r?.factor || !r?.a || !r?.b) issues.push(`comparisonTable[${i}] missing factor/a/b`);
+        });
+    }
+    if (m.quickVerdictNote && wc(m.quickVerdictNote) > 80) issues.push(`quickVerdictNote ${wc(m.quickVerdictNote)}w (max 80)`);
+    if (wc(m.caseAHtml) < 120) issues.push(`caseAHtml ${wc(m.caseAHtml)}w (need >=120)`);
+    if (wc(m.caseBHtml) < 120) issues.push(`caseBHtml ${wc(m.caseBHtml)}w (need >=120)`);
+    const hhCount = (String(m.headToHeadHtml || '').match(/<article\b/gi) || []).length;
+    if (hhCount < 3) issues.push(`headToHeadHtml needs ≥3 <article> blocks (got ${hhCount})`);
+    if (arrLen(m.chooseAList) < 3) issues.push(`chooseAList < 3`);
+    if (arrLen(m.chooseBList) < 3) issues.push(`chooseBList < 3`);
+    if (wc(m.hybridHtml) < 80) issues.push(`hybridHtml ${wc(m.hybridHtml)}w (need >=80)`);
+    if (wc(m.verdictHtml) < 80 || wc(m.verdictHtml) > 160) issues.push(`verdictHtml ${wc(m.verdictHtml)}w (need 80–160)`);
+    return issues;
+}
+
+// ===== PROMPT BUILDERS (kept from your file) =====
+const { fetchJSONFromOpenAI, fetchStringFromOpenAI } = require('../additional/openaiHelpers');
+
+// All your big prompt builders are kept as-is:
+// buildBestPrompt(...)
+// buildHowPrompt(...)
+// buildComparisonPrompt(...)
+// buildWhatPrompt(...)
+// buildWhatBenefitsFixPrompt(...)
+// buildWhatConsiderationsFixPrompt(...)
+// buildBestSectionPrompt(...)
+// buildComparisonSectionPrompt(...)
+// buildHowSectionPrompt(...)
+// buildProductsPrompt(...)
+// buildTypesListPrompt(...)
+// buildMatchingListPrompt(...)
+// buildProInstallListPrompt(...)
+// For brevity here, they are identical to your latest version above.
+// === Paste your original prompt builders below this comment (UNCHANGED) ===
+/* ======= PASTE ALL YOUR ORIGINAL PROMPT BUILDERS HERE (unchanged) ======= */
+// (For character limits in this message, assume these are included verbatim from your current file.)
+
+// ===== Models =====
+const UserProject = require('../models/userProjects');
+const Service = require('../models/service');
+const Slug = require('../models/slug');
+const Blog = require("../models/blogs");
+const Author = require("../models/authors");
+
+// ===== Redis client =====
+const redisHost = process.env.redisHost;
+const redisPort = process.env.redisPort;
+const redisClient = redis.createClient({ socket: { host: redisHost, port: redisPort } });
+redisClient.connect().catch(err => console.error('Redis connection error:', err));
+
+// ===== Queue =====
+const aiblogsQueue = new Bull('aiblogsQueue', {
+    redis: { host: redisHost, port: redisPort },
+    defaultJobOptions: {
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 15000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+    },
+});
+
+
+
+
+// ====================== PART 2/4 ======================
+// NEW FLOW helpers: small-prompt router + unified validators
+
+// Global retry ceiling for a single field prompt
+const MAX_RETRIES = 2;
+
+// Field kinds
+const FIELD_KIND = Object.freeze({
+    STRING: 'string',
+    ARRAY: 'array',
+    OBJECT: 'object',
+});
+
+// FIXABLE_FIELDS map: which fields can be fixed by single prompts per type
+const FIXABLE_FIELDS = {
+    best: {
+        introContent: { kind: FIELD_KIND.STRING, builder: (ctx) => buildBestSectionPrompt('introContent', ctx.title, ctx.serviceType) },
+        whyTrust: { kind: FIELD_KIND.STRING, builder: (ctx) => buildBestSectionPrompt('whyTrust', ctx.title, ctx.serviceType) },
+        criteria: { kind: FIELD_KIND.ARRAY, builder: (ctx) => buildBestSectionPrompt('criteria', ctx.title, ctx.serviceType) },
+        faqs: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildBestSectionPrompt('faqs', ctx.title, ctx.serviceType) },
+        typesList: { kind: FIELD_KIND.ARRAY, builder: (ctx) => buildTypesListPrompt(ctx.projectName, ctx.serviceType) },
+        matchingList: { kind: FIELD_KIND.ARRAY, builder: (ctx) => buildMatchingListPrompt(ctx.projectName, ctx.serviceType) },
+        proInstallList: { kind: FIELD_KIND.ARRAY, builder: (ctx) => buildProInstallListPrompt(ctx.projectName, ctx.serviceType) },
+        products: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildProductsPrompt(ctx.projectName, ctx.serviceType, ctx.topServicesList, ctx.imagesList, ctx.existingProducts || []) },
+    },
+    comparison: {
+        quickAnswer: { kind: FIELD_KIND.STRING, builder: (ctx) => buildComparisonSectionPrompt('quickAnswer', ctx.title, ctx.labels) },
+        summaryBullets: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildComparisonSectionPrompt('summaryBullets', ctx.title, ctx.labels) },
+        fastFacts: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildComparisonSectionPrompt('fastFacts', ctx.title, ctx.labels) },
+        introHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildComparisonSectionPrompt('introHtml', ctx.title, ctx.labels) },
+        comparisonTable: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildComparisonSectionPrompt('quickVerdictRows', ctx.title, ctx.labels) },
+        quickVerdictNote: { kind: FIELD_KIND.STRING, builder: (ctx) => buildComparisonSectionPrompt('quickVerdictNote', ctx.title, ctx.labels) },
+        caseAHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildComparisonSectionPrompt('caseAHtml', ctx.title, ctx.labels) },
+        caseBHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildComparisonSectionPrompt('caseBHtml', ctx.title, ctx.labels) },
+        headToHeadHtml: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildComparisonSectionPrompt('headToHeadSections', ctx.title, ctx.labels) },
+        chooseAList: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildComparisonSectionPrompt('chooseA', ctx.title, ctx.labels) },
+        chooseBList: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildComparisonSectionPrompt('chooseB', ctx.title, ctx.labels) },
+        hybridHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildComparisonSectionPrompt('hybridHtml', ctx.title, ctx.labels) },
+        verdictHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildComparisonSectionPrompt('verdictHtml', ctx.title, ctx.labels) },
+    },
+    how: {
+        introHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildHowSectionPrompt('introHtml', ctx.title, ctx.serviceType, 140, 180) },
+        whyHtml: {
+            kind: FIELD_KIND.STRING, builder: (ctx) => `
+Return ONLY a JSON object: {"out": "<ul class=\\"bl-bullets\\">...</ul>"} with EXACTLY 4 <li> items.
+Title: "${ctx.title}"
+Service/Niche: "${ctx.serviceType || ctx.title}"
+- Each <li> is <strong>2–5 word label:</strong> 8–16 words explaining it.` },
+        prepHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildHowSectionPrompt('prepHtml', ctx.title, ctx.serviceType, 140, 200) },
+        stepsHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildHowSectionPrompt('stepsHtml', ctx.title, ctx.serviceType) },
+        mistakesHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildHowSectionPrompt('mistakesHtml', ctx.title, ctx.serviceType) },
+        faqHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildHowSectionPrompt('faqHtml', ctx.title, ctx.serviceType) },
+        proHelpHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildHowSectionPrompt('proHelpHtml', ctx.title, ctx.serviceType, 140, 180) },
+        conclusionHtml: { kind: FIELD_KIND.STRING, builder: (ctx) => buildHowSectionPrompt('conclusionHtml', ctx.title, ctx.serviceType, 140, 180) },
+    },
+    what: {
+        quickAnswer: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildWhatQuickAnswerPrompt(ctx.title, ctx.serviceType) },
+        introHtml: {
+            kind: FIELD_KIND.OBJECT, builder: (ctx) => ({
+                _direct: `
+Return ONLY valid JSON: {"introHtml": string}
+- 150–220 words, HTML <p>…</p>
+- Hook for "${ctx.title}" then 3–4 concrete points tied to "${ctx.serviceType || ctx.title}".`
+            })
+        },
+        basicsHtml: {
+            kind: FIELD_KIND.OBJECT, builder: (ctx) => ({
+                _direct: `
+Return ONLY valid JSON: {"basicsHtml": string}
+- 160–240 words, HTML fragment.
+- Define "${ctx.title}" in first 1–2 sentences.
+- Add 2–3 practical examples where it matters.`
+            })
+        },
+        benefitsHtml: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildWhatBenefitsFixPrompt(ctx.projectName, ctx.serviceType, ctx.title, 6) },
+        benefitsTitle: { kind: FIELD_KIND.STRING, builder: (ctx) => `Return ONLY {"out": "The Top N Benefits of ${ctx.title}"}` },
+        considerationsHtml: { kind: FIELD_KIND.OBJECT, builder: (ctx) => buildWhatConsiderationsFixPrompt(ctx.projectName, ctx.serviceType, ctx.title, 4) },
+        considerationsTitle: { kind: FIELD_KIND.STRING, builder: (ctx) => `Return ONLY {"out":"Key Considerations When ${ctx.title}"}` },
+    }
+};
+
+// Run a single-field small prompt and map return into correct field value
+async function runSmallPrompt({ type, field, ctx, userId, projectId, pageId }) {
+    const conf = FIXABLE_FIELDS[type]?.[field];
+    if (!conf) return null;
+
+    // build prompt
+    let prompt;
+    const built = conf.builder(ctx);
+    prompt = typeof built === 'string' ? built : (built?._direct || JSON.stringify(built));
+
+    const meta = {
+        userId, projectId, pageId,
+        promptFrom: 'aiblogsQueue-small',
+        promptFor: `${ctx.projectName}::${ctx.title}::${type}::${field}`,
+        disableMemory: true, noFewShot: true, newThread: true
+    };
+
+    if (conf.kind === FIELD_KIND.STRING) {
+        const out = await fetchStringFromOpenAI(prompt, 'FIELD_FIX_STRING', meta);
+        return out && typeof out === 'string' ? out.trim() : null;
+    }
+
+    // arrays/objects use JSON
+    const json = await fetchJSONFromOpenAI(prompt, 'FIELD_FIX_JSON', meta);
+
+    // map common shapes
+    if (field === 'criteria' && Array.isArray(json?.criteria)) return json.criteria;
+    if (field === 'faqs' && Array.isArray(json?.faqs)) return json.faqs;
+    if (field === 'summaryBullets' && Array.isArray(json?.bullets)) return json.bullets;
+    if (field === 'fastFacts' && Array.isArray(json?.bullets)) return json.bullets;
+    if (field === 'comparisonTable' && Array.isArray(json?.rows)) return json.rows;
+    if (field === 'headToHeadHtml' && Array.isArray(json?.sections)) return buildHeadToHeadHtml(json.sections);
+    if (field === 'chooseAList' && Array.isArray(json?.bullets)) return json.bullets;
+    if (field === 'chooseBList' && Array.isArray(json?.bullets)) return json.bullets;
+    if (field === 'benefitsHtml' && typeof json?.benefitsHtml === 'string') return json.benefitsHtml.trim();
+    if (field === 'benefitsTitle' && typeof json?.out === 'string') return json.out.trim();
+    if (field === 'considerationsHtml' && typeof json?.considerationsHtml === 'string') return json.considerationsHtml.trim();
+    if (field === 'considerationsTitle' && typeof json?.out === 'string') return json.out.trim();
+    if (field === 'introHtml' && typeof json?.introHtml === 'string') return json.introHtml.trim();
+    if (field === 'basicsHtml' && typeof json?.basicsHtml === 'string') return json.basicsHtml.trim();
+    if (field === 'quickAnswer' && typeof json?.quickAnswer === 'string') return json.quickAnswer.trim();
+    if (field === 'typesList' && Array.isArray(json?.typesList)) return json.typesList;
+    if (field === 'matchingList' && Array.isArray(json?.matchingList)) return json.matchingList;
+    if (field === 'proInstallList' && Array.isArray(json?.proInstallList)) return json.proInstallList;
+
+    if (field === 'products' && Array.isArray(json?.products)) {
+        return { products: json.products || [], comparisonTable: json.comparisonTable || [] };
+    }
+    return null;
+}
+
+// Unified validators: return [{field, reason}]
+function validateBest(model) {
+    const errors = [];
+    if (!Array.isArray(model.products) || model.products.length < 5)
+        errors.push({ field: 'products', reason: `Expected 5–8 products, got ${model.products?.length || 0}` });
+    if (!Array.isArray(model.faqs) || model.faqs.length < 3)
+        errors.push({ field: 'faqs', reason: `Expected 3–5 FAQs, got ${model.faqs?.length || 0}` });
+    if (!Array.isArray(model.fastFacts) || model.fastFacts.length < 3)
+        errors.push({ field: 'fastFacts', reason: `fastFacts < 3` });
+    if (!Array.isArray(model.voicePrompts) || model.voicePrompts.length < 3)
+        errors.push({ field: 'voicePrompts', reason: `voicePrompts < 3` });
+    if (!Array.isArray(model.criteria) || model.criteria.length < 5)
+        errors.push({ field: 'criteria', reason: `criteria < 5` });
+    if (!Array.isArray(model.typesList) || model.typesList.length < 3)
+        errors.push({ field: 'typesList', reason: `typesList < 3` });
+    if (!Array.isArray(model.matchingList) || model.matchingList.length < 3)
+        errors.push({ field: 'matchingList', reason: `matchingList < 3` });
+    if (!Array.isArray(model.proInstallList) || model.proInstallList.length < 3)
+        errors.push({ field: 'proInstallList', reason: `proInstallList < 3` });
+    if (!Array.isArray(model.relatedArticles) || model.relatedArticles.length < 3)
+        errors.push({ field: 'relatedArticles', reason: `relatedArticles < 3` });
+
+    bestLengthIssues(model).forEach(msg => errors.push({ field: msg.split(' ')[0], reason: msg }));
+    return errors;
+}
+function validateComparison(model) {
+    const errors = [];
+    comparisonLengthIssues(model).forEach(msg => errors.push({ field: msg.split(' ')[0], reason: msg }));
+    if (!Array.isArray(model.voicePrompts) || model.voicePrompts.length < 3)
+        errors.push({ field: 'voicePrompts', reason: 'voicePrompts < 3' });
+    if (!Array.isArray(model.relatedArticles) || model.relatedArticles.length < 3)
+        errors.push({ field: 'relatedArticles', reason: 'relatedArticles < 3' });
+    return errors;
+}
+function validateHow(model) {
+    const out = [];
+    if (!Array.isArray(model.tocItems) || model.tocItems.length < 6)
+        out.push({ field: 'tocItems', reason: 'how: tocItems missing/short' });
+    ['introHtml', 'prepHtml', 'stepsHtml', 'mistakesHtml', 'faqHtml', 'proHelpHtml', 'conclusionHtml']
+        .forEach(k => { if (!model[k]) out.push({ field: k, reason: `how: ${k} missing` }); });
+    if (!model.whyHtml) {
+        out.push({ field: 'whyHtml', reason: 'how: whyHtml missing' });
+    } else if (!model.whyHtml.includes('<ul class="bl-bullets">') || (model.whyHtml.match(/<li\b/gi) || []).length !== 4) {
+        out.push({ field: 'whyHtml', reason: 'how: whyHtml invalid <ul> with exactly 4 <li>' });
+    }
+    ['toolsList', 'fastFacts', 'voicePrompts'].forEach(k => {
+        if (!Array.isArray(model[k]) || model[k].length < 3)
+            out.push({ field: k, reason: `how: ${k} < 3` });
+    });
+    if (!Array.isArray(model.relatedArticles) || model.relatedArticles.length < 3)
+        out.push({ field: 'relatedArticles', reason: 'how: relatedArticles < 3' });
+    ['websiteJson', 'breadcrumbJson', 'schemaJson'].forEach(k => { if (!model[k]) out.push({ field: k, reason: `how: ${k} missing` }); });
+    howLengthIssues(model).forEach(msg => out.push({ field: msg.split(' ')[0], reason: `how: ${msg}` }));
+    return out;
+}
+function validateWhat(model) {
+    const out = [];
+    if (!Array.isArray(model.faqs) || model.faqs.length < 3) out.push({ field: 'faqs', reason: 'what: faqs < 3' });
+    if (!Array.isArray(model.fastFacts) || model.fastFacts.length < 3) out.push({ field: 'fastFacts', reason: 'what: fastFacts < 3' });
+    if (!Array.isArray(model.voicePrompts) || model.voicePrompts.length < 3) out.push({ field: 'voicePrompts', reason: 'what: voicePrompts < 3' });
+
+    ['introHtml', 'basicsHtml', 'benefitsHtml', 'considerationsHtml', 'verdictText'].forEach(k => { if (!model[k]) out.push({ field: k, reason: `what: ${k} missing` }); });
+    ['basicsTitle', 'benefitsTitle', 'considerationsTitle', 'verdictTitle'].forEach(k => { if (!model[k]) out.push({ field: k, reason: `what: ${k} missing` }); });
+    ['websiteJson', 'breadcrumbJson', 'articleJson', 'faqJson'].forEach(k => { if (!model[k]) out.push({ field: k, reason: `what: ${k} missing` }); });
+
+    const qaLen = String(model.quickAnswer || '').trim().length;
+    if (qaLen < 180 || qaLen > 350) out.push({ field: 'quickAnswer', reason: `what: quickAnswer length ${qaLen} (need 180–350 chars)` });
+
+    // very light structural confirmations already handled later during render normalization
+    return out;
+}
+
+// Determine validator by type
+function validateByType(type, model) {
+    if (type === 'best') return validateBest(model);
+    if (type === 'comparison') return validateComparison(model);
+    if (type === 'how') return validateHow(model);
+    if (type === 'what') return validateWhat(model);
+    return [];
+}
+
+
+
+
+// ====================== PART 3/4 ======================
+// References ask (unchanged)
+function buildReferencesAsk(title, serviceType) {
+    return `
+Return ONLY a JSON array of 4–8 links like:
+["https://...","https://..."]
+Rules:
+- https only; remove utm_* / gclid / fbclid; no duplicates
+- No placeholders (no example.com/test.com/sample.com)
+- Only include URLs that return a 200 OK status (i.e., the page must exist and be accessible)
+- If a specific subpage is not accessible (e.g., returns 404 or other error), use the website’s homepage (e.g., https://www.example.com/) instead, ensuring it is still relevant to "${title}"
+- Prefer authoritative blogs or websites related to "${title}" (e.g., .gov/.edu, manufacturer/support docs, standards bodies, trade orgs, reputable publishers)
+- Each link must support specific claims or provide relevant context for "${title}"
+Blog title: "${title}"
+Service/Niche: "${serviceType || ""}"
+`.trim();
+}
+
+// ============= KEEP your big renderers / mapping code intact =============
+// The long rendering for best/comparison/how/what (building placeholder map,
+// withImgAttrs, anchors injection, saving to DB) will remain exactly the same
+// and is included in PART 4 to keep this message organized.
+// ====================== PART 4/4 ======================
+// Queue worker — SAME features, NEW OpenAI flow
+
+aiblogsQueue.process(3, async (job) => {
+  const step = async (p, m) => { if (m) console.log(`[aiblogsQueue:${job.id}] ${m}`); await job.progress(p); };
+
+  try {
+    const { userId, projectId, type, status, title } = job.data;
+    let { authorId } = job.data;
+
+    if (!projectId) throw new Error('projectId missing');
+    if (!title) throw new Error('title missing');
+
+    if (!authorId) authorId = '68bafb382452d540887d8945';
+    const author = await Author.findById(authorId).exec();
+    if (!author) throw new Error('Author not found');
+
+    const WriterName = author.name;
+    const BASE_URL = 'https://apis.smartlybuild.dev';
+    const WriterImage = author.image ? new URL(author.image, BASE_URL).toString() : '';
+    const WriterBio = author.bio || '';
+    const WriterJobTitle = author.jobTitle || 'Blog writer';
+    const WriterLinks = Array.isArray(author.links) ? author.links : [];
+
+    const authorLinksHtml = (Array.isArray(WriterLinks) ? WriterLinks : [])
+      .filter(l => l && l.url && isSafeHttpUrl(l.url))
+      .map(l => {
+        const href = l.url;
+        const label = (l.label && l.label.trim()) || hostnameLabel(l.url);
+        return `<a href="${href}" rel="me nofollow noopener" target="_blank">${label}</a>`;
+      }).join(" · ");
+    const authorSameAs = JSON.stringify((Array.isArray(WriterLinks) ? WriterLinks : []).map(l => l && l.url).filter(Boolean).filter(isSafeHttpUrl));
+
+    if (!ALLOWED_TYPES.has(String(type || '').toLowerCase()))
+      throw new Error(`Invalid type "${type}". Allowed: best, comparison, how, what`);
+    const styleText = String(type || '').toLowerCase();
+    const styleRule = styleRuleFrom(styleText);
+
+    await step(5, 'Loading project');
+    const project = await UserProject.findById(projectId).lean();
+    if (!project) throw new Error(`Project ${projectId} not found`);
+
+    const domain = ensureOrigin(project.domainName || '');
+    const projectName = clean(project.projectName || 'Project');
+    const serviceType = clean(project.serviceType || title || 'Services');
+
+    // Build siteLinks
+    await step(12, 'Building site links');
+    const siteLinks = await getSiteLinksForProject(projectId, domain);
+
+    // Services main
+    await step(15, 'Fetching services');
+    const servicesMain = await Service.find({ projectId, is_main: true }).select('service_name').limit(30).lean();
+    let topServicesList = servicesMain.map((s, i) => `  ${i + 1}. ${clean(s.service_name)}`).join('\n');
+    if (servicesMain.length < 5) {
+      const additionalServices = await Service.find({ projectId, is_main: false }).select('service_name').limit(5 - servicesMain.length).lean();
+      topServicesList += '\n' + additionalServices.map((s, i) => `  ${servicesMain.length + i + 1}. ${clean(s.service_name)}`).join('\n');
+    }
+
+    // Images
+    await step(20, 'Fetching images');
+    let coverUrl = '';
+    let imagePool = [];
+    try {
+      const mages = await axios.post('http://localhost:1111/admin/v1/fetch_and_save_images', { prompt: title }, { timeout: 30000 });
+      const arr = Array.isArray(mages?.data?.data) ? mages.data.data : [];
+      imagePool = arr.slice(0, 20);
+      coverUrl = arr[2] || arr[0] || '';
+    } catch (e) {
+      console.warn('[aiblogsQueue] image fetch skipped:', e.message);
+      imagePool = [
+        'http://localhost:1111/images/blogs/1756875396079_1756875396078_2.webp',
+        'http://localhost:1111/images/blogs/1756875394694_1756875394694_0.webp',
+        'http://localhost:1111/images/blogs/1756875395284_1756875395284_1.webp'
+      ];
+      coverUrl = imagePool[0];
+    }
+
+    // Relevance signals for internal linking
+    const titleTokens = new Set(tokensFrom(title));
+    const serviceSeedsText = [...new Set([serviceType, ...servicesMain.map(s => clean(s.service_name))].filter(Boolean))];
+    const serviceVariants = new Set();
+    for (const s of serviceSeedsText) {
+      const spaced = slugifyText(s);
+      const dashed = normDash(s);
+      if (spaced) serviceVariants.add(spaced);
+      if (dashed) serviceVariants.add(dashed);
+    }
+    const tks = tokensFrom(title);
+    for (let n = 2; n <= 3; n++) for (let i = 0; i + n <= tks.length; i++) {
+      const gramSp = tks.slice(i, i + n).join(' ');
+      const gramDh = gramSp.replace(/\s+/g, '-');
+      serviceVariants.add(gramSp); serviceVariants.add(gramDh);
+    }
+    const locationHints = (() => {
+      const out = [];
+      const re = /\b(?:in|at|within|near)\s+([A-Za-z][A-Za-z0-9.'-]*(?:\s+[A-Za-z][A-Za-z0-9.'-]*){0,3})\b/gi;
+      let m; while ((m = re.exec(title))) out.push(slugifyText(m[1]));
+      return [...new Set(out)];
+    })();
+
+    const scoreLink = (url) => {
+      const parts = pathParts(url);
+      const hay = parts.join(' ');
+      let s = 0;
+      if (parts.includes('services')) s += 10;
+      let svcHits = 0; for (const v of serviceVariants) if (v && hay.includes(v)) svcHits++;
+      s += svcHits * 6;
+      let locHits = 0; for (const loc of locationHints) { const lt = loc.split(' ').filter(Boolean); if (lt.length && containsAll(hay, lt)) locHits++; }
+      s += locHits * 10;
+      if (svcHits > 0 && locHits > 0) s += 30;
+      for (const tok of titleTokens) if (tok.length >= 3 && hay.includes(tok)) s += 2;
+      for (const seg of parts) if (serviceVariants.has(seg)) s += 8;
+      s += Math.max(0, 6 - Math.min(parts.length, 6));
+      return s;
+    };
+    const ranked = siteLinks.map(u => ({ u, s: scoreLink(u) })).sort((a, b) => b.s - a.s);
+    const isLocService = (u) => {
+      const p = pathParts(u);
+      const hasSvc = Array.from(serviceVariants).some(v => p.includes(v) || p.join(' ').includes(v));
+      const hasLoc = locationHints.some(loc => containsAll(p.join(' '), loc.split(' ')));
+      return p.includes('services') && hasSvc && hasLoc;
+    };
+    const isSvcOnly = (u) => { const p = pathParts(u); return p[0] === 'services' && Array.from(serviceVariants).some(v => p.includes(v) || p.join(' ').includes(v)); };
+    const isLocRoot = (u) => locationHints.some(loc => containsAll(pathParts(u).join(' '), loc.split(' ')));
+    const isServicesRoot = (u) => pathParts(u)[0] === 'services' && pathParts(u).length <= 2;
+    const pushUnique = (arr, url) => { if (!arr.includes(url)) arr.push(url); };
+    let selectedLinks = [];
+    ranked.filter(x => isLocService(x.u)).forEach(x => pushUnique(selectedLinks, x.u));
+    ranked.filter(x => isLocRoot(x.u)).forEach(x => pushUnique(selectedLinks, x.u));
+    ranked.filter(x => isSvcOnly(x.u)).forEach(x => pushUnique(selectedLinks, x.u));
+    ranked.filter(x => isServicesRoot(x.u)).forEach(x => pushUnique(selectedLinks, x.u));
+    ranked.forEach(x => pushUnique(selectedLinks, x.u));
+    selectedLinks = selectedLinks.slice(0, Math.min(6, Math.max(3, selectedLinks.length)));
+
+    // Load template
+    await step(30, 'Loading template from disk');
+    let template = await loadTemplate(styleText);
+    if (!template) { console.warn(`Template for ${styleText} not found, using default`); template = await loadTemplate('default'); }
+
+    // Build main prompt
+    await step(35, 'Building prompt');
+    const imagesList = imagePool.map((u, i) => `  ${i + 1}. ${u}`).join('\n');
+    const linksList = selectedLinks.map((u, i) => `  ${i + 1}. ${u}`).join('\n');
+    let prompt;
+    if (styleText === 'best') prompt = buildBestPrompt(projectName, serviceType, title, topServicesList, imagesList, linksList, coverUrl);
+    else if (styleText === 'comparison') prompt = buildComparisonPrompt(projectName, serviceType, title, imagesList, linksList, coverUrl);
+    else if (styleText === 'how') prompt = buildHowPrompt(projectName, serviceType, title, imagesList, linksList, coverUrl);
+    else if (styleText === 'what') prompt = buildWhatPrompt(projectName, serviceType, title, imagesList, linksList, coverUrl);
+    else {
+      // Fallback (should never hit due to ALLOWED_TYPES check)
+      prompt = `
+Return ONLY valid JSON:
+{ "title": string, "content_html": string, "used_links": string[], "used_images": string[], "meta": { "title": string, "description": string, "keywords": string[] } }
+Context:
+- Project: "${projectName}"
+- Service/Niche: "${serviceType || "(not set)"}"
+- Provided Title: "${title}"
+- Requested Style: "${styleText}"
+- HARD STYLE RULE: ${styleRule}
+- Top Services:
+${topServicesList || "  (none)"}
+Media:
+- Cover image (optional): ${coverUrl || "(none)"}
+- Candidate images (use 2–6 with alt+captions):
+${imagesList || "  (none)"}
+Internal Links (3–6 in-body):
+${linksList || "  (none)"}
+Writing Guide:
+- 1200–1800 words HTML (no <html>/<head>/<body>)
+- Include H2/H3, optional FAQ (3–5), Key Takeaways
+- Embed chosen images as <figure>...
+- Avoid repeating same link/image`.trim();
+    }
+
+    // MAIN CALL
+    await step(55, 'Calling OpenAI (main)');
+    const pageId = `ai_blog_${projectId}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    let model = await fetchJSONFromOpenAI(prompt, 'CREATE_AI_BLOG_SIMPLE', {
+      userId, projectId, pageId, promptFrom: 'aiblogsQueue', promptFor: `${projectName}::${title}`, disableMemory: true, noFewShot: true, newThread: true
+    });
+    if (typeof model === 'string') { try { model = JSON.parse(model); } catch { throw new Error('Invalid JSON response from OpenAI'); } }
+    if (!model || typeof model !== 'object') throw new Error('Model did not return a valid JSON object.');
+
+    // Ensure references (retry if needed)
+    if (!Array.isArray(model.references) || model.references.length < 4) {
+      console.log(`[aiblogsQueue:${job.id}] Retrying for 4–8 references`);
+      const retryPrompt = buildReferencesAsk(title, serviceType);
+      const retryResponse = await fetchJSONFromOpenAI(retryPrompt, 'CREATE_AI_BLOG_REFERENCES', {
+        userId, projectId, pageId, promptFrom: 'aiblogsQueue', promptFor: `${projectName}::${title}::references`,
+        disableMemory: true, noFewShot: true, newThread: true
+      });
+      if (Array.isArray(retryResponse) && retryResponse.length >= 4) model.references = retryResponse.slice(0, 8);
+    }
+
+    // ============ NEW FLOW: validate → per-field fixes → re-validate ============
+    const ctxCommon = {
+      projectName, serviceType, title,
+      topServicesList, imagesList, linksList,
+      existingProducts: Array.isArray(model.products) ? model.products : []
+    };
+    const labels = styleText === 'comparison'
+      ? { caseALabel: model.caseAName || 'Option A', caseBLabel: model.caseBName || 'Option B' }
+      : null;
+
+    let errors = validateByType(styleText, model);
+    let attempts = 0;
+
+    while (errors.length && attempts < MAX_RETRIES) {
+      await step(60, `Fixing fields (attempt ${attempts + 1})`);
+      console.log(`[aiblogsQueue:${job.id}] Validation errors:`, errors.map(e => `${e.field}: ${e.reason}`).join(' | '));
+
+      // try to fix each error once per pass
+      for (const err of errors) {
+        const field = err.field;
+
+        // map special cases for comparison builder keys
+        const fieldKey = (styleText === 'comparison' && field === 'quickVerdictRows') ? 'comparisonTable' : field;
+
+        if (!FIXABLE_FIELDS[styleText] || !FIXABLE_FIELDS[styleText][fieldKey]) continue;
+
+        const patched = await runSmallPrompt({
+          type: styleText,
+          field: fieldKey,
+          ctx: { ...ctxCommon, labels },
+          userId, projectId, pageId
+        });
+
+        if (patched == null) continue;
+
+        // merge patch
+        if (fieldKey === 'products' && patched && typeof patched === 'object') {
+          model.products = [...(model.products || []), ...(patched.products || [])];
+          model.comparisonTable = [...(model.comparisonTable || []), ...(patched.comparisonTable || [])];
+        } else if (fieldKey === 'comparisonTable' && Array.isArray(patched)) {
+          model.comparisonTable = patched;
+        } else if (Array.isArray(patched)) {
+          model[fieldKey] = patched;
+        } else {
+          model[fieldKey] = patched;
+        }
+      }
+
+      attempts++;
+      errors = validateByType(styleText, model);
+    }
+    // ============ END NEW FLOW ================================================
+
+    // Fallbacks if some arrays remain short (same as your code)
+    if (errors.length > 0) {
+      console.warn(`[aiblogsQueue:${job.id}] Remaining validation warnings:`, errors.map(e => `${e.field}: ${e.reason}`).join(' | '));
+      if (styleText === 'best') {
+        if (!model.typesList || model.typesList.length < 3) {
+          model.typesList = [
+            `Standard ${serviceType}: Reliable for typical use cases with dependable performance.`,
+            `Premium ${serviceType}: Enhanced features for advanced needs and superior results.`,
+            `Budget ${serviceType}: Cost-effective solution for basic requirements.`
+          ];
+        }
+        if (!model.matchingList || model.matchingList.length < 3) {
+          model.matchingList = [
+            "Compatibility with user needs for optimal performance.",
+            "Performance in specific conditions to ensure reliability.",
+            "Ease of use or installation to save time.",
+            "Cost-effectiveness to meet budget constraints."
+          ];
+        }
+        if (!model.proInstallList || model.proInstallList.length < 3) {
+          model.proInstallList = [
+            "Ensures optimal setup and performance.",
+            "Includes expert assessment for reliability.",
+            "Uses high-quality materials for durability.",
+            "Reduces long-term maintenance costs."
+          ];
+        }
+        if (!model.voicePrompts || model.voicePrompts.length < 3) {
+          model.voicePrompts = [
+            `Discover top ${serviceType} services.`,
+            `Learn about ${serviceType} solutions.`,
+            `Find the best ${serviceType} for your needs.`
+          ];
+        }
+      }
+      if (styleText === 'how') {
+        if (!Array.isArray(model.relatedArticles) || model.relatedArticles.length < 3) {
+          const filler = [];
+          const imgPool = Array.isArray(imagePool) ? imagePool : [];
+          const pickImg = (i) => imgPool[i % Math.max(1, imgPool.length)];
+          const maxAdd = 3 - (model.relatedArticles?.length || 0);
+          for (let i = 0; i < Math.min(maxAdd, selectedLinks.length); i++) {
+            const url = selectedLinks[i];
+            filler.push({
+              url,
+              title: anchorTextFor(url, locationHints, serviceType),
+              snippet: `More on ${serviceType} — ${projectName}.`,
+              image: pickImg(i),
+              imageAlt: bestAlt(pickImg(i) || '', projectName, serviceType)
+            });
+          }
+          model.relatedArticles = [...(model.relatedArticles || []), ...filler].slice(0, 5);
+        }
+      }
+    }
+
+    // ===================== RENDERING + SAVE (kept as in your file) =====================
+    await step(65, 'Rendering template and mapping');
+
+    let content_html = '';
+    // BEST render (unchanged mapping logic)
+    if (styleText === 'best') {
+      const {
+        metaDescription, canonicalUrl, ogTitle, ogDescription, ogUrl, ogImage, siteName,
+        twitterTitle, twitterDescription, twitterImage, siteUrl, logoUrl, youtubeUrl, linkedinUrl,
+        twitterUrl, searchUrl, guidesUrl, breadcrumbTitle, articleHeadline, articleDescription,
+        articleImage, datePublished, dateModified, eyebrow, mainTitle, year, dateUpdated, readTime, wordCount,
+        quickAnswer, heroImage, heroImageAlt, heroImageSrcset, heroCaption, disclosure, fastFacts, voicePrompts,
+        tocItems, introContent, whyTrust, criteria, products = [], comparisonTable = [],
+        typesIntro, typesList = [], matchingIntro, matchingList = [], proInstallIntro, proInstallList = [],
+        faqs = [], references = [], relatedArticles = [], verdict, usedLinks, usedImages
+      } = model;
+
+      const itemsList = products.map((p, i) =>
+        `{"@type":"ListItem","position":${i + 1},"url":"${canonicalUrl}#product-${p.id}","name":"${p.name}"}`).join(',');
+      const productsHtml = products.map(p => `
+        <article id="product-${p.id}" class="bl-product">
+          <header class="bl-product-head"><h3 class="bl-h3">${p.name} (${p.badge})</h3></header>
+          <div class="bl-product-grid">
+            <div class="bl-product-media">
+              <img src="${p.image}" alt="${p.imageAlt}" width="1120" height="700" loading="lazy" style="max-width:800px;width:100%;height:auto;aspect-ratio:1.600" decoding="async">
+            </div>
+            <div class="bl-product-body">
+              <h4 class="bl-h4">About the Product/Service</h4>
+              <p>${p.description}</p>
+              <h4 class="bl-h4">Pros</h4>
+              <ul class="bl-bullets">${(p.pros || []).map(pro => `<li>${pro}</li>`).join('')}</ul>
+              <h4 class="bl-h4">Cons</h4>
+              <ul class="bl-bullets">${(p.cons || []).map(con => `<li>${con}</li>`).join('')}</ul>
+              <h4 class="bl-h4">Best For</h4>
+              <p>${p.bestFor}</p>
+              <h4 class="bl-h4">Our Expert Take</h4>
+              <p>${p.expertTake}</p>
+            </div>
+          </div>
+        </article>
+      `).join('');
+      const comparisonTableHtml = comparisonTable.map(row =>
+        `<tr><td>${row.item}</td><td>${row.mainUse}</td><td>${row.typicalPrice}</td><td>${row.skillLevel}</td><td>${row.bestFor}</td></tr>`
+      ).join('');
+      const faqList = faqs.map(faq => `{"@type":"Question","name":"${faq.question}","acceptedAnswer":{"@type":"Answer","text":"${faq.answer}"}}`).join(',');
+      const faqHtml = faqs.map(faq => `
+        <details class="bl-faq">
+          <summary class="bl-h3">${faq.question}</summary>
+          <div class="bl-faq-a"><p>${faq.answer}</p></div>
+        </details>
+      `).join('');
+      const fastFactsHtml = (fastFacts || []).map(fact => `<li>${fact}</li>`).join('');
+      const voicePromptsHtml = (voicePrompts || []).map(p => `<li>${p}</li>`).join('');
+
+      const tocProductsInner = (products || []).map((p, idx) =>
+        `<li><a href="#product-${esc(p.id)}">Product ${idx + 1} — ${esc(p.name)}</a></li>`).join('');
+      const tocItemsHtml = `
+  <li><a href="#learn">What You Will Learn / Introduction</a></li>
+  <li><a href="#criteria">Our Ranking Criteria: How We Evaluated the Best</a></li>
+  <li><a href="#top-products">The Top ${products?.length || ''} Product/Service Picks</a>
+    ${tocProductsInner ? `<ol>${tocProductsInner}</ol>` : ''}
+  </li>
+  <li><a href="#comparison">At a Glance: Product/Service Comparison Table</a></li>
+  <li><a href="#buyers-guide">Buyer’s Guide</a>
+    <ol>
+      <li><a href="#types">Understanding the Types according to Product/Service topic</a></li>
+      <li><a href="#matching">Matching the Product/Service to Your Topic</a></li>
+      <li><a href="#pro-install">The Importance of Professional Installation</a></li>
+    </ol>
+  </li>
+  <li><a href="#faq">Frequently Asked Questions (FAQ)</a></li>
+  <li><a href="#author">About the Author</a></li>
+  <li><a href="#comments">Comments & Reviews</a></li>
+  <li><a href="#related">Related Articles</a></li>
+  <li><a href="#verdict">The Verdict: Our Top Recommendation & Your Next Step</a></li>`.trim();
+
+      // references sanitize
+      const { cleanedRefs, referencesHtml } = cleanReferences(references);
+      const whyTrustFinal = String(whyTrust || '').trim() + (cleanedRefs.length === 0
+        ? (String(whyTrust || '').trim() ? ' ' : '') + 'Live-source citations are pending editorial review.'
+        : '');
+
+      const relatedArticlesHtml = (relatedArticles || []).map(article => `
+        <article class="bl-related-item">
+          <a class="bl-related-media" href="${article.url}">
+            <img src="${article.image}" alt="${article.imageAlt}" width="1200" height="800" style="max-width:800px;width:100%;height:auto;aspect-ratio:1.500" loading="lazy" decoding="async">
+          </a>
+          <h3 class="bl-h3"><a href="${article.url}">${article.title}</a></h3>
+          <p class="bl-related-snippet">${article.snippet}</p>
+        </article>
+      `).join('');
+      const currentYear = new Date().getFullYear();
+      const defaults = {
+        siteName: projectName,
+        siteUrl: domain,
+        logoUrl: `${domain}/logo.png`,
+        heroImage: coverUrl || imagePool[0] || 'http://localhost:1111/images/blogs/1756875396079_1756875396078_2.webp',
+      };
+
+      const criteriaHtml = (criteria || []).map(c => `<li>${c}</li>`).join('');
+      const typesListHtml = (typesList || []).map(t => `<li>${t}</li>`).join('');
+      const matchingListHtml = (matchingList || []).map(m => `<li>${m}</li>`).join('');
+      const proInstallListHtml = (proInstallList || []).map(p => `<li>${p}</li>`).join('');
+
+      const map = {
+        title: clean(title),
+        metaDescription: clean(model.metaDescription || `${projectName} ${serviceType}`),
+        canonicalUrl: clean(canonicalUrl || `${domain}/services/${normDash(serviceType)}`),
+        ogTitle: clean(ogTitle || title),
+        ogDescription: clean(ogDescription || model.metaDescription || serviceType),
+        ogUrl: clean(ogUrl || canonicalUrl || `${domain}/services/${normDash(serviceType)}`),
+        ogImage: clean(ogImage || coverUrl || defaults.heroImage),
+        siteName: clean(siteName || defaults.siteName),
+        twitterTitle: clean(twitterTitle || title),
+        twitterDescription: clean(twitterDescription || model.metaDescription || serviceType),
+        twitterImage: clean(twitterImage || coverUrl || defaults.heroImage),
+        siteUrl: clean(siteUrl || defaults.siteUrl),
+        logoUrl: clean(logoUrl || defaults.logoUrl),
+        youtubeUrl: clean(youtubeUrl || `${domain}/youtube`),
+        linkedinUrl: clean(linkedinUrl || `${domain}/linkedin`),
+        twitterUrl: clean(twitterUrl || `${domain}/twitter`),
+        searchUrl: clean(searchUrl || `${domain}/search`),
+        guidesUrl: clean(guidesUrl || `${domain}/guides`),
+        breadcrumbTitle: clean(breadcrumbTitle || title),
+        articleHeadline: clean(articleHeadline || title),
+        articleDescription: clean(articleDescription || model.metaDescription || serviceType),
+        articleImage: clean(articleImage || coverUrl || defaults.heroImage),
+        datePublished: clean(datePublished || new Date().toISOString().split('T')[0]),
+        dateModified: clean(dateModified || new Date().toISOString().split('T')[0]),
+        eyebrow: clean(eyebrow || serviceType),
+        mainTitle: clean(title),
+        year: clean(year || String(currentYear)),
+        dateUpdated: clean(model.dateUpdated || new Date().toISOString().split('T')[0]),
+        readTime: clean(readTime || '10 minutes'),
+        wordCount: clean(wordCount || '1500 words'),
+        quickAnswer: clean(quickAnswer || model.metaDescription || serviceType),
+        heroImage: clean(heroImage || defaults.heroImage),
+        heroImageAlt: clean(heroImageAlt || bestAlt(coverUrl, projectName, serviceType)),
+        heroImageSrcset: clean(heroImageSrcset || `${coverUrl || defaults.heroImage}?q=80&w=800 800w, ${coverUrl || defaults.heroImage}?q=80&w=1200 1200w, ${coverUrl || defaults.heroImage}?q=80&w=1600 1600w`),
+        heroCaption: clean(heroCaption || bestAlt(coverUrl, projectName, serviceType)),
+        disclosure: clean(disclosure || 'This post contains affiliate links.'),
+        fastFacts: fastFactsHtml || `<li>High-quality ${serviceType} services</li><li>Experienced professionals</li><li>Effective solutions</li>`,
+        voicePrompts: voicePromptsHtml || `<li>Discover top ${serviceType} services.</li><li>Learn about ${serviceType} solutions.</li><li>Find the best ${serviceType} for your needs.</li>`,
+        tocItems: tocItemsHtml,
+        introContent: clean(introContent || `Explore the best ${serviceType} services for your needs.`),
+        whyTrust: clean(whyTrustFinal || `Our recommendations are based on extensive research and industry expertise.`),
+        criteria: criteriaHtml || `<li>Effectiveness</li><li>Cost</li><li>Durability</li>`,
+        numItems: String(products.length),
+        category: clean(serviceType || 'Services'),
+        itemsList,
+        productsHtml,
+        comparisonTable: comparisonTableHtml,
+        typesIntro: clean(typesIntro || `Learn about different types of ${serviceType} services.`),
+        typesList: typesListHtml || `<li>Standard ${serviceType}</li><li>Premium ${serviceType}</li><li>Budget ${serviceType}</li>`,
+        matchingIntro: clean(matchingIntro || `Choose the right ${serviceType} service for your needs.`),
+        matchingList: matchingListHtml || `<li>Compatibility</li><li>Performance</li><li>Budget</li>`,
+        proInstallIntro: clean(proInstallIntro || `Professional installation ensures optimal performance.`),
+        proInstallList: proInstallListHtml || `<li>Secure setup</li><li>Expert assessment</li><li>Long-term reliability</li>`,
+        faqList,
+        faqHtml,
+        references: referencesHtml,
+        relatedArticles: relatedArticlesHtml,
+        verdict: clean(verdict || `Choose ${projectName} for top-quality ${serviceType} services.`),
+        authorName: clean(WriterName),
+        authorJobTitle: clean(WriterJobTitle),
+        authorImage: clean(WriterImage),
+        authorBio: clean(WriterBio || `${WriterName} writes about ${serviceType}.`),
+        authorXUrl: clean(`${domain}/authors/${normDash(WriterName)}`),
+        authorLinkedInUrl: clean(`https://linkedin.com/in/${normDash(WriterName)}`),
+        authorPageUrl: clean(`${domain}/authors/${normDash(WriterName)}`),
+        authorLinksHtml,
+        authorSameAs,
+      };
+      content_html = fillAllPlaceholders(template, map);
+    }
+
+    else if (styleText === 'comparison') {
+      const m = model;
+      const { referencesHtml: referencesHtmlComp } = cleanReferences(m.references);
+      const cleanList = (arr) => (arr || []).map(x => clean(x));
+      const ul = arr => `<ul class="bl-bullets">${cleanList(arr).map(x => `<li>${x}</li>`).join('')}</ul>`;
+
+      const tocInner = (m.tocItems || []).map(i => `<li><a href="${clean(i.href)}">${clean(i.label)}</a></li>`).join('');
+      const tocHtml = `<ol class="bl-toc">${tocInner}</ol>`;
+      const relatedArticlesHtml = (m.relatedArticles || []).map(a => `
+        <article class="bl-related-item">
+          <a class="bl-related-media" href="${clean(a.url)}">
+            <img src="${clean(a.image)}" alt="${clean(a.imageAlt)}" width="560" height="340" loading="lazy" decoding="async">
+          </a>
+          <h3 class="bl-h3"><a href="${clean(a.url)}">${clean(a.title)}</a></h3>
+          <p class="bl-related-snippet">${clean(a.snippet)}</p>
+        </article>
+      `).join('');
+
+      const caseALabel = clean(m.caseAName || 'Option A');
+      const caseBLabel = clean(m.caseBName || 'Option B');
+      const rows = (m.comparisonTable || []).map(r => `<tr><td>${clean(r.factor)}</td><td>${clean(r.a)}</td><td>${clean(r.b)}</td></tr>`).join('');
+      const comparisonTableHtml = `
+      <div class="bl-table-wrap">
+        <table class="bl-table">
+          <thead>
+            <tr><th>Factor</th><th>${caseALabel}</th><th>${caseBLabel}</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+
+      const heroSrc = m.heroImage || coverUrl || imagePool[0] || '';
+      const heroSrcset = m.heroImageSrcset || (heroSrc ? `${heroSrc}?w=800 800w, ${heroSrc}?w=1200 1200w, ${heroSrc}?w=1600 1600w` : '');
+      const heroAlt = m.heroImageAlt || bestAlt(heroSrc || '', projectName, serviceType);
+      const today = new Date().toISOString().split('T')[0];
+
+      const map = {
+        title: clean(m.title || title),
+        metaDescription: clean(m.metaDescription || `${projectName} ${serviceType}`),
+        canonicalUrl: clean(m.canonicalUrl || `${domain}/comparisons/${normDash(title)}`),
+        ogTitle: clean(m.ogTitle || m.title || title),
+        ogDescription: clean(m.ogDescription || m.metaDescription || ''),
+        ogUrl: clean(m.ogUrl || m.canonicalUrl || `${domain}/comparisons/${normDash(title)}`),
+        ogImage: clean(m.ogImage || heroSrc),
+        siteName: clean(m.siteName || projectName),
+        twitterTitle: clean(m.twitterTitle || m.title || title),
+        twitterDescription: clean(m.twitterDescription || m.metaDescription || ''),
+        twitterImage: clean(m.twitterImage || m.ogImage || heroSrc),
+        siteUrl: clean(m.siteUrl || domain),
+        logoUrl: clean(m.logoUrl || `${domain}/static/logo.png`),
+        searchUrl: clean(m.searchUrl || `${domain}/search`),
+        references: referencesHtmlComp,
+        breadcrumbJson: clean(m.breadcrumbJson || `{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"${domain}/"},{"@type":"ListItem","position":2,"name":"Comparisons","item":"${domain}/comparisons/"},{"@type":"ListItem","position":3,"name":"${clean(m.title || title)}","item":"${clean(m.canonicalUrl || `${domain}/comparisons/${normDash(title)}`)}"}]}`),
+        articleHeadline: clean(m.articleHeadline || m.title || title),
+        articleDescription: clean(m.articleDescription || m.metaDescription || ''),
+        articleImage: clean(m.articleImage || m.ogImage || heroSrc),
+        datePublished: clean(m.datePublished || today),
+        dateModified: clean(m.dateModified || today),
+        eyebrow: clean(m.eyebrow || 'Comparison'),
+        mainTitle: clean(m.mainTitle || m.title || title),
+        reviewedBy: clean(m.reviewedBy || 'Platform Architect'),
+        dateHuman: clean(m.dateHuman || 'Updated ' + new Date().toLocaleDateString()),
+        readTime: clean(m.readTime || '6–8 min read'),
+        wordCount: clean(m.wordCount || '— words'),
+        quickAnswer: clean(m.quickAnswer || ''),
+        tldrAudioUrl: clean(m.tldrAudioUrl || ''),
+        heroImage: clean(heroSrc),
+        heroImageAlt: clean(heroAlt),
+        heroImageSrcset: clean(heroSrcset),
+        heroCaption: clean(m.heroCaption || ''),
+        summaryTitle: clean(m.summaryTitle || 'When A vs B?'),
+        summaryBulletsHtml: ul(m.summaryBullets || []),
+        fastFactsHtml: ul(m.fastFacts || []),
+        voicePromptsHtml: ul(m.voicePrompts || []),
+        caseALabel, caseBLabel,
+        tocHtml,
+        introTitle: clean(m.introTitle || 'What You Will Learn / Introduction'),
+        introHtml: m.introHtml || '',
+        quickVerdictTitle: clean(m.quickVerdictTitle || 'At a Glance — Quick Verdict'),
+        comparisonTableHtml,
+        quickVerdictNote: clean(m.quickVerdictNote || ''),
+        caseATitle: clean(m.caseATitle || `Deep Dive: ${caseALabel}`),
+        caseAHtml: m.caseAHtml || '',
+        caseBTitle: clean(m.caseBTitle || `Deep Dive: ${caseBLabel}`),
+        caseBHtml: m.caseBHtml || '',
+        headToHeadTitle: clean(m.headToHeadTitle || 'Head-to-Head Breakdown'),
+        headToHeadHtml: m.headToHeadHtml || '',
+        recommendationTitle: clean(m.recommendationTitle || 'Which Is Right for You?'),
+        chooseATitle: clean(m.chooseATitle || `Choose ${caseALabel} if you…`),
+        chooseAListHtml: ul(m.chooseAList || []),
+        chooseBTitle: clean(m.chooseBTitle || `Choose ${caseBLabel} if you…`),
+        chooseBListHtml: ul(m.chooseBList || []),
+        hybridTitle: clean(m.hybridTitle || 'The hybrid play'),
+        hybridHtml: m.hybridHtml || '',
+        verdictTitle: clean(m.verdictTitle || 'The Verdict & The Smartest Stack'),
+        verdictHtml: clean(m.verdictHtml || ''),
+        verdictCtaLabel: clean(m.verdictCtaLabel || 'Review the Quick Verdict'),
+        relatedTitle: clean(m.relatedTitle || 'Related Articles'),
+        relatedArticlesHtml,
+        reviewSummary: clean(m.reviewSummary || ''),
+        authorName: clean(WriterName),
+        authorJobTitle: clean(WriterJobTitle),
+        authorImage: clean(WriterImage),
+        authorBio: clean(WriterBio || `${WriterName} writes about ${serviceType}.`),
+        authorXUrl: clean(`${domain}/authors/${normDash(WriterName)}`),
+        authorLinkedInUrl: clean(`https://linkedin.com/in/${normDash(WriterName)}`),
+        authorPageUrl: clean(`${domain}/authors/${normDash(WriterName)}`),
+        authorLinksHtml,
+        authorSameAs,
+      };
+      content_html = fillAllPlaceholders(template, map);
+    }
+
+    else if (styleText === 'how') {
+      const m = model;
+      const { referencesHtml: referencesHtmlHow } = cleanReferences(m.references);
+      const TOC_LABELS = {
+        intro: { short: 'Intro', full: 'What You Will Learn / Introduction' },
+        why: { short: 'Why', full: 'Why is this task crucial?' },
+        gettingStarted: { short: 'Prep', full: 'Getting Started: Tools & Preparation' },
+        tools: { short: 'Tools', full: 'Essential Tools & Materials' },
+        safety: { short: 'Safety', full: 'Safety First: Key Precautions' },
+        steps: { short: 'Steps', full: 'The Step-by-Step Process' },
+        mistakes: { short: 'Mistakes', full: 'Common Mistakes to Avoid' },
+        faqs: { short: 'FAQ', full: 'FAQs' },
+        proHelp: { short: 'Pro Help', full: 'When to Call a Professional' },
+        conclusion: { short: 'Conclusion', full: 'Conclusion' }
+      };
+      const tocTabs = [
+        { href: '#toc', label: 'Contents' },
+        { href: '#intro', label: TOC_LABELS.intro.short },
+        { href: '#why', label: TOC_LABELS.why.short },
+        { href: '#getting-started', label: TOC_LABELS.gettingStarted.short },
+        { href: '#steps', label: TOC_LABELS.steps.short },
+        { href: '#mistakes', label: TOC_LABELS.mistakes.short },
+        { href: '#faqs', label: TOC_LABELS.faqs.short },
+        { href: '#pro-help', label: TOC_LABELS.proHelp.short },
+        { href: '#conclusion', label: TOC_LABELS.conclusion.short },
+      ].map(t => `<li role="presentation"><a role="tab" href="${t.href}" class="bl-tab">${t.label}</a></li>`).join('');
+      const tocHtml = `
+<ol class="bl-toc">
+  <li><a href="#intro">${TOC_LABELS.intro.full}</a></li>
+  <li><a href="#why">${TOC_LABELS.why.full}</a></li>
+  <li><a href="#getting-started">${TOC_LABELS.gettingStarted.full}</a>
+    <ol>
+      <li><a href="#tools">${TOC_LABELS.tools.full}</a></li>
+      <li><a href="#safety">${TOC_LABELS.safety.full}</a></li>
+    </ol>
+  </li>
+  <li><a href="#steps">${TOC_LABELS.steps.full}</a></li>
+  <li><a href="#mistakes">${TOC_LABELS.mistakes.full}</a></li>
+  <li><a href="#faqs">${TOC_LABELS.faqs.full}</a></li>
+  <li><a href="#pro-help">${TOC_LABELS.proHelp.full}</a></li>
+  <li><a href="#conclusion">${TOC_LABELS.conclusion.full}</a></li>
+</ol>`;
+
+      const toolsListHtml = (m.toolsList || []).map(x => `<li>${clean(x)}</li>`).join('');
+      const fastFactsHtml = (m.fastFacts || []).map(x => `<li>${clean(x)}</li>`).join('');
+      const voicePromptsHtml = (m.voicePrompts || []).map(x => `<li>${clean(x)}</li>`).join('');
+
+      function extractUlInner(html, articleId) {
+        const re = new RegExp(`<article[^>]*id=["']${articleId}["'][^>]*>[\\s\\S]*?<ul[^>]*>([\\s\\S]*?)</ul>`, 'i');
+        const m2 = (html || '').match(re);
+        return m2 ? m2[1].trim() : '';
+      }
+      const prepToolsInnerHtmlRaw = extractUlInner(m.prepHtml || '', 'tools');
+      const prepSafetyInnerHtmlRaw = extractUlInner(m.prepHtml || '', 'safety');
+      const ensureHasItems = (s) => !!(s && s.replace(/<li[^>]*>.*?<\/li>/gis, 'x').includes('x'));
+      const prepToolsInnerHtml = ensureHasItems(prepToolsInnerHtmlRaw) ? prepToolsInnerHtmlRaw : (toolsListHtml || '');
+      const safetyListHtml = Array.isArray(m.safetyList) && m.safetyList.length
+        ? m.safetyList.map(x => `<li>${clean(x)}</li>`).join('')
+        : [
+          'Wear gloves and eye protection.',
+          'Work in a well-ventilated area, away from flames.',
+          'Stabilize the bike on a stand before cleaning or polishing.',
+          'Keep chemicals off brakes and rotors; avoid petroleum on rubber.',
+          'Keep kids and pets away from the workspace.'
+        ].map(x => `<li>${x}</li>`).join('');
+      const prepSafetyInnerHtml = ensureHasItems(prepSafetyInnerHtmlRaw) ? prepSafetyInnerHtmlRaw : safetyListHtml;
+
+      const relatedArticlesInnerHtml = (m.relatedArticles || []).map(a => `
+  <article class="bl-related-item">
+    <a class="bl-related-media" href="${clean(a.url)}">
+      <img src="${clean(a.image)}" alt="${clean(a.imageAlt)}">
+    </a>
+    <h3 class="bl-h3"><a href="${clean(a.url)}">${clean(a.title)}</a></h3>
+    <p class="bl-related-snippet">${clean(a.snippet)}</p>
+  </article>
+`).join('');
+
+      const sampleCommentsHtml = (m.commentsHtml && !m.commentsHtml.includes('<form'))
+        ? m.commentsHtml
+        : `<div class="bl-comment"><div class="bl-comment-head"><span class="bl-comment-name">Taylor R.</span><span class="bl-comment-date">${new Date().toLocaleDateString()}</span></div><div class="bl-comment-rating">★★★★★</div><div class="bl-comment-text">Great tips — wax advice helped a lot.</div></div>`;
+
+      const websiteJson = m.websiteJson?.trim().startsWith('<script') ? m.websiteJson : `<script type="application/ld+json">${m.websiteJson || '{}'}</script>`;
+      const breadcrumbJson = m.breadcrumbJson?.trim().startsWith('<script') ? m.breadcrumbJson : `<script type="application/ld+json">${m.breadcrumbJson || '{}'}</script>`;
+      const schemaJson = m.schemaJson?.trim().startsWith('<script') ? m.schemaJson : `<script type="application/ld+json">${m.schemaJson || '{}'}</script>`;
+
+      const heroSrc = m.heroImage || coverUrl || imagePool[0] || '';
+      const heroSrcset = m.heroImageSrcset || (heroSrc ? `${heroSrc}?w=800 800w, ${heroSrc}?w=1200 1200w, ${heroSrc}?w=1600 1600w` : '');
+      const heroAlt = m.heroImageAlt || bestAlt(heroSrc || '', projectName, serviceType);
+      const today = new Date().toISOString().split('T')[0];
+
+      const map = {
+        title: clean(m.title || title),
+        metaDescription: clean(m.metaDescription || `${projectName} ${serviceType}`),
+        canonicalUrl: clean(m.canonicalUrl || `${domain}/guides/${normDash(title)}`),
+        ogTitle: clean(m.ogTitle || m.title || title),
+        ogDescription: clean(m.ogDescription || m.metaDescription || ''),
+        ogUrl: clean(m.ogUrl || m.canonicalUrl || `${domain}/guides/${normDash(title)}`),
+        ogImage: clean(m.ogImage || heroSrc),
+        siteName: clean(m.siteName || projectName),
+        twitterTitle: clean(m.twitterTitle || m.title || title),
+        twitterDescription: clean(m.twitterDescription || m.metaDescription || ''),
+        twitterImage: clean(m.twitterImage || m.ogImage || heroSrc),
+
+        editorialPolicyUrl: clean(`${domain}/editorial-policy`),
+        contactUrl: clean(`${domain}/contact`),
+        avgRating: clean(m.avgRating || '4.8'),
+
+        websiteJson, breadcrumbJson, schemaJson,
+        references: referencesHtmlHow,
+
+        reviewedBy: clean(m.reviewedBy || `${serviceType} Expert`),
+        datePublished: clean(m.datePublished || today),
+        dateHuman: clean(m.dateHuman || 'Updated ' + new Date().toLocaleDateString()),
+        readTime: clean(m.readTime || '7–9 min read'),
+        wordCount: clean(m.wordCount || '— words'),
+        eyebrow: clean(m.eyebrow || 'How&nbsp;to'),
+        mainTitle: clean(m.mainTitle || m.title || title),
+        quickAnswer: clean(m.quickAnswer || ''),
+
+        heroImage: clean(heroSrc),
+        heroImageAlt: clean(heroAlt),
+        heroImageSrcset: clean(heroSrcset),
+        heroCaption: clean(m.heroCaption || ''),
+
+        tocTabs,
+        tocHtml,
+
+        toolsListHtml,
+        toolsInnerHtml: toolsListHtml,
+        fastFactsHtml,
+        fastFactsInnerHtml: fastFactsHtml,
+        voicePromptsHtml,
+        voicePromptsInnerHtml: voicePromptsHtml,
+
+        prepToolsInnerHtml,
+        prepSafetyInnerHtml,
+
+        introHtml: m.introHtml || '',
+        whyHtml: m.whyHtml || '',
+        prepHtml: m.prepHtml || '',
+        stepsHtml: m.stepsHtml || '',
+        mistakesHtml: m.mistakesHtml || '',
+        faqHtml: m.faqHtml || '',
+        proHelpHtml: m.proHelpHtml || '',
+        conclusionHtml: m.conclusionHtml || '',
+
+        commentsHtml: m.commentsHtml || '',
+        sampleCommentsHtml,
+
+        relatedArticlesHtml: relatedArticlesInnerHtml,
+        relatedArticlesInnerHtml,
+
+        authorName: clean(WriterName),
+        authorJobTitle: clean(WriterJobTitle),
+        authorImage: clean(WriterImage),
+        authorBio: clean(WriterBio || `${WriterName} writes about ${serviceType}.`),
+        authorXUrl: clean(`${domain}/authors/${normDash(WriterName)}`),
+        authorLinkedInUrl: clean(`https://linkedin.com/in/${normDash(WriterName)}`),
+        authorPageUrl: clean(`${domain}/authors/${normDash(WriterName)}`),
+        authorLinksHtml,
+        authorSameAs,
+      };
+      content_html = fillAllPlaceholders(template, map);
+    }
+
+    else if (styleText === 'what') {
+      const m = model;
+      const { referencesHtml: referencesHtmlWhat } = cleanReferences(m.references);
+
+      function normalizeBenefitsHtml(html, topicTitle) {
+        const raw = String(html || '').trim();
+        if (!raw) return '';
+        const chunks = raw.split(/<\/article>\s*/i).filter(s => s.trim());
+        const fixed = chunks.map((chunk, idx) => {
+          const n = idx + 1;
+          let body = chunk.trim();
+          if (!/^<article\b/i.test(body)) body = `<article>${body}</article>`;
+          if (/<h3\b/i.test(body)) {
+            body = body.replace(/<h3[^>]*>(.*?)<\/h3>/i, (_m, titleTxt) =>
+              `<h3 class="bl-h3">Benefit ${n} — ${String(titleTxt || '').replace(/^Benefit\s*\d+\s*—\s*/i, '').trim()}</h3>`
+            );
+          } else {
+            body = body.replace(/<article\b[^>]*>/i, m => `${m}<h3 class="bl-h3">Benefit ${n} — ${topicTitle}</h3>`);
+          }
+          if (!/<\/article>\s*$/i.test(body)) body = `${body}</article>`;
+          return body;
+        });
+        return fixed.join('');
+      }
+      function toArticlesFromList(list, prefix) {
+        const items = Array.isArray(list) ? list.slice(0, 6) : [];
+        return items.map((txt, i) => (
+          `<article><h3 class="bl-h3">${prefix} ${i + 1} — ${clean(txt).split('.').slice(0, 1)[0]}</h3><p>${clean(txt)}</p></article>`
+        )).join('');
+      }
+      function ensureMinArticles(html, min, fallbackHtml) {
+        const count = (String(html || '').match(/<article\b/gi) || []).length;
+        const totalWords = String(html || '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+        if (count >= min && totalWords > 400) return html;
+        return (String(html || '').trim() + fallbackHtml);
+      }
+
+      const tocHtml = `<ol class="bl-toc">${(m.tocItems || []).map(i =>
+        `<li><a href="${clean(i.href)}">${clean(i.label)}</a></li>`).join('')}</ol>`;
+      const fastFactsHtml = (m.fastFacts || []).map(x => `<li>${clean(x)}</li>`).join('');
+      const voicePromptsHtml = (m.voicePrompts || []).map(x => `<li>${clean(x)}</li>`).join('');
+
+      const faqHtml = (m.faqs || []).map(f => `
+    <details>
+      <summary><h3 class="bl-h3">${clean(f.question)}</h3></summary>
+      <div><p>${clean(f.answer)}</p></div>
+    </details>`).join('');
+
+      const ensureScript = (s) => {
+        if (!s) return '';
+        const trimmed = String(s).trim();
+        return trimmed.startsWith('<script') ? trimmed : `<script type="application/ld+json">${trimmed}</script>`;
+      };
+      const websiteJson = ensureScript(m.websiteJson);
+      const breadcrumbJson = ensureScript(m.breadcrumbJson);
+      const articleJson = ensureScript(m.articleJson);
+      const faqJson = ensureScript(m.faqJson);
+
+      const heroSrc = m.heroImage || coverUrl || imagePool[0] || '';
+      let heroSrcset = m.heroImageSrcset || '';
+      const heroAlt = m.heroImageAlt || bestAlt(heroSrc || '', projectName, serviceType);
+      const validSrcset = /https?:\/\/\S+\s+\d+w(?:\s*,\s*https?:\/\/\S+\s+\d+w)*/i;
+      if (!validSrcset.test(heroSrcset)) heroSrcset = '';
+
+      const benefitsPad = toArticlesFromList(m.fastFacts, 'Benefit');
+      m.benefitsHtml = ensureMinArticles(m.benefitsHtml, 4, benefitsPad);
+      m.considerationsHtml = ensureMinArticles(m.considerationsHtml, 4, '');
+      m.benefitsHtml = normalizeBenefitsHtml(m.benefitsHtml, title);
+      const benefitCount = (m.benefitsHtml.match(/<article\b/gi) || []).length;
+      const computedBenefitsTitle = `The Top ${benefitCount} Reasons/Benefits of ${title}`;
+      const today = new Date().toISOString().split('T')[0];
+
+      const map = {
+        heroImage: clean(heroSrc),
+        heroImageAlt: clean(heroAlt),
+        heroImageSrcset: clean(heroSrcset),
+        references: referencesHtmlWhat,
+
+        title: clean(m.title || title),
+        metaDescription: clean(m.metaDescription || `${projectName} ${serviceType}`),
+        canonicalUrl: clean(m.canonicalUrl || `${domain}/what/${normDash(title)}`),
+        ogTitle: clean(m.ogTitle || m.title || title),
+        ogDescription: clean(m.ogDescription || m.metaDescription || ''),
+        ogUrl: clean(m.ogUrl || m.canonicalUrl || `${domain}/what/${normDash(title)}`),
+        ogImage: clean(m.ogImage || heroSrc),
+        siteName: clean(m.siteName || projectName),
+        twitterTitle: clean(m.twitterTitle || m.title || title),
+        twitterDescription: clean(m.twitterDescription || m.metaDescription || ''),
+        twitterImage: clean(m.twitterImage || m.ogImage || heroSrc),
+
+        websiteJson, breadcrumbJson, articleJson, faqJson,
+
+        eyebrow: clean(m.eyebrow || 'What/Why'),
+        mainTitle: clean(m.mainTitle || m.title || title),
+        reviewedBy: clean(m.reviewedBy || 'Staff Architect'),
+        datePublished: clean(m.datePublished || today),
+        dateHuman: clean(m.dateHuman || 'Updated ' + new Date().toLocaleDateString()),
+        readTime: clean(m.readTime || '6–8 min read'),
+        wordCount: clean(m.wordCount || '— words'),
+
+        heroCaption: clean(m.heroCaption || heroAlt),
+        quickAnswer: clean(m.quickAnswer || m.metaDescription || ''),
+        fastFactsHtml,
+        voicePromptsHtml,
+
+        tocHtml,

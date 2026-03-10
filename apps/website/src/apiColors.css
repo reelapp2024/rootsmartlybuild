@@ -1,0 +1,124 @@
+/* Dynamic Color System - Override all theme colors with API colors */
+
+/* Primary Color Applications */
+/* .bg-green-600,
+.bg-green-500,
+.bg-emerald-600,
+.bg-emerald-500 {
+  background: var(--primary) !important;
+}
+
+.text-green-600,
+.text-green-500,
+.text-emerald-600,
+.text-emerald-500 {
+  color: var(--primary) !important;
+}
+
+.border-green-600,
+.border-green-500,
+.border-emerald-600,
+.border-emerald-500 {
+  border-color: var(--primary) !important;
+} */
+
+/* Secondary Color Applications */
+/* .bg-blue-600,
+.bg-blue-500,
+.bg-cyan-600,
+.bg-cyan-500 {
+  background: var(--secondary) !important;
+}
+
+.text-blue-600,
+.text-blue-500,
+.text-cyan-600,
+.text-cyan-500 {
+  color: var(--secondary) !important;
+} */
+
+/* Accent Color Applications */
+/* .bg-purple-600,
+.bg-purple-500,
+.bg-violet-600,
+.bg-violet-500 {
+  background: var(--accent) !important;
+}
+
+.text-purple-600,
+.text-purple-500,
+.text-violet-600,
+.text-violet-500 {
+  color: var(--accent) !important;
+} */
+
+/* Button Color Applications */
+/* .button,
+.btn-primary,
+button[class*="bg-"] {
+  background: var(--button) !important;
+  color: white !important;
+} */
+
+/* Gradient Applications */
+/* .bg-gradient-to-r.from-green-600.to-emerald-600,
+.bg-gradient-to-br.from-green-600.to-emerald-600,
+.bg-gradient-to-r.from-blue-600.to-cyan-600,
+.bg-gradient-to-r.from-orange-600.to-red-600,
+.bg-gradient-to-r.from-slate-600.to-gray-600,
+.bg-gradient-to-r.from-purple-600.to-pink-600 {
+  background: var(--primary-gradient) !important;
+} */
+
+/* Text Gradients */
+/* .text-gradient-primary,
+.bg-gradient-to-r.from-green-600.to-emerald-600.bg-clip-text.text-transparent {
+  background: var(--primary-gradient) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+} */
+
+/* Hover Effects */
+/* .hover\:bg-green-600:hover,
+.hover\:bg-green-500:hover {
+  background: var(--primary) !important;
+  filter: brightness(1.1) !important;
+}
+
+.hover\:bg-blue-600:hover,
+.hover\:bg-blue-500:hover {
+  background: var(--secondary) !important;
+  filter: brightness(1.1) !important;
+} */
+
+/* Icon containers and service cards */
+/* .bg-gradient-to-r[class*="green"] {
+  background: var(--primary-gradient) !important;
+}
+
+.bg-gradient-to-r[class*="blue"] {
+  background: var(--secondary-gradient) !important;
+} */
+
+/* Force apply to all cleaning theme elements */
+/* [class*="text-green"],
+[class*="text-emerald"] {
+  color: var(--primary) !important;
+}
+
+[class*="bg-green"],
+[class*="bg-emerald"] {
+  background: var(--primary) !important;
+} */
+
+/* Special handling for cleaning theme service icons */
+/* .cleaning-service-icon {
+  background: var(--primary-gradient) !important;
+} */
+
+/* Override any inline styles that might interfere */
+/* * {
+  --tw-gradient-from: var(--primary) !important;
+  --tw-gradient-to: var(--secondary) !important;
+} */
