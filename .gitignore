@@ -2,6 +2,7 @@
 /node_modules
 **/node_modules/
 **/.git
+
 # Backend - ignore node_modules, env files, and git folder, but track source files
 backend/node_modules/
 backend/.env*
@@ -19,10 +20,15 @@ apps/geniebuild/.env*
 apps/geniebuild/.env
 apps/geniebuild/.git/
 
-# Ignore all other apps directories (only track customSites and geniebuild)
+# NEW: Track website but ignore its node_modules, env, and git folders
+apps/website/node_modules/
+apps/website/.env*
+apps/website/.env
+apps/website/.git/
+
+# Ignore all other apps directories (only track customSites, geniebuild, and website)
 apps/site/
 apps/smartlybuildadmin/
-apps/website/
 apps/website-next/
 
 # dependencies
