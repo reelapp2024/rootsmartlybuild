@@ -56,13 +56,15 @@ export const PRESET_THEMES = [
       "heading": "#F8FAFC",
       "description": "#C7CDD6",
       "surface": "#0E1214",
-      "overlay": { "color": "rgba(14,16,20,0.55)", "blend": "multiply" },
+      "overlay": { "color": "rgba(14, 16, 20, 0)", "blend": "multiply" },
       "primaryButton": { "bg": "#E11D48", "text": "#FFFFFF", "hover": "#BE123C" },
       "secondaryButton": { "bg": "transparent", "text": "#F8FAFC", "border": "#F43F5E", "hover": "rgba(244,63,94,0.10)" },
       "accent": "#F59E0B",
       "gradient": { "from": "#0E1214", "to": "#1F2937" },
       "ring": "#F43F5E",
-      "shadow": "rgba(0,0,0,0.35)"
+      "shadow": "rgba(0,0,0,0.35)",
+      "badge": { "text": "#F8FAFC", "background": "rgba(225,29,72,0.15)" },
+      "trust": { "text": "#C7CDD6", "dot1": "#22C55E", "dot2": "#3B82F6", "dot3": "#F59E0B" }
     }
   },
   {
@@ -71,13 +73,15 @@ export const PRESET_THEMES = [
       "heading": "#F8FAFC",
       "description": "#BCC6DD",
       "surface": "#0F1222",
-      "overlay": { "color": "rgba(12,14,28,0.57)", "blend": "multiply" },
+      "overlay": { "color": "rgba(12, 14, 28, 0)", "blend": "multiply" },
       "primaryButton": { "bg": "#4F46E5", "text": "#FFFFFF", "hover": "#4338CA" },
       "secondaryButton": { "bg": "transparent", "text": "#E5E7EB", "border": "#818CF8", "hover": "rgba(129,140,248,0.12)" },
       "accent": "#EAB308",
       "gradient": { "from": "#0F1222", "to": "#111827" },
       "ring": "#818CF8",
-      "shadow": "rgba(0,0,0,0.34)"
+      "shadow": "rgba(0,0,0,0.34)",
+      "badge": { "text": "#F8FAFC", "background": "rgba(79,70,229,0.15)" },
+      "trust": { "text": "#BCC6DD", "dot1": "#22C55E", "dot2": "#3B82F6", "dot3": "#EAB308" }
     }
   },
   {
@@ -92,7 +96,9 @@ export const PRESET_THEMES = [
       "accent": "#84CC16",
       "gradient": { "from": "#0B0B0B", "to": "#1A1A1A" },
       "ring": "#FACC15",
-      "shadow": "rgba(0,0,0,0.45)"
+      "shadow": "rgba(0,0,0,0.45)",
+      "badge": { "text": "#FFFFFF", "background": "rgba(253,176,34,0.15)" },
+      "trust": { "text": "#E5E7EB", "dot1": "#22C55E", "dot2": "#3B82F6", "dot3": "#84CC16" }
     }
   },
   {
@@ -107,7 +113,9 @@ export const PRESET_THEMES = [
       "accent": "#60A5FA",
       "gradient": { "from": "#0B1412", "to": "#0F1A18" },
       "ring": "#34D399",
-      "shadow": "rgba(0,0,0,0.40)"
+      "shadow": "rgba(0,0,0,0.40)",
+      "badge": { "text": "#FFFFFF", "background": "rgba(34,197,94,0.15)" },
+      "trust": { "text": "#D3DEDA", "dot1": "#22C55E", "dot2": "#3B82F6", "dot3": "#60A5FA" }
     }
   },
   {
@@ -122,7 +130,9 @@ export const PRESET_THEMES = [
       "accent": "#A7F3D0",
       "gradient": { "from": "#0B1720", "to": "#0F2430" },
       "ring": "#22D3EE",
-      "shadow": "rgba(0,0,0,0.38)"
+      "shadow": "rgba(0,0,0,0.38)",
+      "badge": { "text": "#FFFFFF", "background": "rgba(14,165,164,0.15)" },
+      "trust": { "text": "#BDD0DB", "dot1": "#22C55E", "dot2": "#3B82F6", "dot3": "#A7F3D0" }
     }
   },
   {
@@ -137,7 +147,9 @@ export const PRESET_THEMES = [
       "accent": "#F59E0B",
       "gradient": { "from": "#0F0A16", "to": "#1A1230" },
       "ring": "#C084FC",
-      "shadow": "rgba(0,0,0,0.42)"
+      "shadow": "rgba(0,0,0,0.42)",
+      "badge": { "text": "#FFFFFF", "background": "rgba(168,85,247,0.15)" },
+      "trust": { "text": "#D8CCE6", "dot1": "#22C55E", "dot2": "#3B82F6", "dot3": "#F59E0B" }
     }
   },
   {
@@ -152,7 +164,9 @@ export const PRESET_THEMES = [
       "accent": "#22D3EE",
       "gradient": { "from": "#0A1220", "to": "#0F172A" },
       "ring": "#38BDF8",
-      "shadow": "rgba(0,0,0,0.40)"
+      "shadow": "rgba(0,0,0,0.40)",
+      "badge": { "text": "#F8FAFC", "background": "rgba(37,99,235,0.15)" },
+      "trust": { "text": "#B8C7D9", "dot1": "#22C55E", "dot2": "#3B82F6", "dot3": "#22D3EE" }
     }
   },
   {
@@ -167,7 +181,9 @@ export const PRESET_THEMES = [
       "accent": "#34D399",
       "gradient": { "from": "#0D1512", "to": "#12201B" },
       "ring": "#F59E0B",
-      "shadow": "rgba(0,0,0,0.44)"
+      "shadow": "rgba(0,0,0,0.44)",
+      "badge": { "text": "#FFFFFF", "background": "rgba(217,119,6,0.15)" },
+      "trust": { "text": "#C9D6CF", "dot1": "#22C55E", "dot2": "#3B82F6", "dot3": "#34D399" }
     }
   },
   {
@@ -182,7 +198,9 @@ export const PRESET_THEMES = [
       "accent": "#FB923C",
       "gradient": { "from": "#140A0D", "to": "#1F0E13" },
       "ring": "#F87171",
-      "shadow": "rgba(0,0,0,0.46)"
+      "shadow": "rgba(0,0,0,0.46)",
+      "badge": { "text": "#FFFFFF", "background": "rgba(220,38,38,0.15)" },
+      "trust": { "text": "#E2C9CF", "dot1": "#22C55E", "dot2": "#3B82F6", "dot3": "#FB923C" }
     }
   },
   {
@@ -197,7 +215,9 @@ export const PRESET_THEMES = [
       "accent": "#10B981",
       "gradient": { "from": "#0A1224", "to": "#0C1A33" },
       "ring": "#FBBF24",
-      "shadow": "rgba(0,0,0,0.43)"
+      "shadow": "rgba(0,0,0,0.43)",
+      "badge": { "text": "#FFFFFF", "background": "rgba(245,158,11,0.15)" },
+      "trust": { "text": "#C9D3E6", "dot1": "#22C55E", "dot2": "#3B82F6", "dot3": "#10B981" }
     }
   }
 ];
@@ -433,7 +453,7 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
       { id: 'test-image-box', type: 'image-box', content: { imageUrl: 'http://localhost:1111/files/placeholder.jpg', title: 'Image Box', description: 'Sample image box element' }, style: {} },
       { id: 'test-list', type: 'list', content: { items: [{ title: 'Item 1' }, { title: 'Item 2' }, { title: 'Item 3' }], listType: 'ul' }, style: { color: '#D1D5DB' } },
       { id: 'test-star-rating', type: 'star-rating', content: { rating: 4.5, maxRating: 5 }, style: { color: '#F59E0B' } },
-      { id: 'test-badge', type: 'badge', content: { text: 'New', variant: 'primary' }, style: { backgroundColor: '#F59E0B', color: '#FFFFFF' } },
+      { id: 'test-badge', type: 'badge', content: { text: 'New', variant: 'primary' }, style: {} }, // Use theme badge colors
       { id: 'test-highlight-text', type: 'highlight-text', content: { text: 'This is highlighted text', highlightColor: '#F59E0B' }, style: { color: '#D1D5DB' } },
       { id: 'test-blockquote', type: 'blockquote', content: { text: 'This is a sample blockquote for testing purposes.', author: 'Test Author' }, style: { borderColor: '#F59E0B', color: '#D1D5DB' } },
       // Advanced Elements (12)
@@ -625,6 +645,8 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
       textColor: '#D1D5DB',
       titleColor: '#F8FAFC',
       accentColor: '#3b82f6',
+      buttonBackgroundColor: '#E11D48',
+      buttonTextColor: '#FFFFFF',
       variant: 'FAQCentered',
       paddingTop: 'pt-24',
       paddingBottom: 'pb-24',

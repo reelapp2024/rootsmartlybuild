@@ -48,7 +48,7 @@ export const AllElementsTest: React.FC<AllElementsTestProps> = ({
     { type: 'image-box', label: 'Image Box', content: { imageUrl: 'http://localhost:1111/files/placeholder.jpg', title: 'Image Box', description: 'Sample image box element' }, style: {} },
     { type: 'list', label: 'List', content: { items: ['Item 1', 'Item 2', 'Item 3'], listType: 'ul' }, style: { color: styles.textColor || '#D1D5DB' } },
     { type: 'star-rating', label: 'Star Rating', content: { rating: 4.5, maxRating: 5 }, style: { color: styles.accentColor || '#F59E0B' } },
-    { type: 'badge', label: 'Badge', content: { text: 'New', variant: 'primary' }, style: { backgroundColor: styles.accentColor || '#F59E0B', color: '#FFFFFF' } },
+    { type: 'badge', label: 'Badge', content: { text: 'New', variant: 'primary' }, style: {} }, // Use theme badge colors
     { type: 'highlight-text', label: 'Highlight Text', content: { text: 'This is highlighted text', highlightColor: '#F59E0B' }, style: { color: styles.textColor || '#D1D5DB' } },
     { type: 'blockquote', label: 'Blockquote', content: { text: 'This is a sample blockquote for testing purposes.', author: 'Test Author' }, style: { borderColor: styles.accentColor || '#F59E0B', color: styles.textColor || '#D1D5DB' } },
     

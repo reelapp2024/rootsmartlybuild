@@ -367,11 +367,15 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
                 filter: renderStyle?.filter || 'none',
             };
             // 2. The Professional Shadow & Ring Merger
-            let finalBoxShadow = (renderStyle?.boxShadow && renderStyle.boxShadow !== 'none') ? renderStyle.boxShadow : undefined;
+            // Fallback hierarchy: Element Style -> Theme Default
+            let finalBoxShadow = (renderStyle?.boxShadow && renderStyle.boxShadow !== 'none') 
+                ? renderStyle.boxShadow 
+                : (themeData?.shadow ? `0 4px 6px -1px ${themeData.shadow}, 0 2px 4px -1px ${themeData.shadow}` : undefined);
             
             if (isSelected && !readOnly) {
-                // Tailwind's exact ring-2 ring-blue-500 ring-offset-2 ring-offset-black equivalent
-                const ringShadow = '0 0 0 2px #000000, 0 0 0 4px #3b82f6';
+                // Use themeData.ring for selection ring (like website multicolor theme)
+                const ringColor = themeData?.ring || '#3b82f6';
+                const ringShadow = `0 0 0 2px #000000, 0 0 0 4px ${ringColor}`;
                 // Merge user shadow with selection ring, or just apply ring
                 finalBoxShadow = finalBoxShadow ? `${finalBoxShadow}, ${ringShadow}` : ringShadow;
             }
@@ -652,13 +656,64 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
             );
             
         case 'badge':
-            // Use theme accentColor if element backgroundColor is not explicitly set
-            const badgeBgColor = renderStyle?.backgroundColor || renderStyle?.accentColor || theme?.accentColor || '#3b82f6';
+            // CRITICAL: Badges should ALWAYS use current theme badge colors
+            // This ensures badges update when theme changes
+            // Only use element colors if they're explicitly customized to non-theme colors
+            
+            // Get current theme badge colors (these update reactively when theme changes via useTheme hook)
+            const currentThemeBg = themeData?.badge?.background;
+            const currentThemeText = themeData?.badge?.text;
+            
+            // Get element style directly (not merged with ELEMENT_DEFAULTS)
+            const elementStyle = el.style || {};
+            const elementBg = elementStyle.backgroundColor;
+            const elementText = elementStyle.color;
+            
+            // Check if element has explicit colors that are NOT theme colors (user customization)
+            // We always prefer theme colors to allow theme updates
+            // Only use element colors if they exist AND don't match current theme
+            const useCustomBg = elementBg && 
+                               elementBg !== '' && 
+                               elementBg !== 'transparent' &&
+                               currentThemeBg &&
+                               elementBg !== currentThemeBg;
+            const useCustomText = elementText && 
+                                 elementText !== '' && 
+                                 elementText !== 'transparent' &&
+                                 currentThemeText &&
+                                 elementText !== currentThemeText;
+            
+            // Always use theme colors unless element has explicit custom non-theme colors
+            // This ensures badges update when theme changes
+            const badgeBgColor = useCustomBg 
+                ? elementBg 
+                : (currentThemeBg || 'rgba(225,29,72,0.15)');
+            const badgeTextColor = useCustomText 
+                ? elementText 
+                : (currentThemeText || '#F8FAFC');
+            
+            // Badge size and padding - use element style or defaults
+            const badgeFontSize = renderStyle?.fontSize || '0.75rem';
+            const badgePadding = renderStyle?.padding || '4px 12px';
+            const badgeBorderRadius = renderStyle?.borderRadius || '9999px';
+            
+            // Create safe style object excluding colors (they're set explicitly above)
+            const badgeSafeStyle = { ...safeStyle };
+            delete badgeSafeStyle.backgroundColor;
+            delete badgeSafeStyle.color;
+            
             return (
                 <span 
                     key={id} 
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${selectedClass}`} 
-                    style={{ backgroundColor: badgeBgColor, color: '#fff', ...safeStyle }}
+                    className={`inline-flex items-center font-medium ${selectedClass}`} 
+                    style={{ 
+                        backgroundColor: badgeBgColor, 
+                        color: badgeTextColor, 
+                        fontSize: badgeFontSize,
+                        padding: badgePadding,
+                        borderRadius: badgeBorderRadius,
+                        ...badgeSafeStyle 
+                    }}
                     onClick={!readOnly ? (e) => handleClick(e, el) : undefined}
                     contentEditable={!readOnly}
                     suppressContentEditableWarning={!readOnly}
@@ -939,18 +994,22 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
 
         case 'review-carousel':
             // Use theme textColor if element color is not explicitly set
+            // Fallback hierarchy: Element Style -> Section Style -> Theme Default
             const reviewCarouselStyle = {
                 ...safeStyle,
-                color: safeStyle.color || theme?.textColor || '#D1D5DB'
+                color: safeStyle.color || theme?.textColor || themeData?.description || '#D1D5DB'
             };
+            // Use themeData.trust for author name (like website multicolor theme)
+            const authorColor = theme?.titleColor || themeData?.heading || '#F8FAFC';
+            const reviewTextColor = themeData?.description || theme?.textColor || '#D1D5DB';
             return (
                  <div key={id} className={`p-6 bg-white/5 border border-white/10 rounded-xl ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={reviewCarouselStyle}>
                      <div className="flex gap-4 overflow-hidden mask-linear-gradient">
                          {(content.items || [{title: 'Review 1'}, {title: 'Review 2'}]).map((item, i) => (
                              <div key={i} className="min-w-[250px] p-4 bg-black/20 rounded border border-white/5">
                                  <div className="text-yellow-500 text-xs mb-2"><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i></div>
-                                 <p className="text-sm italic opacity-80 mb-2">"{item.content || 'Excellent product.'}"</p>
-                                 <div className="font-bold text-xs" style={{ color: theme?.titleColor }}>{item.author || 'User'}</div>
+                                 <p className="text-sm italic opacity-80 mb-2" style={{ color: reviewTextColor }}>"{item.content || 'Excellent product.'}"</p>
+                                 <div className="font-bold text-xs" style={{ color: authorColor }}>{item.author || 'User'}</div>
                              </div>
                          ))}
                      </div>

@@ -1864,6 +1864,113 @@ const AppContent: React.FC = () => {
     toast.success('Missing elements restored successfully!');
   };
 
+  // Reset section styles to theme/section defaults (preserves current variant and content)
+  const resetSectionStyles = async (sectionId: string) => {
+    const { projectId, pageId, token } = getUrlParams();
+    if (!projectId || !pageId) {
+      toast.error('Missing projectId or pageId in URL');
+      return;
+    }
+
+    setSiteData(prev => {
+      const sections = prev.sections.map(s => {
+        if (s.id !== sectionId) return s;
+        
+        // CRITICAL: Preserve current variant - DO NOT CHANGE IT
+        const currentVariant = s.styles?.variant || getDefaultVariant(s.type);
+        
+        // Get the base template for this section type
+        const template = SECTION_TEMPLATES[s.type] || SECTION_TEMPLATES.hero;
+        const templateStyles = (template.styles || {}) as any;
+        
+        // Start with template defaults (but exclude variant to preserve current one)
+        const baseDefaults: any = {
+          ...templateStyles,
+          // Remove variant from template defaults - we'll set it explicitly
+          variant: undefined
+        };
+        
+        // Merge template styles with theme data defaults
+        // Priority: Template defaults -> Theme data -> Hardcoded fallbacks
+        const defaultStyles: any = {
+          // Background colors - use theme surface as default
+          backgroundColor: baseDefaults.backgroundColor || themeData?.surface || '#0E1214',
+          background: baseDefaults.background || { 
+            type: 'color', 
+            color: baseDefaults.backgroundColor || themeData?.surface || '#0E1214' 
+          },
+          
+          // Text colors - use theme description as default
+          textColor: baseDefaults.textColor || themeData?.description || '#D1D5DB',
+          
+          // Title colors - use theme heading as default
+          titleColor: baseDefaults.titleColor || themeData?.heading || '#F8FAFC',
+          
+          // Accent colors - use theme accent as default
+          accentColor: baseDefaults.accentColor || themeData?.accent || '#F59E0B',
+          
+          // Button colors - use theme primaryButton as default
+          buttonBackgroundColor: baseDefaults.buttonBackgroundColor || themeData?.primaryButton?.bg || '#E11D48',
+          buttonTextColor: baseDefaults.buttonTextColor || themeData?.primaryButton?.text || '#FFFFFF',
+          
+          // Overlay - use theme overlay as default (if background image exists)
+          overlayColor: baseDefaults.overlayColor || themeData?.overlay?.color || 'rgba(0, 0, 0, 0.5)',
+          overlayBlendMode: baseDefaults.overlayBlendMode || themeData?.overlay?.blend || 'multiply',
+          
+          // Spacing and layout - use template defaults
+          paddingTop: baseDefaults.paddingTop || 'pt-16',
+          paddingBottom: baseDefaults.paddingBottom || 'pb-16',
+          paddingX: baseDefaults.paddingX || 'px-6',
+          textAlign: baseDefaults.textAlign || 'center',
+          titleSize: baseDefaults.titleSize || 'text-4xl',
+          
+          // CRITICAL: Preserve current variant - DO NOT CHANGE
+          variant: currentVariant,
+          
+          // Keep other template style properties (spacing, sizing, etc.)
+          ...Object.fromEntries(
+            Object.entries(baseDefaults).filter(([key]) => 
+              !['variant', 'backgroundColor', 'background', 'textColor', 'titleColor', 
+                'accentColor', 'buttonBackgroundColor', 'buttonTextColor', 
+                'overlayColor', 'overlayBlendMode', 'paddingTop', 'paddingBottom', 
+                'paddingX', 'textAlign', 'titleSize'].includes(key)
+            )
+          )
+        };
+        
+        // Apply variant-specific overrides if they exist (but preserve variant)
+        if (template.variantOverrides && template.variantOverrides[currentVariant]) {
+          const variantOverrides = { ...template.variantOverrides[currentVariant] };
+          // Remove variant from overrides to preserve current one
+          delete variantOverrides.variant;
+          Object.assign(defaultStyles, variantOverrides);
+        }
+        
+        // CRITICAL: Ensure variant is preserved (final check)
+        defaultStyles.variant = currentVariant;
+        
+        return {
+          ...s,
+          // Only update styles - preserve content and elements
+          styles: defaultStyles
+        } as Section;
+      });
+      
+      return { ...prev, sections };
+    });
+    
+    // Auto-save to DB after reset
+    setTimeout(async () => {
+      try {
+        await savePageData();
+        toast.success('Section styles reset to defaults and saved!');
+      } catch (error) {
+        console.error('Error saving reset styles:', error);
+        toast.error('Styles reset but failed to save. Please save manually.');
+      }
+    }, 100);
+  };
+
   // Helper to update section background (handles nested object)
   const updateSectionBackground = (id: string, background: any) => {
     updateSectionStyle(id, 'background', background);
@@ -2366,7 +2473,10 @@ const AppContent: React.FC = () => {
               </AccordionGroup>
               {context === 'element' && (
               <AccordionGroup title="Typography" defaultOpen={true}>
-                       <ColorInput label="Text Color" value={styles.color || styles.textColor} onChange={(v) => onUpdate('color', v)} />
+                       {/* Text Color - show for all elements except badge (badge has its own section) */}
+                       {elementType !== 'badge' && (
+                           <ColorInput label="Text Color" value={styles.color || styles.textColor} onChange={(v) => onUpdate('color', v)} />
+                       )}
                        {(elementType === 'heading' || elementType === 'text') && (
                        <SelectInput
                            label="Font Family"
@@ -2398,6 +2508,84 @@ const AppContent: React.FC = () => {
                         <ButtonGroup value={styles.textAlign || 'left'} onChange={(v) => onUpdate('textAlign', v)} options={[{ icon: 'fa-align-left', value: 'left', label: 'Left' }, { icon: 'fa-align-center', value: 'center', label: 'Center' }, { icon: 'fa-align-right', value: 'right', label: 'Right' }, { icon: 'fa-align-justify', value: 'justify', label: 'Justify' }]} />
                    </div>
               </AccordionGroup>
+              )}
+              {context === 'element' && elementType === 'badge' && (
+                  <AccordionGroup title="Badge Styles" defaultOpen={true}>
+                      {(() => {
+                          // Get theme badge defaults from themeColors parameter or use fallback
+                          // themeColors is passed from AppContent which has themeData
+                          const themeBadgeBg = themeColors?.badgeBackgroundColor || (typeof themeData !== 'undefined' ? themeData?.badge?.background : undefined) || 'rgba(225,29,72,0.15)';
+                          const themeBadgeText = themeColors?.badgeTextColor || (typeof themeData !== 'undefined' ? themeData?.badge?.text : undefined) || '#F8FAFC';
+                          
+                          // Show theme defaults if element doesn't have explicit colors
+                          const badgeBgValue = styles.backgroundColor || themeBadgeBg;
+                          const badgeTextValue = styles.color || themeBadgeText;
+                          
+                          return (
+                              <>
+                                  {/* Background Color - show theme default if not explicitly set */}
+                                  <ColorInput 
+                                      label="Background Color" 
+                                      value={badgeBgValue} 
+                                      onChange={(v) => onUpdate('backgroundColor', v)} 
+                                  />
+                                  {/* Text Color - show theme default if not explicitly set */}
+                                  <ColorInput 
+                                      label="Text Color" 
+                                      value={badgeTextValue} 
+                                      onChange={(v) => onUpdate('color', v)} 
+                                  />
+                              </>
+                          );
+                      })()}
+                      <SelectInput 
+                          label="Size" 
+                          value={styles.fontSize || '0.75rem'} 
+                          options={[
+                              {label: 'XS (10px)', value: '0.625rem'},
+                              {label: 'SM (12px)', value: '0.75rem'},
+                              {label: 'Base (14px)', value: '0.875rem'},
+                              {label: 'MD (16px)', value: '1rem'},
+                              {label: 'LG (18px)', value: '1.125rem'}
+                          ]}
+                          onChange={(v) => onUpdate('fontSize', v)} 
+                      />
+                      <TextInput label="Padding" value={typeof styles.padding === 'string' ? styles.padding : '4px 12px'} onChange={(v) => onUpdate('padding', v)} placeholder="e.g., 4px 12px" />
+                      {(() => {
+                          // Parse borderRadius to number for slider (handle px, rem, %)
+                          const parseBorderRadius = (val: string | undefined): number => {
+                              if (!val) return 50; // Default to 50% (rounded)
+                              if (val === '9999px' || val === '50%') return 50;
+                              const match = val.match(/([\d.]+)(px|%|rem)/);
+                              if (match) {
+                                  const num = parseFloat(match[1]);
+                                  if (match[2] === '%') return Math.min(100, Math.max(0, num));
+                                  if (match[2] === 'px') return Math.min(100, Math.max(0, num));
+                                  if (match[2] === 'rem') return Math.min(100, Math.max(0, num * 16));
+                              }
+                              return 50;
+                          };
+                          
+                          const formatBorderRadius = (val: number): string => {
+                              if (val >= 50) return '9999px'; // Fully rounded
+                              return `${val}px`;
+                          };
+                          
+                          const currentValue = parseBorderRadius(styles.borderRadius);
+                          
+                          return (
+                              <RangeInput
+                                  label="Border Radius"
+                                  value={currentValue}
+                                  min={0}
+                                  max={50}
+                                  step={1}
+                                  unit="px"
+                                  onChange={(v) => onUpdate('borderRadius', formatBorderRadius(v))}
+                              />
+                          );
+                      })()}
+                  </AccordionGroup>
               )}
               {context === 'element' && elementType === 'button' && (
                   <AccordionGroup title="Button Styles" defaultOpen={true}>
@@ -2963,6 +3151,7 @@ const AppContent: React.FC = () => {
                              {selectedElementId && selectedElement && selectedSection ? (
                                  editTab === 'design' ? (renderStyleEditor(
                                      // For buttons, merge element.style with section.styles.buttonFontWeight, etc. for proper dropdown display
+                                     // For badges, merge with theme badge defaults for proper color display
                                      selectedElement.type === 'button' ? {
                                          ...resolvedElementStyle,
                                          // Fallback to section.styles for button-specific properties if not in element.style
@@ -2970,6 +3159,19 @@ const AppContent: React.FC = () => {
                                          fontSize: resolvedElementStyle?.fontSize || (resolvedSectionStyles as any)?.buttonSize || (resolvedSectionStyles as any)?.buttonFontSize || (resolvedSectionStyles as any)?.fontSize || '1rem',
                                          textAlign: resolvedElementStyle?.textAlign || (resolvedSectionStyles as any)?.buttonAlign || resolvedSectionStyles?.textAlign || 'center',
                                          fontFamily: resolvedElementStyle?.fontFamily || (resolvedSectionStyles as any)?.buttonFontFamily || (resolvedSectionStyles as any)?.fontFamily || undefined,
+                                     } : selectedElement.type === 'badge' ? {
+                                         ...resolvedElementStyle,
+                                         // Pre-fill badge colors with theme defaults if not explicitly set
+                                         // CRITICAL: Only use element colors if explicitly set (not empty/undefined)
+                                         backgroundColor: (resolvedElementStyle?.backgroundColor && resolvedElementStyle.backgroundColor !== '' && resolvedElementStyle.backgroundColor !== 'transparent')
+                                             ? resolvedElementStyle.backgroundColor
+                                             : (themeData?.badge?.background || 'rgba(225,29,72,0.15)'),
+                                         color: (resolvedElementStyle?.color && resolvedElementStyle.color !== '' && resolvedElementStyle.color !== 'transparent')
+                                             ? resolvedElementStyle.color
+                                             : (themeData?.badge?.text || '#F8FAFC'),
+                                         fontSize: resolvedElementStyle?.fontSize || '0.75rem',
+                                         padding: resolvedElementStyle?.padding || '4px 12px',
+                                         borderRadius: resolvedElementStyle?.borderRadius || '9999px',
                                      } : resolvedElementStyle, 
                                      (k,v) => updateElement(selectedSection.id, selectedElement.id, { style: { ...selectedElement.style, [k]: v } }), 
                                      'element', 
@@ -3308,14 +3510,24 @@ const AppContent: React.FC = () => {
                                              
                                              {/* Advanced Actions */}
                                              <AccordionGroup title="Advanced Actions" defaultOpen={false}>
-                                                 <button
-                                                     onClick={() => restoreSectionElements(selectedSection.id)}
-                                                     className="w-full px-3 py-2 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-600/40 text-orange-400 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                                                     title="Restore missing elements from template"
-                                                 >
-                                                     <i className="fa-solid fa-window-restore"></i>
-                                                     Restore Missing Elements
-                                                 </button>
+                                                 <div className="space-y-2">
+                                                     <button
+                                                         onClick={() => restoreSectionElements(selectedSection.id)}
+                                                         className="w-full px-3 py-2 bg-orange-600/20 hover:bg-orange-600/30 border border-orange-600/40 text-orange-400 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                                                         title="Restore missing elements from template"
+                                                     >
+                                                         <i className="fa-solid fa-window-restore"></i>
+                                                         Restore Missing Elements
+                                                     </button>
+                                                     <button
+                                                         onClick={() => resetSectionStyles(selectedSection.id)}
+                                                         className="w-full px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-600/40 text-blue-400 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                                                         title="Reset section styles to theme/section defaults"
+                                                     >
+                                                         <i className="fa-solid fa-rotate-left"></i>
+                                                         Reset Default Section Style
+                                                     </button>
+                                                 </div>
                                              </AccordionGroup>
                                          </div>
                                      )
