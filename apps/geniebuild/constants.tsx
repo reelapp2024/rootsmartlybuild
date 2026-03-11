@@ -264,7 +264,7 @@ const BASIC_ELEMENTS_LIST: WebsiteElement[] = [
         id: 'basic-badge',
         type: 'badge',
         content: { text: 'New Feature' },
-        style: { accentColor: '#ec4899', margin: '0 0 2rem 0' }
+        style: {} // Use theme badge colors - empty style allows theme fallback
     },
     {
         id: 'basic-quote',

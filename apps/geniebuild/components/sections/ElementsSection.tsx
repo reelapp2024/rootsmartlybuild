@@ -665,13 +665,15 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
             const currentThemeText = themeData?.badge?.text;
             
             // Get element style directly (not merged with ELEMENT_DEFAULTS)
+            // Check both backgroundColor and accentColor (legacy support)
             const elementStyle = el.style || {};
-            const elementBg = elementStyle.backgroundColor;
+            const elementBg = elementStyle.backgroundColor || elementStyle.accentColor;
             const elementText = elementStyle.color;
             
             // Check if element has explicit colors that are NOT theme colors (user customization)
             // We always prefer theme colors to allow theme updates
             // Only use element colors if they exist AND don't match current theme
+            // Empty style objects will result in undefined, which will use theme colors
             const useCustomBg = elementBg && 
                                elementBg !== '' && 
                                elementBg !== 'transparent' &&
