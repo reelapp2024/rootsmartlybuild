@@ -7,7 +7,7 @@ node_modules/
 
 # Backend large/generated assets
 backend/public/files/
-backend/fonts/allfonts/
+# backend/fonts/allfonts/
 backend/uploads/
 backend/sitemaps/
 
