@@ -9,10 +9,10 @@ const Country = require("../models/adminCountires")
 const State = require("../models/adminStates");
 const City = require("../models/adminCities");
 const LocalArea = require("../models/adminLocalAreas")
-const AreaServicesData = require("../models/AreaServicesData");
 const AreaPagesContent = require("../models/AreaPagesContent")
 const AboutUs = require("../models/aboutus")
 const Slug = require("../models/slug")
+const BusinessLocation = require("../models/businessLocation");
 const Theme = require("../models/Theme")
 
 const WebsiteSection = require("../models/websiteSections");
@@ -186,7 +186,7 @@ module.exports = {
       if (!projectInfo) {
         return res.status(404).json({ message: "Project not found!" });
       }
-      const aboutUs = await AboutUs.findOne({ projectId });
+      const aboutUs = await AboutUs.findOne({ projectId }).sort({ _id: -1 });
 
       // 6) Apply any areaPageContent overrides onto projectInfo
       if (areaPageContent) {
@@ -271,7 +271,30 @@ module.exports = {
       });
 
       if (pageType === "home") {
-        if (startFrom === 1 && projectInfo.isCountry) {
+        if (projectInfo.projectType === 1) {
+          const parentLocations = Array.isArray(projectInfo?.locations?.businessLocations)
+            ? projectInfo.locations.businessLocations.filter((l) => Number(l.type) === 0)
+            : [];
+          const parentIds = parentLocations.map((l) => l.locationId).filter(Boolean);
+          const parentDocs = parentIds.length
+            ? await BusinessLocation.find({
+              _id: { $in: parentIds },
+              projectId,
+              status: 1,
+            }).select("_id areaName").lean()
+            : [];
+          const parentNameById = new Map(parentDocs.map((d) => [String(d._id), d.areaName]));
+
+          locations = parentLocations
+            .filter((l) => parentNameById.has(String(l.locationId)))
+            .map((l) => ({
+              businessLocationId: l.locationId,
+              name: parentNameById.get(String(l.locationId)) || l.areaName || "",
+              location_id: l.locationId,
+              slugType: "business_location",
+              locationType: "business_location"
+            }));
+        } else if (startFrom === 1 && projectInfo.isCountry) {
           const ids = projectInfo.locations.country.filter(c => c.status).map(c => c.countryId);
           const docs = await Country.find({ id: { $in: ids } })
             .select("id sortname").lean();
@@ -309,9 +332,13 @@ module.exports = {
             .map(mapLocal);
         }
 
-        services = await Service.find({ projectId })
-          .select("_id service_name fas_fa_icon service_description")
+        const homeServicesRaw = await Service.find({ projectId })
+          .select("_id name slug createdAt updatedAt")
           .limit(90);
+        services = homeServicesRaw.map((doc) => {
+          const s = doc.toObject ? doc.toObject() : doc;
+          return { ...s, service_name: s.name };
+        });
 
         const homeSecs = await websiteSections.find({ projectId, referencePage: "homepage" });
         faq = homeSecs.filter(s => s.sectionTitle === "FAQ")
@@ -388,9 +415,13 @@ module.exports = {
             .map(mapLocal);
         }
 
-        services = await Service.find({ projectId })
-          .select("_id service_name fas_fa_icon service_description")
+        const areaServicesRaw = await Service.find({ projectId })
+          .select("_id name slug createdAt updatedAt")
           .limit(90);
+        services = areaServicesRaw.map((doc) => {
+          const s = doc.toObject ? doc.toObject() : doc;
+          return { ...s, service_name: s.name };
+        });
 
         const faqSec = await websiteSections.findOne({
           projectId,
@@ -410,10 +441,16 @@ module.exports = {
       // 9) Attach slugs to locations
       if (locations.length) {
         let slugTypes;
-        if (pageType === "home") slugTypes = ["country", "state", "city", "local_area"];
+        if (pageType === "home") {
+          slugTypes = projectInfo.projectType === 1
+            ? ["business_location", "business_local_area", "country", "state", "city", "local_area"]
+            : ["country", "state", "city", "local_area"];
+        }
         else if (pageType === "country") slugTypes = ["state"];
         else if (pageType === "state") slugTypes = ["city"];
         else if (pageType === "city") slugTypes = ["local_area"];
+        else if (pageType === "business_location") slugTypes = ["business_local_area"];
+        else if (pageType === "business_local_area") slugTypes = ["business_location"];
         else slugTypes = [];
 
         const ids = locations.map(l => l.location_id);
@@ -482,7 +519,7 @@ module.exports = {
         return res.status(404).json({ message: "Project not found!" });
       }
 
-      const aboutUs = await AboutUs.findOne({ projectId }).lean();
+      const aboutUs = await AboutUs.findOne({ projectId }).sort({ _id: -1 }).lean();
 
 
       // Return only needed info
@@ -522,7 +559,9 @@ module.exports = {
         country: "countryId",
         state: "stateId",
         city: "cityId",
-        local_area: "localAreaId"
+        local_area: "localAreaId",
+        business_location: "locationId",
+        business_local_area: "locationId"
       };
 
       const pageConfig = {
@@ -603,6 +642,48 @@ module.exports = {
             slugType: "local_area",
             locationType: "local_area"
           })
+        },
+        business_location: {
+          childKey: "business_local_area",
+          parentArray: Array.isArray(projectInfo?.locations?.businessLocations)
+            ? projectInfo.locations.businessLocations.filter((l) => Number(l.type) === 0)
+            : [],
+          childArray: Array.isArray(projectInfo?.locations?.businessLocations)
+            ? projectInfo.locations.businessLocations.filter((l) => Number(l.type) === 1)
+            : [],
+          parentIdKey: null,
+          childIdKey: "locationId",
+          selfIdKey: "locationId",
+          relationKey: "parentId",
+          childMap: c => ({
+            location_id: c.locationId,
+            name: c.areaName,
+            slugType: "business_local_area",
+            locationType: "business_local_area"
+          }),
+          siblingMap: p => ({
+            location_id: p.locationId,
+            name: p.areaName,
+            slugType: "business_location",
+            locationType: "business_location"
+          })
+        },
+        business_local_area: {
+          childKey: null,
+          parentArray: Array.isArray(projectInfo?.locations?.businessLocations)
+            ? projectInfo.locations.businessLocations.filter((l) => Number(l.type) === 1)
+            : [],
+          childArray: [],
+          parentIdKey: "parentId",
+          childIdKey: "locationId",
+          selfIdKey: "locationId",
+          childMap: () => ({}),
+          siblingMap: l => ({
+            location_id: l.locationId,
+            name: l.areaName,
+            slugType: "business_local_area",
+            locationType: "business_local_area"
+          })
         }
       };
 
@@ -611,8 +692,11 @@ module.exports = {
         return res.status(400).json({ message: "Invalid pageType" });
       }
 
+      const selfIdKey = config.selfIdKey || config.childIdKey || idKeyMap[pageType];
+      const relationKey = config.relationKey || config.childIdKey;
+
       const currentItem = config.parentArray.find(p =>
-        p[(config.childIdKey || idKeyMap[pageType])]?.toString() === refId.toString()
+        p[selfIdKey]?.toString() === refId.toString()
       );
       const currentParentId = currentItem ? currentItem[config.parentIdKey] : null;
 
@@ -620,8 +704,8 @@ module.exports = {
       if (config.childArray && config.childArray.length > 0) {
         locations = config.childArray
           .filter(item =>
-            item.status &&
-            item[config.childIdKey]?.toString() === refId.toString()
+            (item.status === undefined || item.status) &&
+            item[relationKey]?.toString() === refId.toString()
           )
           .map(config.childMap);
       }
@@ -632,8 +716,8 @@ module.exports = {
 
         locations = config.parentArray
           .filter(p =>
-            p.status &&
-            p[(config.childIdKey || idKeyMap[pageType])]?.toString() !== refId.toString() &&
+            (p.status === undefined || p.status) &&
+            p[selfIdKey]?.toString() !== refId.toString() &&
             (config.parentIdKey
               ? p[config.parentIdKey]?.toString() === currentParentId?.toString()
               : true)
@@ -645,7 +729,7 @@ module.exports = {
           const parentConfig = Object.values(pageConfig).find(pc => pc.childKey === pageType);
           if (parentConfig) {
             const parentLocation = parentConfig.parentArray.find(pl =>
-              pl[parentConfig.childIdKey]?.toString() === currentParentId.toString()
+              pl[(parentConfig.selfIdKey || parentConfig.childIdKey)]?.toString() === currentParentId.toString()
             );
             if (parentLocation) {
               locationsType = "parent";
@@ -843,9 +927,7 @@ module.exports = {
 
   fetch_services: async (req, res) => {
     try {
-      const { projectId, areaId, areaType } = req.body; // NEW: read areaId/areaType
-
-      console.log(req.body, "--re.boy of fet sev")
+      const { projectId } = req.body;
 
       if (!projectId) {
         return res.status(400).json({ message: 'Project ID is required' });
@@ -906,10 +988,13 @@ module.exports = {
         }));
       }
 
-      // Fetch the sections for the given projectId (UNCHANGED)
-      const services = await Service.find({ projectId, is_main: true })
-        .select('_id service_name fas_fa_icon service_description images')
+      const servicesRaw = await Service.find({ projectId })
+        .select('_id name slug createdAt updatedAt')
         .limit(90);
+      const services = servicesRaw.map((doc) => {
+        const s = doc.toObject ? doc.toObject() : doc;
+        return { ...s, service_name: s.name };
+      });
 
       let selectedArray = [];
       var locationType;
@@ -938,75 +1023,15 @@ module.exports = {
           }
       }
 
-      // -------------------- NEW: area-aware enrichment (non-breaking) --------------------
-      // Always compute locationName key; empty string if not provided or not found.
-      let locationName = "";
-
-      // Resolve a human name for the given areaId/areaType
-      if (areaId && areaType) {
-        if (areaType === "country") {
-          const country = await Country.findOne({ id: areaId }).lean();
-          locationName = country?.name || "";
-        } else if (areaType === "state") {
-          const state = await State.findOne({ id: areaId }).lean();
-          locationName = state?.name || "";
-        } else if (areaType === "city") {
-          const city = await City.findOne({ id: areaId }).lean();
-          locationName = city?.name || "";
-        } else if (areaType === "local_area") {
-          const area = await LocalArea.findOne({ id: areaId }).lean();
-          locationName = area?.name || "";
-        }
-      }
-
-      // If areaId/areaType were sent, load overrides for ALL returned services in one shot
-      let overridesByServiceId = new Map();
-      if (areaId && areaType && services.length > 0) {
-        const serviceIds = services.map(s => s._id);
-        const overrides = await AreaServicesData.find({
-          serviceId: { $in: serviceIds },
-          areaId,
-          areaType
-        })
-          .select('serviceId service_description') // we only need this key for now
-          .lean();
-
-        overrides.forEach(ov => {
-          overridesByServiceId.set(String(ov.serviceId), ov);
-        });
-      }
-
-      // Build the final services array WITHOUT changing the original query semantics
-      const servicesOut = services.map(doc => {
-        const s = doc.toObject ? doc.toObject() : doc; // keep shape
-        const idStr = String(s._id);
-
-        // Prefer area-specific service_description when available and non-empty
-        const ov = overridesByServiceId.get(idStr);
-        if (ov && typeof ov.service_description === 'string' && ov.service_description.trim() !== '') {
-          s.service_description = ov.service_description;
-        }
-
-        // If we have a resolved location name, suffix service_name with " in <location>"
-        if (locationName && typeof s.service_name === 'string' && s.service_name.trim() !== '') {
-          s.service_name = `${s.service_name} in ${locationName}`;
-        }
-
-        return s;
-      });
-      // -------------------- END NEW --------------------
-      console.log(servicesOut,"Hellloooooooooooooooooooooooo");
-
-      // Return the content (UNCHANGED structure) + NEW top-level locationName
       return res.json({
-        services: servicesOut,                // <- same key, enriched when applicable
+        services,
         locations: locations,
         startFrom: startFrom,
         serviceType: project_info.serviceType,
         projectLocations: selectedArray,
         locationType: locationType,
         projectImage: imgurl,
-        locationName: locationName           // NEW: always present; "" if not resolved or not sent
+        locationName: ""
       });
     } catch (error) {
       console.error('Error fetching content:', error);
@@ -1028,12 +1053,14 @@ module.exports = {
         return res.status(400).json({ message: 'Project with this ID not exists' });
       }
 
-      // Fetch 4 random services for the given projectId
-      const allServices = await Service.find({ projectId, is_main: true })
-        .select('_id service_name fas_fa_icon service_description images');
+      const allServices = await Service.find({ projectId })
+        .select('_id name slug createdAt updatedAt');
 
       const shuffled = allServices.sort(() => 0.5 - Math.random());
-      const services = shuffled.slice(0, 4);
+      const services = shuffled.slice(0, 4).map((doc) => {
+        const s = doc.toObject ? doc.toObject() : doc;
+        return { ...s, service_name: s.name };
+      });
 
 
 
@@ -1107,35 +1134,32 @@ module.exports = {
           .json({ message: 'Project with this ID does not exist' });
       }
 
-      // 2) Aggregation: match → sort → group → sort buckets → project shape
+      // 2) Aggregation: group services alphabetically
       const services = await Service.aggregate([
         {
           $match: {
             projectId: new mongoose.Types.ObjectId(projectId),
-            is_main: true,
           }
         },
         {
           $project: {
-            // include only these fields in the pipeline
             _id: 1,
-            service_name: 1,
-            fas_fa_icon: 1,
-            // compute uppercase first letter
+            name: 1,
+            slug: 1,
             firstLetter: {
-              $toUpper: { $substr: ["$service_name", 0, 1] }
+              $toUpper: { $substr: ["$name", 0, 1] }
             }
           }
         },
-        { $sort: { service_name: 1 } },    // A→Z overall
+        { $sort: { name: 1 } },
         {
           $group: {
             _id: "$firstLetter",
             services: {
               $push: {
                 _id: "$_id",
-                service_name: "$service_name",
-                fas_fa_icon: "$fas_fa_icon"
+                service_name: "$name",
+                slug: "$slug"
               }
             }
           }
@@ -1163,120 +1187,37 @@ module.exports = {
   },
   fetch_service: async (req, res) => {
     try {
-      const { serviceId, areaId, areaType } = req.body;
+      const { serviceId } = req.body;
 
       if (!serviceId) {
         return res.status(400).json({ message: 'Service ID is required' });
       }
 
-      // 1) Fetch area-specific overrides (if any)
-      let areaData = null;
-      if (areaId && areaType) {
-        areaData = await AreaServicesData.findOne({
-          serviceId: new mongoose.Types.ObjectId(serviceId),
-          areaId,
-          areaType
-        }).lean();
-      }
-
-      // 2) Fetch the base service
       const service = await Service.findById(serviceId).lean();
       if (!service) {
         return res.status(404).json({ message: 'Service not found' });
       }
 
-      // 3) Merge with preference to areaData
-      const fields = [
-        'meta_title',
-        'meta_description',
-        'meta_keywords',
-        'meta_image',
+      const faqBaseSection = await WebsiteSection.findOne({
+        referencePage: new mongoose.Types.ObjectId(serviceId),
+        sectionTitle: 'FAQSERVICE'
+      }).lean();
+      const faq = faqBaseSection?.sectionContent || [];
 
-        'service_description',
-        'about_service',
-        'whyChooseUsHeading',
-        'whyChooseUsText',
-        'whyChooseUsSection',
-        'comprehensiveCoverageText',
-        'customSolutionText',
+      const reviewsBaseSection = await WebsiteSection.findOne({
+        referencePage: new mongoose.Types.ObjectId(serviceId),
+        sectionTitle: 'REVIEWSERVICE'
+      }).lean();
+      const testimonials = reviewsBaseSection?.sectionContent || [];
 
-        'steps_process',
-        'ourGuaranteeText',
-        'ourGuaranteeSection',
-        'promiseLine',
-
-        'subServices',
-        'serviceGroups',
-      ];
-
-      const merged = { ...service };
-      for (const key of fields) {
-        if (areaData != null && Array.isArray(areaData[key]) && areaData[key].length > 0) {
-          merged[key] = areaData[key];
-        } else if (areaData != null && typeof areaData[key] === 'string' && areaData[key].trim() !== '') {
-          merged[key] = areaData[key];
-        }
-        // else keep base service[key]
-      }
-
-      // 4) load CTAs
-      const project = await userProjects
-        .findById(service.projectId)
-        .select('cta')
-        .lean();
-      const projectCtas = Array.isArray(project?.cta) ? project.cta : [];
-      const sequenceNums = (service.ctaSequence || []).map(o => o.ctanumber);
-      const orderedCtas = sequenceNums.map(num =>
-        projectCtas.find(c => c.serialno === num) || null
-      );
-      const [cta1, cta2, cta3, cta4] = orderedCtas;
-
-      // 5) FAQs (area-aware with fallback)
-      let faq = [];
-      if (areaData?._id) {
-        const faqAreaSection = await WebsiteSection.findOne({
-          referencePage: areaData._id,            // <-- AreaServicesData _id
-          sectionTitle: 'FAQSERVICEAREA'
-        }).lean();
-        if (faqAreaSection?.sectionContent) {
-          faq = faqAreaSection.sectionContent;
-        }
-      }
-      if (faq.length === 0) {
-        // fallback to base service FAQs
-        const faqBaseSection = await WebsiteSection.findOne({
-          referencePage: new mongoose.Types.ObjectId(serviceId),
-          sectionTitle: 'FAQSERVICE'
-        }).lean();
-        faq = faqBaseSection?.sectionContent || [];
-      }
-
-      // 6) Reviews (NEW) — area-aware with fallback
-      let testimonials = [];
-      if (areaData?._id) {
-        const reviewsAreaSection = await WebsiteSection.findOne({
-          referencePage: areaData._id,           // <-- AreaServicesData _id
-          sectionTitle: 'REVIEWSERVICEAREA'
-        }).lean();
-        if (reviewsAreaSection?.sectionContent) {
-          testimonials = reviewsAreaSection.sectionContent;
-        }
-      }
-      if (testimonials.length === 0) {
-        // fallback to base service reviews
-        const reviewsBaseSection = await WebsiteSection.findOne({
-          referencePage: new mongoose.Types.ObjectId(serviceId),
-          sectionTitle: 'REVIEWSERVICE'
-        }).lean();
-        testimonials = reviewsBaseSection?.sectionContent || [];
-      }
-
-      // 7) Return
       return res.json({
-        service: merged,
-        cta1, cta2, cta3, cta4,
+        service: {
+          ...service,
+          service_name: service.name
+        },
+        cta1: null, cta2: null, cta3: null, cta4: null,
         faq,
-        testimonials   // <-- NEW key
+        testimonials
       });
     }
     catch (error) {
@@ -1342,7 +1283,7 @@ module.exports = {
       const services = await Service.find({ projectId }).lean();
 
       const service = services.find(s => {
-        const normalizedDbName = s.service_name.toLowerCase().replace(/[-\s]+/g, '');
+        const normalizedDbName = String(s.name || '').toLowerCase().replace(/[-\s]+/g, '');
         return normalizedDbName === normalizedInput;
       });
 
@@ -1375,16 +1316,16 @@ module.exports = {
       }
 
       // 2) Pull AboutUs
-      const aboutUs = await AboutUs.findOne({ projectId }).lean();
+      const aboutUs = await AboutUs.findOne({ projectId }).sort({ _id: -1 }).lean();
       if (!aboutUs) {
         return res
           .status(404)
           .json({ message: "No AboutUs entry found for this project!" });
       }
 
-      // 3) Fetch all “main” services
-      const allServices = await Service.find({ projectId, is_main: true })
-        .select("_id service_name fas_fa_icon service_description images")
+      // 3) Fetch all services
+      const allServices = await Service.find({ projectId })
+        .select("_id name slug createdAt updatedAt")
         .limit(90);
 
       // 4) Select up to 5 by odd-index first, then even, then mix
@@ -1486,7 +1427,7 @@ module.exports = {
 
       // 3) Fetch services (up to 10)
       const services = await Service.find({ projectId })
-        .select("_id service_name fas_fa_icon service_description images")
+        .select("_id name slug createdAt updatedAt")
         .limit(10);
 
       if (services.length === 0) {

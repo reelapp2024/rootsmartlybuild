@@ -1,0 +1,363 @@
+import React from 'react';
+import { AccordionGroup, ColorInput, NumericUnitInput, RangeInput, SelectInput } from '../inputs';
+import { colorToHex } from '../state/sectionUpdaters';
+
+interface CardStylesBlockProps {
+  styles: any;
+  onUpdate: (key: string, val: any) => void;
+  onBatchUpdate?: (updates: Record<string, any>) => void;
+  themeColors?: any;
+}
+
+/** Reset button row used at the top of Card / Accordion blocks. */
+const ResetRow: React.FC<{ onReset: () => void }> = ({ onReset }) => (
+  <div className="mb-3">
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReset(); }}
+      className="w-full px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-600/40 text-blue-400 rounded text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
+    >
+      <i className="fa-solid fa-rotate-left"></i> Reset to Theme
+    </button>
+  </div>
+);
+
+const parsePx = (val: string | undefined, defaultVal: number): number => {
+  if (!val || typeof val !== 'string') return defaultVal;
+  const num = parseFloat(val);
+  if (val.includes('rem')) return Math.round(num * 16);
+  if (val.includes('px')) return Math.round(num);
+  return Math.round(num) || defaultVal;
+};
+
+export const CardStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, onUpdate, onBatchUpdate, themeColors }) => {
+  const borderRadiusPx = parsePx(styles.borderRadius, 24);
+  const paddingPx = parsePx(styles.padding, 24);
+
+  const reset = () => {
+    const patch = { backgroundColor: '', borderColor: '', borderRadius: '', padding: '' };
+    if (onBatchUpdate) onBatchUpdate(patch);
+    else Object.entries(patch).forEach(([k, v]) => onUpdate(k, v));
+  };
+
+  return (
+    <AccordionGroup title="Card styles" defaultOpen={true}>
+      <ResetRow onReset={reset} />
+      <ColorInput label="Background" value={styles.backgroundColor || themeColors?.cardBackgroundColor || '#FFFFFF'} onChange={(v) => onUpdate('backgroundColor', colorToHex(v) || v)} onReset={() => onUpdate('backgroundColor', '')} />
+      <ColorInput label="Border color" value={styles.borderColor || themeColors?.cardBorderColor || '#E5E7EB'} onChange={(v) => onUpdate('borderColor', colorToHex(v) || v)} onReset={() => onUpdate('borderColor', '')} />
+      <RangeInput
+        label="Border radius"
+        value={Math.min(48, Math.max(0, borderRadiusPx))}
+        min={0} max={48} step={2} unit="px"
+        onChange={(v) => onUpdate('borderRadius', `${v}px`)}
+      />
+      <RangeInput
+        label="Padding"
+        value={Math.min(96, Math.max(0, paddingPx))}
+        min={0} max={96} step={4} unit="px"
+        onChange={(v) => onUpdate('padding', `${v}px`)}
+      />
+    </AccordionGroup>
+  );
+};
+
+export const AccordionStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, onUpdate, onBatchUpdate, themeColors }) => {
+  const borderRadiusPx = parsePx(styles.borderRadius, 20);
+  const paddingPx = parsePx(styles.padding, 20);
+
+  const reset = () => {
+    const patch = {
+      backgroundColor: '', borderColor: '', titleColor: '', color: '',
+      borderRadius: '', padding: '',
+      iconType: '', iconPosition: '', iconSize: '', iconColor: '',
+      iconBackgroundColor: '', iconShape: '',
+      activeBackgroundColor: '', activeBorderColor: '', activeTitleColor: '',
+      hoverBackgroundColor: '',
+      itemGap: '', borderWidth: '', borderStyle: '',
+      questionFontSize: '', questionFontWeight: '',
+      answerFontSize: '', answerLineHeight: '',
+      dividerColor: '',
+    };
+    if (onBatchUpdate) onBatchUpdate(patch);
+    else Object.entries(patch).forEach(([k, v]) => onUpdate(k, v));
+  };
+
+  const iconType: string = styles.iconType || 'chevron';
+  const hasIcon = iconType !== 'none';
+
+  return (
+    <>
+      {/* ── RESET ───────────────────────────────────────────────────── */}
+      <div className="mb-3">
+        <button
+          type="button"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); reset(); }}
+          className="w-full px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-600/40 text-blue-400 rounded text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
+        >
+          <i className="fa-solid fa-rotate-left"></i> Reset to Theme
+        </button>
+      </div>
+
+      {/* ── 1. ITEM CARD ────────────────────────────────────────────── */}
+      <AccordionGroup title="Item Card" defaultOpen={true}>
+        <div className="space-y-3">
+          <ColorInput
+            label="Background"
+            value={styles.backgroundColor || themeColors?.accordionBackgroundColor || themeColors?.cardBackgroundColor || '#FFFFFF'}
+            onChange={(v) => onUpdate('backgroundColor', colorToHex(v) || v)}
+            onReset={() => onUpdate('backgroundColor', '')}
+          />
+          <ColorInput
+            label="Border Color"
+            value={styles.borderColor || themeColors?.accordionBorderColor || themeColors?.cardBorderColor || '#E5E7EB'}
+            onChange={(v) => onUpdate('borderColor', colorToHex(v) || v)}
+            onReset={() => onUpdate('borderColor', '')}
+          />
+          <RangeInput
+            label="Border Width"
+            value={parsePx(styles.borderWidth, 1)}
+            min={0} max={6} step={1} unit="px"
+            onChange={(v) => onUpdate('borderWidth', `${v}px`)}
+          />
+          <SelectInput
+            label="Border Style"
+            value={styles.borderStyle || 'solid'}
+            options={[
+              { label: 'None',   value: 'none' },
+              { label: 'Solid',  value: 'solid' },
+              { label: 'Dashed', value: 'dashed' },
+              { label: 'Dotted', value: 'dotted' },
+              { label: 'Double', value: 'double' },
+            ]}
+            onChange={(v) => onUpdate('borderStyle', v)}
+          />
+          <RangeInput
+            label="Border Radius"
+            value={Math.min(48, Math.max(0, borderRadiusPx))}
+            min={0} max={48} step={2} unit="px"
+            onChange={(v) => onUpdate('borderRadius', `${v}px`)}
+          />
+          <RangeInput
+            label="Padding"
+            value={Math.min(96, Math.max(0, paddingPx))}
+            min={0} max={96} step={4} unit="px"
+            onChange={(v) => onUpdate('padding', `${v}px`)}
+          />
+          <NumericUnitInput
+            label="Gap Between Items"
+            value={styles.itemGap || ''}
+            onChange={(v) => onUpdate('itemGap', v)}
+            placeholder="0.75rem"
+            units={['rem', 'px', 'em']}
+            step={0.125}
+            min={0}
+            max={4}
+          />
+        </div>
+      </AccordionGroup>
+
+      {/* ── 2. ICON ─────────────────────────────────────────────────── */}
+      <AccordionGroup title="Icon" defaultOpen={false}>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-white/40 uppercase">Icon Type</label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { value: 'chevron', label: 'Chevron', icon: 'fa-chevron-down' },
+                { value: 'plus',    label: 'Plus/Minus', icon: 'fa-plus' },
+                { value: 'arrow',   label: 'Arrow',   icon: 'fa-arrow-down' },
+                { value: 'caret',   label: 'Caret',   icon: 'fa-caret-down' },
+                { value: 'none',    label: 'None',    icon: 'fa-ban' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onUpdate('iconType', opt.value)}
+                  className={`py-2.5 text-[9px] font-bold uppercase tracking-widest rounded border transition-all flex flex-col items-center gap-1 ${
+                    iconType === opt.value
+                      ? 'bg-blue-500/20 border-blue-500 text-blue-400'
+                      : 'bg-[#151515] border-[#333] text-white/40 hover:border-[#444]'
+                  }`}
+                >
+                  <i className={`fa-solid ${opt.icon} text-sm`} />
+                  <span>{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          {hasIcon && (
+            <>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-white/40 uppercase">Icon Position</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {[
+                    { value: 'left',  label: 'Left',  ico: 'fa-arrow-left' },
+                    { value: 'right', label: 'Right', ico: 'fa-arrow-right' },
+                  ].map(opt => {
+                    const active = (styles.iconPosition || 'right') === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => onUpdate('iconPosition', opt.value)}
+                        className={`py-2 text-[10px] font-bold uppercase tracking-widest rounded border transition-all flex items-center justify-center gap-1.5 ${
+                          active
+                            ? 'bg-blue-500/20 border-blue-500 text-blue-400'
+                            : 'bg-[#151515] border-[#333] text-white/40 hover:border-[#444]'
+                        }`}
+                      >
+                        <i className={`fa-solid ${opt.ico}`} />
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <SelectInput
+                label="Icon Shape (chip)"
+                value={styles.iconShape || 'circle'}
+                options={[
+                  { label: 'Circle (chip)', value: 'circle' },
+                  { label: 'Square (chip)', value: 'square' },
+                  { label: 'No chip',       value: 'none' },
+                ]}
+                onChange={(v) => onUpdate('iconShape', v)}
+              />
+              <NumericUnitInput
+                label="Icon Size"
+                value={styles.iconSize || ''}
+                onChange={(v) => onUpdate('iconSize', v)}
+                placeholder="0.875rem"
+                units={['rem', 'px', 'em']}
+                step={0.0625}
+                min={0.5}
+                max={2.5}
+              />
+              <ColorInput
+                label="Icon Color"
+                value={styles.iconColor || themeColors?.accentColor || '#3b82f6'}
+                onChange={(v) => onUpdate('iconColor', colorToHex(v) || v)}
+                onReset={() => onUpdate('iconColor', '')}
+              />
+              {styles.iconShape !== 'none' && (
+                <ColorInput
+                  label="Icon Chip Background"
+                  value={styles.iconBackgroundColor || ''}
+                  onChange={(v) => onUpdate('iconBackgroundColor', colorToHex(v) || v)}
+                  onReset={() => onUpdate('iconBackgroundColor', '')}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </AccordionGroup>
+
+      {/* ── 3. QUESTION TEXT ────────────────────────────────────────── */}
+      <AccordionGroup title="Question Text" defaultOpen={false}>
+        <div className="space-y-3">
+          <ColorInput
+            label="Color"
+            value={styles.titleColor || themeColors?.accordionQuestionColor || themeColors?.titleColor || '#F8FAFC'}
+            onChange={(v) => onUpdate('titleColor', colorToHex(v) || v)}
+            onReset={() => onUpdate('titleColor', '')}
+          />
+          <NumericUnitInput
+            label="Font Size"
+            value={styles.questionFontSize || ''}
+            onChange={(v) => onUpdate('questionFontSize', v)}
+            placeholder="1.125rem"
+            units={['rem', 'px', 'em']}
+            step={0.0625}
+            min={0.75}
+            max={2.5}
+          />
+          <SelectInput
+            label="Font Weight"
+            value={String(styles.questionFontWeight || '700')}
+            options={[
+              { label: 'Regular',  value: '400' },
+              { label: 'Medium',   value: '500' },
+              { label: 'Semibold', value: '600' },
+              { label: 'Bold',     value: '700' },
+              { label: 'Black',    value: '800' },
+            ]}
+            onChange={(v) => onUpdate('questionFontWeight', v)}
+          />
+        </div>
+      </AccordionGroup>
+
+      {/* ── 4. ANSWER TEXT ──────────────────────────────────────────── */}
+      <AccordionGroup title="Answer Text" defaultOpen={false}>
+        <div className="space-y-3">
+          <ColorInput
+            label="Color"
+            value={styles.color || themeColors?.accordionAnswerColor || themeColors?.textColor || '#D1D5DB'}
+            onChange={(v) => onUpdate('color', colorToHex(v) || v)}
+            onReset={() => onUpdate('color', '')}
+          />
+          <NumericUnitInput
+            label="Font Size"
+            value={styles.answerFontSize || ''}
+            onChange={(v) => onUpdate('answerFontSize', v)}
+            placeholder="1rem"
+            units={['rem', 'px', 'em']}
+            step={0.0625}
+            min={0.75}
+            max={1.75}
+          />
+          <NumericUnitInput
+            label="Line Height"
+            value={styles.answerLineHeight || ''}
+            onChange={(v) => onUpdate('answerLineHeight', v)}
+            placeholder="1.65"
+            units={['', 'px', 'rem', '%']}
+            step={0.05}
+            min={1}
+            max={3}
+          />
+          <ColorInput
+            label="Divider (between question & answer)"
+            value={styles.dividerColor || ''}
+            onChange={(v) => onUpdate('dividerColor', colorToHex(v) || v)}
+            onReset={() => onUpdate('dividerColor', '')}
+          />
+        </div>
+      </AccordionGroup>
+
+      {/* ── 5. STATES (open / hover) ────────────────────────────────── */}
+      <AccordionGroup title="States" defaultOpen={false}>
+        <div className="space-y-3">
+          <p className="text-[10px] text-white/40 leading-relaxed">
+            Customize how an item looks when it's open or hovered. Leave empty to fall back to the default styling.
+          </p>
+          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">When Open</h5>
+          <ColorInput
+            label="Background"
+            value={styles.activeBackgroundColor || ''}
+            onChange={(v) => onUpdate('activeBackgroundColor', colorToHex(v) || v)}
+            onReset={() => onUpdate('activeBackgroundColor', '')}
+          />
+          <ColorInput
+            label="Border Color"
+            value={styles.activeBorderColor || ''}
+            onChange={(v) => onUpdate('activeBorderColor', colorToHex(v) || v)}
+            onReset={() => onUpdate('activeBorderColor', '')}
+          />
+          <ColorInput
+            label="Question Color"
+            value={styles.activeTitleColor || ''}
+            onChange={(v) => onUpdate('activeTitleColor', colorToHex(v) || v)}
+            onReset={() => onUpdate('activeTitleColor', '')}
+          />
+          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-2 border-t border-white/5">On Hover</h5>
+          <ColorInput
+            label="Background"
+            value={styles.hoverBackgroundColor || ''}
+            onChange={(v) => onUpdate('hoverBackgroundColor', colorToHex(v) || v)}
+            onReset={() => onUpdate('hoverBackgroundColor', '')}
+          />
+        </div>
+      </AccordionGroup>
+    </>
+  );
+};

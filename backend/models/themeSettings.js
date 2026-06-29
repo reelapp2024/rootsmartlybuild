@@ -18,9 +18,9 @@ const themeSettingsSchema = new mongoose.Schema({
     default: 'crimson-jet' // Default theme
   },
   presetId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Theme", // Reference to Theme model if preset is selected
-    default: null
+    /** GenieBuild preset catalog index (0–10) as string, not Mongo Theme _id */
+    type: String,
+    default: null,
   },
   themes: [
     {
@@ -122,7 +122,151 @@ const themeSettingsSchema = new mongoose.Schema({
   },
   // Default typography settings
   defaultTypography: {
-    fontFamily: { type: String, default: "Inter, sans-serif" }
+    fontFamily: { type: String, default: "Inter, sans-serif" },
+    titleFontFamily: { type: String, default: "Inter, sans-serif" },
+    subtitleFontFamily: { type: String, default: "Inter, sans-serif" },
+    descriptionFontFamily: { type: String, default: "Inter, sans-serif" },
+    buttonFontFamily: { type: String, default: "Inter, sans-serif" }
+  },
+  // Global element styles for site-wide typography defaults
+  // Priority: manual element style > globalElementStyles > theme defaults
+  globalElementStyles: {
+    headings: {
+      all: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontSize: { type: String },
+        fontFamily: { type: String },
+        fontWeight: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        highlightColor: { type: String },
+        highlightColorLight: { type: String }
+      },
+      h1: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontSize: { type: String },
+        fontFamily: { type: String },
+        fontWeight: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        highlightColor: { type: String },
+        highlightColorLight: { type: String }
+      },
+      h2: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontSize: { type: String },
+        fontFamily: { type: String },
+        fontWeight: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        highlightColor: { type: String },
+        highlightColorLight: { type: String }
+      },
+      h3: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontSize: { type: String },
+        fontFamily: { type: String },
+        fontWeight: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        highlightColor: { type: String },
+        highlightColorLight: { type: String }
+      },
+      h4: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontSize: { type: String },
+        fontFamily: { type: String },
+        fontWeight: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        highlightColor: { type: String },
+        highlightColorLight: { type: String }
+      },
+      h5: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontSize: { type: String },
+        fontFamily: { type: String },
+        fontWeight: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        highlightColor: { type: String },
+        highlightColorLight: { type: String }
+      },
+      h6: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontSize: { type: String },
+        fontFamily: { type: String },
+        fontWeight: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        highlightColor: { type: String },
+        highlightColorLight: { type: String }
+      }
+    },
+    text: {
+      base: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontFamily: { type: String },
+        fontSize: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        fontWeight: { type: String }
+      },
+      small: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontFamily: { type: String },
+        fontSize: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        fontWeight: { type: String }
+      },
+      large: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontFamily: { type: String },
+        fontSize: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        fontWeight: { type: String }
+      },
+      xl: {
+        color: { type: String },
+        colorLight: { type: String },
+        fontFamily: { type: String },
+        fontSize: { type: String },
+        lineHeight: { type: String },
+        letterSpacing: { type: String },
+        fontWeight: { type: String }
+      }
+    },
+    button: {
+      backgroundColor: { type: String },
+      color: { type: String },
+      hoverBackgroundColor: { type: String },
+      hoverColor: { type: String },
+      borderRadius: { type: String },
+      padding: { type: String },
+      fontWeight: { type: String },
+      fontFamily: { type: String },
+      fontSize: { type: String },
+      letterSpacing: { type: String }
+    },
+    link: {
+      color: { type: String },
+      hoverColor: { type: String },
+      underline: { type: String, enum: ['always', 'hover', 'none'] },
+      fontFamily: { type: String },
+      fontWeight: { type: String }
+    }
   }
 }, {
   timestamps: true // Automatically adds createdAt and updatedAt fields

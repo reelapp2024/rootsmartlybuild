@@ -1,0 +1,13 @@
+[
+  { "id": "crimson-jet", "index": 0, "name": "Crimson Jet", "aliases": [] },
+  { "id": "indigo-sand", "index": 1, "name": "Indigo Sand", "aliases": [] },
+  { "id": "saffron-charcoal", "index": 2, "name": "Saffron Charcoal", "aliases": [] },
+  { "id": "mint-slate", "index": 3, "name": "Mint Slate", "aliases": [] },
+  { "id": "marine-teal", "index": 4, "name": "Marine Teal", "aliases": [] },
+  { "id": "royal-plum", "index": 5, "name": "Royal Plum", "aliases": ["royal-plum-noir"] },
+  { "id": "electric-cobalt", "index": 6, "name": "Electric Cobalt", "aliases": [] },
+  { "id": "copper-forest", "index": 7, "name": "Copper Forest", "aliases": [] },
+  { "id": "ruby-night", "index": 8, "name": "Ruby Night", "aliases": [] },
+  { "id": "citrus-navy", "index": 9, "name": "Citrus Navy", "aliases": [] },
+  { "id": "midnight-amber", "index": 10, "name": "Midnight Amber", "aliases": [] }
+]

@@ -74,6 +74,23 @@ const businessLocationSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    /** Admin geo table id (AdminCountry/State/City/LocalArea). Null for manual business locations. */
+    adminLocationId: {
+      type: String,
+      required: false,
+      default: null,
+      trim: true,
+    },
+    /**
+     * Geo / source category:
+     * 0=country, 1=state, 2=city, 3=localArea, 4=business (manual business-site location)
+     */
+    locationType: {
+      type: Number,
+      enum: [0, 1, 2, 3, 4],
+      required: false,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -84,6 +101,7 @@ const businessLocationSchema = new mongoose.Schema(
 businessLocationSchema.index({ projectId: 1 });
 businessLocationSchema.index({ parentId: 1 });
 businessLocationSchema.index({ type: 1 });
+businessLocationSchema.index({ projectId: 1, adminLocationId: 1, locationType: 1 });
 
 module.exports = mongoose.model('BusinessLocation', businessLocationSchema);
 

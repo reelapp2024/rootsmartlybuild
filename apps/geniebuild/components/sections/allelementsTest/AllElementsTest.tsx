@@ -51,6 +51,11 @@ export const AllElementsTest: React.FC<AllElementsTestProps> = ({
     { type: 'badge', label: 'Badge', content: { text: 'New', variant: 'primary' }, style: {} }, // Use theme badge colors
     { type: 'highlight-text', label: 'Highlight Text', content: { text: 'This is highlighted text', highlightColor: '#F59E0B' }, style: { color: styles.textColor || '#D1D5DB' } },
     { type: 'blockquote', label: 'Blockquote', content: { text: 'This is a sample blockquote for testing purposes.', author: 'Test Author' }, style: { borderColor: styles.accentColor || '#F59E0B', color: styles.textColor || '#D1D5DB' } },
+    { type: 'trust-strip', label: 'Trust Strip', content: { items: [
+        { icon: 'fa-clock', label: '24/7 Service' },
+        { icon: 'fa-medal', label: 'Licensed & Insured' },
+        { icon: 'fa-star', label: '4.9/5 Rating' },
+      ] }, style: { iconColor: styles.accentColor || '#F59E0B', titleColor: styles.titleColor || '#F8FAFC' } },
     
     // Advanced Elements (12)
     { type: 'accordion', label: 'Accordion', content: { items: [{ title: 'Item 1', content: 'Content 1' }, { title: 'Item 2', content: 'Content 2' }] }, style: {} },
@@ -65,6 +70,8 @@ export const AllElementsTest: React.FC<AllElementsTestProps> = ({
     { type: 'flip-box', label: 'Flip Box', content: { frontTitle: 'Front', backTitle: 'Back', frontContent: 'Front content', backContent: 'Back content' }, style: {} },
     { type: 'call-to-action', label: 'Call to Action', content: { text: 'Get Started', subText: 'Start your free trial today' }, style: { backgroundColor: styles.buttonBackgroundColor || '#E11D48', color: styles.buttonTextColor || '#FFFFFF' } },
     { type: 'countdown-timer', label: 'Countdown Timer', content: { targetDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), text: 'Offer Ends In' }, style: { accentColor: styles.accentColor || '#F59E0B' } },
+    { type: 'divider', label: 'Divider', content: { dividerStyle: 'solid', thickness: '1px', marginY: '24px' }, style: {} },
+    { type: 'spacer', label: 'Spacer', content: { height: '40px' }, style: {} },
   ];
 
   // Ensure all elements exist, create them if missing

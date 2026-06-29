@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { httpFile } from '../../../config.js';
 import { getProjectId } from '../../../hooks/getProjectId';
 import { useTheme } from '../contexts/ThemeContext';
@@ -10,6 +10,8 @@ const ServicesSection = ({ formattedLocationName = "" }) => {
   const [projectServices, setProjectServices] = useState([]);
   const [projectCategory, setProjectCategory] = useState("");
   const [projectId, setProjectId] = useState(null);
+  const [areaContext, setAreaContext] = useState<{ areaId?: string; areaType?: string }>({});
+  const location = useLocation();
 
   useEffect(() => {
     const id = getProjectId();
@@ -24,13 +26,69 @@ const ServicesSection = ({ formattedLocationName = "" }) => {
 
   const handleServiceClick = (service) => {
     const serviceName = service.service_name.toLowerCase().replace(/\s+/g, '-');
+    const currentPath = location.pathname.replace(/\/+$/, '');
+    if (currentPath.endsWith('/services')) {
+      return `${currentPath}/${serviceName}`;
+    }
     return `/services/${serviceName}`;
   };
 
   useEffect(() => {
+    const resolveAreaContext = async () => {
+      const pathname = location.pathname || "";
+      let slug = "";
+
+      // Services page under a location, e.g. "/new-york/services"
+      if (pathname.endsWith('/services')) {
+        slug = pathname.slice(0, -('/services'.length));
+      } else if (pathname !== '/' && pathname !== '/services') {
+        // Keep support for non-home non-services contexts if reused elsewhere
+        slug = pathname;
+      }
+
+      if (slug.startsWith('/')) {
+        slug = slug.slice(1);
+      }
+
+      if (!slug) {
+        setAreaContext({});
+        return;
+      }
+
+      try {
+        const { data } = await httpFile.post("/webapp/v1/slugToPageType", {
+          projectId,
+          slug
+        });
+
+        if (data?.locationId && data?.slugType) {
+          setAreaContext({
+            areaId: data.locationId,
+            areaType: data.slugType
+          });
+        } else {
+          setAreaContext({});
+        }
+      } catch (_error) {
+        setAreaContext({});
+      }
+    };
+
+    if (projectId) {
+      resolveAreaContext();
+    }
+  }, [projectId, location.pathname]);
+
+  useEffect(() => {
     const fetchServices = async () => {
       try {
-        const { data } = await httpFile.post("/webapp/v1/fetch_services", { projectId });
+        const payload: any = { projectId };
+        if (areaContext.areaId && areaContext.areaType) {
+          payload.areaId = areaContext.areaId;
+          payload.areaType = areaContext.areaType;
+        }
+
+        const { data } = await httpFile.post("/webapp/v1/fetch_services", payload);
         if (data) {
           setProjectServices(data.services || []);
         }
@@ -58,7 +116,7 @@ const ServicesSection = ({ formattedLocationName = "" }) => {
       fetchServices();
       fetchCategory();
     }
-  }, [projectId]);
+  }, [projectId, areaContext.areaId, areaContext.areaType]);
 
   return (
     <section id="services" className="py-16 bg-white">
@@ -155,7 +213,7 @@ const ServicesSection = ({ formattedLocationName = "" }) => {
                     '--hover-color': colors.primaryButton.bg
                   } as React.CSSProperties}
                 >
-                  {service.service_name} {formattedLocationName}
+                  {service.service_name}
                 </h4>
                 <p className="text-gray-600 leading-relaxed text-sm">
                   {getTruncatedDescription(service.service_description)}

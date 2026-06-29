@@ -3,9 +3,17 @@ const fs = require('fs-extra');
 const { Readable } = require('stream');
 const path = require('path');
 const unzipper = require('unzipper');
+const archiver = require('archiver');
+const { EJSON } = require('bson');
 const ftp = require('basic-ftp'); // ✅ Required for FTP connections
 const SftpClient = require('ssh2-sftp-client'); // ✅ Required for SSH/SFTP
-const { deployReactApp } = require('../additional/deployHelper');  // Adjust the path if needed
+const { deployReactApp } = require('../additional/deployHelper');  // legacy React (deprecated)
+const { deployNextStaticApp } = require('../additional/deployNextStaticApp');
+const {
+    buildKeyForProject,
+    readStaticBuildStatus,
+    writeStaticBuildStatus,
+} = require('../additional/staticBuildStatus');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
@@ -13,6 +21,12 @@ const { isValidObjectId, Types } = mongoose;
 const { Client } = require('@googlemaps/google-maps-services-js');
 const client = new Client();
 const helper = require("../additional/addon");
+const generateImages=require("../additional/imageProviderHelper")
+const { stripLegacyImagePromptFields } = require("../sections/sectionImagePrompts");
+const { coerceFaqSectionPayload } = require("../sections/_shared/faqAnswerGuards");
+const {
+    attachGeneratedImagesToSectionData,
+} = require("../additional/sectionImageGenerationHelper");
 const Users = require("../models/users")
 const UserSiteContent = require('../models/UserSiteContent');
 const userProjects = require("../models/userProjects");
@@ -30,22 +44,66 @@ const AdminLocalArea = require('../models/adminLocalAreas'); // add this alongsi
 const BusinessLocation = require('../models/businessLocation');
 const WebsiteSection = require("../models/websiteSections");
 const AboutUs = require("../models/aboutus");
-const SeoSettings = require("../models/seoSettings")
+const {
+    getSeoForWebsitePage,
+    upsertWebsitePageSeo,
+    generatePageSeoWithAI,
+    generateMissingSeoForAllProjectPages,
+    seoEntryToLegacyApi,
+    seoEntryToGeniebuild,
+    geniebuildToSeoEntry,
+    pickSeoFields,
+    getActiveSeoFromPage,
+    pageUrlFromPage,
+    findWebsitePageByPublicUrl,
+} = require("../services/pageSeoService")
 const ThemeSetting = require("../models/themeSettings")
 const ProjectDeployment = require("../models/ProjectDeployment");
 const Slug = require("../models/slug")
 const SiteHeaderFooter = require("../models/siteHeaderFooter")
 const WebsitePage = require("../models/WebsitePage")
+const {
+    normalizeSlugInput,
+    assertSlugAvailable,
+    getPageSlugHistory,
+    updateHeaderFooterMenuUrls,
+    updateExistingWebsitePage,
+    attachServicePageLinksToGridItems,
+} = require("../services/pageSlugService")
+const {
+    enrichHeaderFooterDocument,
+    applyHeaderFooterDynamicsToSections,
+    applyContactDynamicsToAllSections,
+    buildNavSources,
+    buildDefaultSiteMenu,
+    mergeMenuWithNavSources,
+    sortMenuByOrder,
+    normalizeFooterLayout,
+    syncLegacyMenuFromFooterLayout,
+    prepareDefaultHeaderFooterPayload,
+} = require("../services/headerFooterService")
+const {
+    mergeFooterLayoutIntoSettings,
+    buildFooterLayoutFromDefaultMenu,
+    buildPagesByIdMap,
+    applyPageUrlsToFooterLayout,
+} = require("../services/footerLayoutConfig")
+const {
+    syncHeaderFooterSectionsForProject,
+} = require("../services/headerFooterSectionSync")
+const { resolveThemeColorsForApi } = require("../utils/themeResolverBridge");
 const { getResponseFromOpenAI } = require("../openAi/openAi")
+const { trackCreditsUsage } = require("../additional/openaiHelpers");
 
 
 const SectionContent = require("../models/SectionContent");
 const secretKey = process.env.JWT_SECRET
 const HostingConnection = require('../models/HostingConnection');
-const CreditsUsage = require("../models/CreditsUsage")
 const ProjectCategory = require("../models/ProjectCategory");
 const SubCategory = require("../models/SubCategory");
 const MicroCategory = require("../models/MicroCategory");
+const CreditWallet = require("../models/CreditWallet");
+const CreditTransaction = require("../models/CreditTransaction");
 
 const WebsiteComponent = require("../models/WebsiteComponent");
 const WebsiteDesignsData = require("../models/WebsiteDesignsData");
@@ -70,7 +128,7 @@ async function ensurePageInDesignData(projectId, pageId) {
             designData = new WebsiteDesignsData({
                 projectId: projectId,
                 userId: project.userId || project.user,
-                colorScheme: 'default',
+                schemaVersion: 2,
                 pages: []
             });
         }
@@ -84,8 +142,9 @@ async function ensurePageInDesignData(projectId, pageId) {
             // Add page to pages array
             designData.pages.push({
                 pageId: pageId,
-                style: {},
-                componentIds: []
+                pageStyles: {},
+                sectionLayout: [],
+                sections: ensureHeaderFooterComponents([])
             });
             await designData.save();
             console.log('[ensurePageInDesignData] Page added to WebsiteDesignsData:', pageId);
@@ -103,6 +162,7 @@ const {
     fetchSeoContentForPage,
     getResponseFromOpenAITracked
 } = require('../additional/openaiHelpers');
+const resolveSectionFile = require('../sections/resolveSectionFile');
 
 const {
     testFTPConnection,
@@ -127,9 +187,1611 @@ const axios = require('axios');
 const { json } = require("express");
 const LOCATIONIQ_API_KEY = process.env.LOCATIONIQ_API_KEY;
 const slugify = require("../additional/slugify");
+const {
+    buildBusinessLocationPathMap,
+    resolveLocationPageHref,
+} = require("../additional/businessLocationPaths");
 
 const projectBackgroundQueue = require("../queue/projectBackgroundQueue");
 const redislatlngqueueQueue = require("../queue/queuelatlng")
+const { sectionGenerationQueue, enqueueSectionGeneration } = require("../queue/sectionGeneration.queue");
+const {
+    getSectionResolver,
+    isServiceBundleSection
+} = require("../additional/sectionResolverRegistry");
+const { buildServiceRenderSections } = require("../additional/siteSectionOrder.cjs");
+
+function ensureHeaderFooterComponents(componentIds = []) {
+    const list = Array.isArray(componentIds) ? [...componentIds] : [];
+    const normalized = list.filter(Boolean);
+
+    const isHeader = (comp) => {
+        const t = String(comp?.sectionData?.type || "").toLowerCase();
+        return t === "header" || t === "navbar";
+    };
+    const isFooter = (comp) => String(comp?.sectionData?.type || "").toLowerCase() === "footer";
+
+    let headerComp =
+        normalized.find((c) => String(c?.sectionData?.type || "").toLowerCase() === "header") ||
+        normalized.find((c) => String(c?.sectionData?.type || "").toLowerCase() === "navbar");
+    let footerComp = normalized.find(isFooter);
+
+    if (!headerComp) {
+        headerComp = {
+            variant_uniqueId: "HeaderPlumbing",
+            componentId: null,
+            sectionData: { type: "header", content: {}, styles: { variant: "HeaderPlumbing" } },
+        };
+    } else if (String(headerComp.sectionData?.type || "").toLowerCase() === "navbar") {
+        headerComp = {
+            ...headerComp,
+            sectionData: { ...headerComp.sectionData, type: "header" },
+        };
+    }
+
+    if (!footerComp) {
+        footerComp = {
+            variant_uniqueId: "FooterPlumbing",
+            componentId: null,
+            sectionData: { type: "footer", content: {}, styles: { variant: "FooterPlumbing" } },
+        };
+    }
+
+    const middle = normalized.filter((comp) => !isHeader(comp) && !isFooter(comp));
+    return [headerComp, ...middle, footerComp];
+}
+
+function getPageSections(page = {}) {
+    if (Array.isArray(page?.sections)) return page.sections;
+    if (Array.isArray(page?.componentIds)) return page.componentIds;
+    return [];
+}
+
+function assignPageSections(page = {}, sections = []) {
+    const normalized = ensureHeaderFooterComponents(sections || []).map((sec, idx) => {
+        const next = { ...sec, order: idx + 1 };
+        if (!Array.isArray(next.elementIds) || next.elementIds.length === 0) delete next.elementIds;
+        if (next.sectionData && typeof next.sectionData === "object") {
+            if (!Array.isArray(next.sectionData.elements) || next.sectionData.elements.length === 0) {
+                delete next.sectionData.elements;
+            }
+            if (next.sectionData.contentRef && typeof next.sectionData.contentRef === "object") {
+                delete next.sectionData.contentRef.locationIds;
+            }
+        }
+        return next;
+    });
+    page.sections = normalized;
+    page.sectionLayout = normalized.map((s, idx) => ({
+        order: idx + 1,
+        sectionId: String(
+            s?.sectionData?.id ||
+            s?.id ||
+            s?._id ||
+            s?.uniqueId ||
+            s?.variant_uniqueId ||
+            `${String(s?.sectionData?.type || "section").toLowerCase()}-${idx + 1}`
+        )
+    }));
+    if (Object.prototype.hasOwnProperty.call(page, "componentIds")) {
+        delete page.componentIds;
+    }
+    return page;
+}
+
+async function upsertSectionContentRecord({
+    projectId,
+    pageId,
+    serviceId = null,
+    sectionId,
+    locationId = null,
+    data = {},
+    meta = {},
+}) {
+    if (!projectId || !pageId || !sectionId) return;
+    const normalizedPageId = normalizeMixedIdForStorage(pageId);
+    const pageIdCandidates = buildMixedIdCandidates(pageId);
+    const normalizedSectionId = normalizeSectionIdForStorage(sectionId);
+    if (!isMeaningfulSectionData(data)) {
+        const existing = await SectionContent.findOne({
+            projectId,
+            ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+            serviceId,
+            sectionId: normalizedSectionId,
+            locationId,
+            isDeleted: { $ne: true }
+        }).select("_id status").lean();
+        if (!existing) {
+            const pendingDoc = await SectionContent.findOneAndUpdate(
+                {
+                    projectId,
+                    ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+                    serviceId,
+                    sectionId: normalizedSectionId,
+                    locationId,
+                    isDeleted: { $ne: true }
+                },
+                {
+                    $set: {
+                        pageId: normalizedPageId,
+                        data: {},
+                        status: "pending",
+                        error: null,
+                        isDeleted: false,
+                        meta,
+                        serviceId
+                    }
+                },
+                { upsert: true, new: true }
+            );
+            logSectionContentWrite("saved", {
+                projectId,
+                pageId,
+                sectionId: normalizedSectionId,
+                locationId,
+                source: `${meta?.source || "unknown"}:pending-placeholder`
+            });
+            return pendingDoc;
+        }
+        logSectionContentWrite("skipped-empty", { projectId, pageId, sectionId, locationId, source: meta?.source || "unknown" });
+        return existing;
+    }
+    const sanitizedData = sanitizeSectionDataForStorage(sectionId, data);
+    const doc = await SectionContent.findOneAndUpdate(
+        {
+            projectId,
+            ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+            serviceId,
+            sectionId: normalizedSectionId,
+            locationId,
+            isDeleted: { $ne: true }
+        },
+        {
+            $set: {
+                pageId: normalizedPageId,
+                data: sanitizedData,
+                status: "generated",
+                error: null,
+                isDeleted: false,
+                meta,
+                serviceId
+            }
+        },
+        { upsert: true, new: true }
+    );
+    try {
+        const scopeRows = await SectionContent.find({
+            projectId,
+            ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+            serviceId,
+            sectionId: normalizedSectionId,
+            locationId,
+            isDeleted: { $ne: true }
+        }).select("_id updatedAt").sort({ updatedAt: -1, _id: -1 }).lean();
+        if (scopeRows.length > 1) {
+            const staleIds = scopeRows.slice(1).map((r) => r._id);
+            if (staleIds.length) await SectionContent.deleteMany({ _id: { $in: staleIds } });
+        }
+    } catch (_e) { }
+    logSectionContentWrite("saved", { projectId, pageId, sectionId, locationId, source: meta?.source || "unknown" });
+    return doc;
+}
+
+async function upsertServiceBundleSectionRecord({
+    projectId,
+    serviceId,
+    locationId = null,
+    sectionId,
+    data = {},
+    meta = {},
+}) {
+    if (!projectId || !serviceId || !sectionId) return null;
+    if (!isMeaningfulSectionData(data)) {
+        const sectionKey = normalizeSectionIdForStorage(sectionId);
+        const bundleDoc = await SectionContent.findOne({
+            projectId,
+            pageId: serviceId,
+            serviceId,
+            sectionId: "service_sections",
+            locationId,
+            isDeleted: { $ne: true }
+        }).select("_id").lean();
+        if (!bundleDoc) {
+            const pendingDoc = await SectionContent.findOneAndUpdate(
+                {
+                    projectId,
+                    pageId: serviceId,
+                    serviceId,
+                    sectionId: "service_sections",
+                    locationId,
+                    isDeleted: { $ne: true }
+                },
+                {
+                    $set: {
+                        [`data.sections.${sectionKey}`]: {},
+                        "data.serviceId": serviceId,
+                        "data.locationId": locationId,
+                        status: "pending",
+                        error: null,
+                        isDeleted: false,
+                        meta
+                    }
+                },
+                { upsert: true, new: true }
+            );
+            logSectionContentWrite("saved", {
+                projectId,
+                pageId: serviceId,
+                sectionId: `service_sections.${sectionKey}`,
+                locationId,
+                source: `${meta?.source || "unknown"}:pending-placeholder`
+            });
+            return pendingDoc;
+        }
+        logSectionContentWrite("skipped-empty", { projectId, pageId: serviceId, sectionId, locationId, source: meta?.source || "unknown" });
+        return null;
+    }
+    const sanitizedData = sanitizeSectionDataForStorage(sectionId, data);
+    const doc = await SectionContent.findOneAndUpdate(
+        {
+            projectId,
+            pageId: serviceId,
+            serviceId,
+            sectionId: "service_sections",
+            locationId,
+            isDeleted: { $ne: true }
+        },
+        {
+            $set: {
+                [`data.sections.${String(sectionId).toLowerCase().trim()}`]: sanitizedData,
+                "data.serviceId": serviceId,
+                "data.locationId": locationId,
+                status: "generated",
+                error: null,
+                isDeleted: false,
+                meta
+            }
+        },
+        { upsert: true, new: true }
+    );
+    logSectionContentWrite("saved", { projectId, pageId: serviceId, sectionId: `service_sections.${sectionId}`, locationId, source: meta?.source || "unknown" });
+    return doc;
+}
+
+function buildAreaItemsFromLocations({
+    allLocations = [],
+    pageMeta = {},
+    websitePages = [],
+    projectType = 1,
+}) {
+    const safeLocations = Array.isArray(allLocations) ? allLocations : [];
+    const isBulkProject = Number(projectType) === 0;
+    const { getScopedAreaLocations } = require("../services/locationContentScope");
+
+    const pageLocationSlugById = new Map();
+    (Array.isArray(websitePages) ? websitePages : []).forEach((p) => {
+        if (!p?.locationId) return;
+        if (p?.isPublished === false) return;
+        // Areas pills should route to location landing pages, not service pages.
+        if (String(p?.pageType || "").toLowerCase().trim() === "service") return;
+        const slug = String(p?.slug || "").trim().replace(/^\/+/, "");
+        if (!slug) return;
+        pageLocationSlugById.set(String(p.locationId), `/${slug}`);
+    });
+    const pathByLocationId = buildBusinessLocationPathMap(safeLocations);
+
+    const currentLocationId = pageMeta?.locationId ? String(pageMeta.locationId) : null;
+    const onHomepage = isHomepageMeta(pageMeta);
+
+    const scopedLocations = getScopedAreaLocations({
+        allLocations: safeLocations,
+        projectType: isBulkProject ? 0 : 1,
+        scopeLocationId: onHomepage ? null : currentLocationId,
+        onHomepage,
+    });
+
+    const seen = new Set();
+    const unique = [];
+    for (const loc of scopedLocations) {
+        const locId = String(loc?._id || "");
+        const name = String(loc?.areaName || "").trim();
+        if (!locId || !name) continue;
+        const key = name.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push({
+            id: locId,
+            title: name,
+            link: resolveLocationPageHref(locId, pageLocationSlugById, pathByLocationId),
+        });
+    }
+
+    return unique.slice(0, 24).map((item, idx) => ({
+        id: `area-${idx + 1}`,
+        locationId: item.id,
+        title: item.title,
+        link: item.link,
+    }));
+}
+
+function titleCaseWords(value = "") {
+    return String(value || "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
+}
+
+/**
+ * Merge location-scoped SectionContent (OpenAI grid copy) with bundle-derived
+ * structural fields (links, images). Saved card descriptions win when present.
+ */
+function mergeServicesGridWithBundle(savedContent = {}, bundleContent = {}) {
+    const savedItems = Array.isArray(savedContent?.items) ? savedContent.items : [];
+    const bundleItems = Array.isArray(bundleContent?.items) ? bundleContent.items : [];
+    const bundleByServiceId = new Map();
+    for (const it of bundleItems) {
+        const sid = String(it?.serviceId || "").trim();
+        if (sid) bundleByServiceId.set(sid, it);
+    }
+
+    console.log("[mergeServicesGridWithBundle] input:", {
+        savedItemsCount: savedItems.length,
+        bundleItemsCount: bundleItems.length,
+        bundleServiceIds: Array.from(bundleByServiceId.keys()),
+    });
+
+    let mergedItems;
+    if (savedItems.length > 0) {
+        mergedItems = savedItems.map((saved, idx) => {
+            const sid = String(saved?.serviceId || "").trim();
+            const bundle = (sid && bundleByServiceId.get(sid)) || bundleItems[idx] || {};
+            const savedDesc = String(saved?.description || "").trim();
+            const bundleDesc = String(bundle?.description || "").trim();
+            // Bundle description (from aboutservice.about_service) takes priority
+            // since it's AI-generated and location-specific
+            console.log(`[mergeServicesGridWithBundle] item[${idx}] serviceId=${sid} savedDesc=${savedDesc ? "YES" : "NO"} bundleDesc=${bundleDesc ? "YES" : "NO"} using=${bundleDesc ? "BUNDLE" : "SAVED"}`);
+            return {
+                ...bundle,
+                ...saved,
+                id: saved.id || bundle.id || `service-${idx + 1}`,
+                serviceId: sid || String(bundle.serviceId || ""),
+                title: bundleDesc ? (bundle.title || saved.title || "").trim() : (saved.title || bundle.title || "").trim(),
+                description: bundleDesc || savedDesc,
+                link: String(saved.link || bundle.link || "#").trim() || "#",
+                imageUrl: String(bundle.imageUrl || saved.imageUrl || "").trim(),
+                icon: saved.icon || bundle.icon,
+                locationId:
+                    bundle.locationId != null && bundle.locationId !== ""
+                        ? bundle.locationId
+                        : saved.locationId,
+            };
+        });
+    } else {
+        console.log("[mergeServicesGridWithBundle] no saved items, using bundle items directly");
+        mergedItems = bundleItems;
+    }
+
+    const hasSavedHeader = Boolean(
+        String(savedContent?.badgeText || "").trim() ||
+            String(savedContent?.title || savedContent?.heading || "").trim() ||
+            String(savedContent?.subtitle || savedContent?.descriptionText || "").trim() ||
+            String(savedContent?.description || "").trim()
+    );
+
+    return {
+        ...bundleContent,
+        ...savedContent,
+        badgeText: hasSavedHeader
+            ? savedContent.badgeText || bundleContent.badgeText
+            : bundleContent.badgeText,
+        title: hasSavedHeader
+            ? savedContent.title || savedContent.heading || bundleContent.title
+            : bundleContent.title,
+        heading: hasSavedHeader
+            ? savedContent.heading || savedContent.title || bundleContent.heading || bundleContent.title
+            : bundleContent.heading || bundleContent.title,
+        subtitle: hasSavedHeader
+            ? savedContent.subtitle || savedContent.descriptionText || bundleContent.subtitle
+            : bundleContent.subtitle,
+        description: hasSavedHeader
+            ? savedContent.description || savedContent.subtitle || bundleContent.description
+            : bundleContent.description,
+        items: mergedItems,
+    };
+}
+
+async function buildServicesGridContentFromBundle({ projectId, locationId = null, businessLocations = [], projectType = 1 }) {
+    const allServices = await Service.find({ projectId })
+        .select("_id name slug")
+        .lean();
+    if (!allServices.length) return null;
+
+    const parents = (businessLocations || []).filter((loc) => Number(loc?.type) === 0);
+    const firstParentLocation =
+        parents.sort((a, b) => String(a?._id || "").localeCompare(String(b?._id || "")))[0] ||
+        (await BusinessLocation.findOne({
+            projectId,
+            status: 1,
+            type: 0
+        })
+            .sort({ createdAt: 1, _id: 1 })
+            .select("_id areaName type parentId")
+            .lean());
+
+    let scopeLoc =
+        locationId != null && String(locationId).trim() !== "" ? String(locationId).trim() : null;
+    if (!scopeLoc && Number(projectType) === 1 && firstParentLocation?._id) {
+        scopeLoc = String(firstParentLocation._id);
+    }
+
+    const byLocId = new Map(
+        (businessLocations || []).map((l) => [String(l?._id || ""), l]).filter(([id]) => !!id)
+    );
+
+    async function fetchServicePages(forLocId) {
+        const q = {
+            projectId,
+            pageType: "service",
+            serviceId: { $exists: true, $ne: null },
+        };
+        if (forLocId) {
+            const candidates = buildMixedIdCandidates(forLocId);
+            if (candidates.length > 1) {
+                q.locationId = { $in: candidates };
+            } else if (candidates.length === 1) {
+                q.locationId = candidates[0];
+            }
+            return WebsitePage.find(q).select("_id serviceId locationId slug").lean();
+        }
+        return WebsitePage.find({
+            ...q,
+            $or: [{ locationId: null }, { locationId: { $exists: false } }],
+        })
+            .select("_id serviceId locationId slug")
+            .lean();
+    }
+
+    let servicePages = await fetchServicePages(scopeLoc);
+    if ((!servicePages || !servicePages.length) && scopeLoc && Number(projectType) === 0) {
+        servicePages = await fetchServicePages(null);
+    }
+
+    const validServiceIds = new Set(
+        (servicePages || []).map((p) => String(p.serviceId || "")).filter(Boolean)
+    );
+    const filteredServices =
+        validServiceIds.size > 0
+            ? allServices.filter((s) => validServiceIds.has(String(s._id)))
+            : allServices;
+
+    const pageByServiceId = new Map((servicePages || []).map((p) => [String(p.serviceId || ""), p]));
+    const serviceIds = filteredServices.map((s) => s?._id).filter(Boolean);
+    const bundleDocs = serviceIds.length
+        ? await SectionContent.find({
+            projectId,
+            $or: [{ serviceId: { $in: serviceIds } }, { pageId: { $in: serviceIds } }],
+            sectionId: "service_sections",
+            isDeleted: { $ne: true }
+        })
+            .select("serviceId pageId locationId data")
+            .lean()
+        : [];
+
+    const bundleByServiceLocation = new Map(
+        (bundleDocs || []).map((doc) => [
+            `${String(doc.serviceId || doc.pageId || "")}::${String(doc.locationId || "")}`,
+            doc?.data || {}
+        ])
+    );
+    const bundleRowsByServiceId = new Map();
+    for (const doc of bundleDocs || []) {
+        const sid = String(doc?.serviceId || doc?.pageId || "").trim();
+        if (!sid) continue;
+        if (!bundleRowsByServiceId.has(sid)) bundleRowsByServiceId.set(sid, []);
+        bundleRowsByServiceId.get(sid).push(doc);
+    }
+
+    console.log("[buildServicesGridContentFromBundle] bundle docs found:", {
+        count: bundleDocs.length,
+        scopeLoc,
+        bundleKeys: Array.from(bundleByServiceLocation.keys()),
+    });
+
+    const pickBundleData = (serviceId, preferredLocationIds = []) => {
+        const sid = String(serviceId || "").trim();
+        if (!sid) return {};
+        const normalizedLocs = (Array.isArray(preferredLocationIds) ? preferredLocationIds : [])
+            .map((loc) => String(loc || "").trim())
+            .filter(Boolean);
+        for (const loc of normalizedLocs) {
+            const hit = bundleByServiceLocation.get(`${sid}::${loc}`);
+            if (hit && typeof hit === "object") {
+                console.log(`[buildServicesGridContentFromBundle] bundle HIT service=${sid} loc=${loc} aboutservice=${Boolean(hit?.sections?.aboutservice)}`);
+                return hit;
+            }
+        }
+        const nullHit = bundleByServiceLocation.get(`${sid}::`);
+        if (nullHit && typeof nullHit === "object") {
+            console.log(`[buildServicesGridContentFromBundle] bundle HIT (null loc) service=${sid} aboutservice=${Boolean(nullHit?.sections?.aboutservice)}`);
+            return nullHit;
+        }
+        console.log(`[buildServicesGridContentFromBundle] bundle MISS service=${sid} tried=[${normalizedLocs.join(",")}]`);
+        return {};
+    };
+
+    const items = filteredServices.slice(0, 8).map((svc, idx) => {
+        const servicePage = pageByServiceId.get(String(svc._id));
+        const serviceLink = servicePage?.slug
+            ? `/${String(servicePage.slug).trim().replace(/^\/+/, "")}`
+            : "#";
+        const serviceLoc = String(servicePage?.locationId || "").trim();
+        const parentLoc =
+            serviceLoc && byLocId.get(serviceLoc)?.parentId
+                ? String(byLocId.get(serviceLoc).parentId)
+                : "";
+        const bundleData = pickBundleData(String(svc?._id || ""), [
+            scopeLoc || "",
+            serviceLoc && serviceLoc === String(scopeLoc || "") ? serviceLoc : "",
+        ].filter(Boolean));
+        const aboutContent = bundleData?.sections?.aboutservice || {};
+        const heroContent = bundleData?.sections?.servicehero || {};
+        const faqContent = bundleData?.sections?.faq || {};
+        const bundleSlug = String(bundleData?.servicePageSlug || "").trim().replace(/^\/+/, "");
+        const finalServiceLink =
+            serviceLink !== "#"
+                ? serviceLink
+                : (bundleSlug ? `/${bundleSlug}` : "#");
+
+        const aboutTextRaw =
+            aboutContent?.about_service ||
+            aboutContent?.description ||
+            heroContent?.serviceHeroSubtitle ||
+            faqContent?.description ||
+            aboutContent?.subtitle ||
+            "";
+        const aboutPlain = String(aboutTextRaw || "").trim();
+
+        console.log(`[buildServicesGridContentFromBundle] service=${svc.name} aboutservice.about_service=${aboutContent?.about_service ? "YES (" + aboutContent.about_service.substring(0, 50) + "...)" : "NO"} finalDesc=${aboutPlain ? aboutPlain.substring(0, 50) + "..." : "EMPTY"}`);
+
+        const itemLocationId =
+            servicePage?.locationId != null && String(servicePage.locationId).trim()
+                ? String(servicePage.locationId)
+                : scopeLoc || null;
+
+        return {
+            id: `service-${idx + 1}`,
+            serviceId: String(svc?._id || ""),
+            locationId: itemLocationId,
+            icon: [
+                "fas fa-screwdriver-wrench",
+                "fas fa-shield-halved",
+                "fas fa-bolt",
+                "fas fa-house",
+                "fas fa-helmet-safety",
+                "fas fa-star",
+                "fas fa-gear",
+                "fas fa-briefcase"
+            ][idx % 8],
+            title:
+                String(
+                    aboutContent?.service_name ||
+                    aboutContent?.title ||
+                    heroContent?.serviceHeroTitle ||
+                    svc?.name ||
+                    ""
+                ).trim() ||
+                `Service ${idx + 1}`,
+            link: finalServiceLink,
+            imageUrl:
+                aboutContent?.imageUrl ||
+                (Array.isArray(aboutContent?.images) ? aboutContent.images[0]?.url || "" : ""),
+            description: aboutPlain,
+        };
+    });
+
+    const projectLean = await UserProject.findById(projectId)
+        .select("serviceType projectName")
+        .lean();
+    const serviceTypeLabel = titleCaseWords(String(projectLean?.serviceType || "Service"));
+
+    const headerLocationName = (() => {
+        if (scopeLoc && byLocId.has(scopeLoc)) {
+            return String(byLocId.get(scopeLoc).areaName || "").trim();
+        }
+        if (firstParentLocation?.areaName) {
+            return String(firstParentLocation.areaName || "").trim();
+        }
+        return "";
+    })();
+
+    const dbHeader = {
+        badgeText: `${serviceTypeLabel} Services`,
+        heading: headerLocationName
+            ? `${serviceTypeLabel} in ${headerLocationName}`
+            : `${serviceTypeLabel} Services`,
+        descriptionText: headerLocationName
+            ? `Browse ${serviceTypeLabel.toLowerCase()} services for ${headerLocationName} homes and businesses.`
+            : "Explore verified services available for your project.",
+    };
+
+    return {
+        badgeText: dbHeader.badgeText,
+        title: dbHeader.heading,
+        heading: dbHeader.heading,
+        subtitle: dbHeader.descriptionText,
+        description: dbHeader.descriptionText,
+        items
+    };
+}
+
+/**
+ * When the homepage (or any non–service-page) "services" grid is saved from GenieBuild,
+ * push per-card copy + image into each row's service_sections bundle so the dedicated
+ * service page (aboutservice, etc.) stays aligned. WebsiteDesignsData / per-section
+ * styles are unchanged — only SectionContent bundle fields are patched.
+ */
+async function propagateServicesGridItemsToServiceBundles({
+    projectId,
+    canonicalContent = {},
+    effectiveLocationId = null,
+    pageMeta = {},
+}) {
+    const items = Array.isArray(canonicalContent?.items) ? canonicalContent.items : [];
+    if (!items.length || !projectId) return 0;
+
+    let slugMap = null;
+    const loadSlugMap = async () => {
+        if (slugMap) return slugMap;
+        slugMap = new Map();
+        const pages = await WebsitePage.find({ projectId, pageType: "service", serviceId: { $exists: true, $ne: null } })
+            .select("serviceId locationId slug")
+            .lean();
+        for (const p of pages || []) {
+            const slug = String(p.slug || "")
+                .trim()
+                .replace(/^\/+|\/+$/g, "");
+            if (!slug) continue;
+            const loc = String(p.locationId || "");
+            slugMap.set(`${slug}::${loc}`, p);
+            if (!slugMap.has(slug)) slugMap.set(slug, p);
+        }
+        return slugMap;
+    };
+
+    let patched = 0;
+    for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+
+        let serviceId = item.serviceId || item.service_id;
+        let locationId =
+            item.locationId != null && String(item.locationId).trim() !== ""
+                ? String(item.locationId).trim()
+                : null;
+
+        const link = String(item.link || "").trim();
+        if ((!serviceId || !mongoose.isValidObjectId(String(serviceId))) && link) {
+            const map = await loadSlugMap();
+            const path = link
+                .split("?")[0]
+                .replace(/^https?:\/\/[^/]+/i, "")
+                .replace(/^\/+|\/+$/g, "");
+            const locHint =
+                locationId ||
+                (effectiveLocationId != null && String(effectiveLocationId).trim() !== ""
+                    ? String(effectiveLocationId).trim()
+                    : "") ||
+                (pageMeta?.locationId ? String(pageMeta.locationId) : "");
+            const pageRow =
+                map.get(`${path}::${locHint}`) || map.get(path) || map.get(`${path}::${String(pageMeta?.locationId || "")}`);
+            if (pageRow?.serviceId) {
+                serviceId = String(pageRow.serviceId);
+                if (!locationId && pageRow.locationId != null) locationId = String(pageRow.locationId);
+            }
+        }
+
+        if (!serviceId || !mongoose.isValidObjectId(String(serviceId))) continue;
+
+        if (!locationId) {
+            if (effectiveLocationId != null && String(effectiveLocationId).trim() !== "") {
+                locationId = String(effectiveLocationId).trim();
+            } else if (pageMeta?.locationId) {
+                locationId = String(pageMeta.locationId);
+            }
+        }
+
+        const cardDesc = String(item.description || item.about_service || item.desc || "").trim();
+        const imageUrl = String(item.imageUrl || item.img || "").trim();
+        const title = String(item.title || "").trim();
+
+        const $set = {};
+        if (cardDesc) {
+            $set["data.sections.aboutservice.about_service"] = cardDesc;
+            $set["data.sections.aboutservice.description"] = cardDesc;
+        }
+        if (imageUrl) {
+            $set["data.sections.aboutservice.imageUrl"] = imageUrl;
+        }
+        if (title) {
+            $set["data.sections.aboutservice.service_name"] = title;
+        }
+
+        if (!Object.keys($set).length) continue;
+
+        const bundleLocationId = locationId != null && String(locationId).trim() !== "" ? locationId : null;
+
+        await SectionContent.findOneAndUpdate(
+            {
+                projectId,
+                pageId: serviceId,
+                serviceId,
+                sectionId: "service_sections",
+                locationId: bundleLocationId,
+                isDeleted: { $ne: true },
+            },
+            {
+                $set: {
+                    ...$set,
+                    projectId,
+                    pageId: serviceId,
+                    serviceId,
+                    sectionId: "service_sections",
+                    locationId: bundleLocationId,
+                    "data.serviceId": serviceId,
+                    status: "generated",
+                    error: null,
+                    isDeleted: false,
+                },
+            },
+            { upsert: true }
+        );
+        logSectionContentWrite("saved", {
+            projectId,
+            pageId: serviceId,
+            sectionId: "service_sections.aboutservice(from-services-grid)",
+            locationId: bundleLocationId,
+            source: "propagateServicesGridItemsToServiceBundles",
+        });
+        patched++;
+    }
+    return patched;
+}
+
+/**
+ * When a service page (aboutservice / servicehero) is edited, push the
+ * changed title / description / imageUrl back into the matching item inside
+ * the homepage services grid SectionContent row (sectionId === "services").
+ */
+async function propagateServicePageEditsToServicesGrid({
+    projectId,
+    serviceId,
+    sectionType,
+    content = {},
+    locationId = null,
+}) {
+    if (!projectId || !serviceId) return;
+
+    const servicesRows = await SectionContent.find({
+        projectId,
+        sectionId: "services",
+        isDeleted: { $ne: true },
+    })
+        .select("_id data locationId")
+        .lean();
+
+    if (!servicesRows.length) return;
+
+    for (const row of servicesRows) {
+        const items = Array.isArray(row?.data?.items) ? row.data.items : [];
+        const idx = items.findIndex(
+            (it) => String(it?.serviceId || "") === String(serviceId)
+        );
+        if (idx === -1) continue;
+
+        const $set = {};
+        if (sectionType === "aboutservice") {
+            const desc =
+                String(content.about_service || content.description || "").trim();
+            const title = String(content.service_name || content.title || "").trim();
+            const imageUrl = String(content.imageUrl || "").trim();
+            if (desc) $set[`data.items.${idx}.description`] = desc;
+            if (title) $set[`data.items.${idx}.title`] = title;
+            if (imageUrl) $set[`data.items.${idx}.imageUrl`] = imageUrl;
+        } else if (sectionType === "servicehero") {
+            const title =
+                String(content.serviceHeroTitle || content.title || "").trim();
+            if (title) $set[`data.items.${idx}.title`] = title;
+        }
+
+        if (!Object.keys($set).length) continue;
+
+        await SectionContent.updateOne({ _id: row._id }, { $set });
+        logSectionContentWrite("reverse-propagated", {
+            projectId,
+            sectionContentId: String(row._id),
+            serviceId,
+            sectionType,
+            source: "propagateServicePageEditsToServicesGrid",
+        });
+    }
+}
+
+async function terminateQueueJobs(queue, queueName) {
+    const summary = {
+        queue: queueName,
+        waitingRemoved: 0,
+        delayedRemoved: 0,
+        pausedRemoved: 0,
+        activeFailed: 0,
+        errors: []
+    };
+
+    if (!queue || typeof queue.getJobs !== "function") {
+        summary.errors.push("Queue not available");
+        return summary;
+    }
+
+    try {
+        // Pause worker consumption globally first so no new jobs start while clearing.
+        await queue.pause(true);
+
+        const [waitingJobs, delayedJobs, pausedJobs, activeJobs] = await Promise.all([
+            queue.getJobs(["waiting"]),
+            queue.getJobs(["delayed"]),
+            queue.getJobs(["paused"]),
+            queue.getJobs(["active"]),
+        ]);
+
+        for (const job of waitingJobs) {
+            try {
+                await job.remove();
+                summary.waitingRemoved++;
+            } catch (err) {
+                summary.errors.push(`waiting#${job.id}: ${err.message}`);
+            }
+        }
+
+        for (const job of delayedJobs) {
+            try {
+                await job.remove();
+                summary.delayedRemoved++;
+            } catch (err) {
+                summary.errors.push(`delayed#${job.id}: ${err.message}`);
+            }
+        }
+
+        for (const job of pausedJobs) {
+            try {
+                await job.remove();
+                summary.pausedRemoved++;
+            } catch (err) {
+                summary.errors.push(`paused#${job.id}: ${err.message}`);
+            }
+        }
+
+        // Active jobs are already running; mark failed so they stop and won't continue burning credits.
+        for (const job of activeJobs) {
+            try {
+                if (typeof job.discard === "function") job.discard();
+                if (typeof job.moveToFailed === "function") {
+                    await job.moveToFailed(new Error("Terminated by admin danger zone"), true);
+                }
+                summary.activeFailed++;
+            } catch (err) {
+                summary.errors.push(`active#${job.id}: ${err.message}`);
+            }
+        }
+    } catch (err) {
+        summary.errors.push(`queue-op: ${err.message}`);
+    } finally {
+        try {
+            await queue.resume(true);
+        } catch (err) {
+            summary.errors.push(`resume: ${err.message}`);
+        }
+    }
+
+    return summary;
+}
+
+const DANGER_ZONE_COLLECTIONS = [
+    { key: "userProjects", model: UserProject, filterByProject: false },
+    { key: "aboutUs", model: AboutUs, filterByProject: true },
+    { key: "businessLocations", model: BusinessLocation, filterByProject: true },
+    { key: "sectionContents", model: SectionContent, filterByProject: true },
+    { key: "services", model: Service, filterByProject: true },
+    { key: "siteHeaderFooters", model: SiteHeaderFooter, filterByProject: true },
+    { key: "websiteDesignsDatas", model: WebsiteDesignsData, filterByProject: true },
+    { key: "websitePages", model: WebsitePage, filterByProject: true },
+];
+
+function isMeaningfulSectionData(value) {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    if (typeof value === "number" || typeof value === "boolean") return true;
+    if (Array.isArray(value)) return value.some((item) => isMeaningfulSectionData(item));
+    if (typeof value === "object") {
+        const keys = Object.keys(value);
+        if (!keys.length) return false;
+        return keys.some((k) => isMeaningfulSectionData(value[k]));
+    }
+    return false;
+}
+
+function logSectionContentWrite(status, context = {}) {
+    const line = `[SectionContent:${status}] project=${context.projectId || "-"} page=${context.pageId || "-"} section=${context.sectionId || "-"} location=${context.locationId || "null"} source=${context.source || "-"}`;
+    if (status === "error") {
+        console.error(line, context.error || "");
+    } else if (status === "skipped-empty") {
+        console.warn(line);
+    } else {
+        console.log(line);
+    }
+}
+
+function sanitizeSectionDataForStorage(sectionId, value) {
+    const normalizedSectionId = normalizeSectionIdForStorage(sectionId);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const next = { ...value };
+    if (normalizedSectionId === "areas") {
+        delete next.items;
+    }
+    return next;
+}
+
+function normalizeSectionIdForStorage(sectionId = "") {
+    const raw = String(sectionId || "").toLowerCase().trim();
+    const aliases = {
+        servicesgrid: "services",
+        "why-choose-us": "whychooseus",
+    };
+    return aliases[raw] || raw;
+}
+
+function normalizeSectionTypeForClient(sectionId = "") {
+    const raw = String(sectionId || "").toLowerCase().trim();
+    const aliases = {
+        whychooseus: "why-choose-us",
+        servicesgrid: "services",
+    };
+    return aliases[raw] || raw;
+}
+
+function normalizeMixedIdForStorage(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return raw;
+    return mongoose.isValidObjectId(raw) ? new mongoose.Types.ObjectId(raw) : raw;
+}
+
+function buildMixedIdCandidates(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return [];
+    const candidates = [raw];
+    if (mongoose.isValidObjectId(raw)) {
+        candidates.push(new mongoose.Types.ObjectId(raw));
+    }
+    return candidates;
+}
+
+function shouldUseServiceBundleForPage(sectionId, pageMeta) {
+    const normalized = String(sectionId || "").toLowerCase().trim();
+    const isServicePage = String(pageMeta?.pageType || "").toLowerCase() === "service";
+    if (!isServicePage || !pageMeta?.serviceId) return false;
+    return isServiceBundleSection(normalized) || normalized === "faq";
+}
+
+function isHomepageMeta(pageMeta = {}) {
+    const locId = pageMeta?.locationId ? String(pageMeta.locationId).trim() : "";
+    const slugNorm = String(pageMeta?.slug || "").trim().replace(/^\/+|\/+$/g, "").toLowerCase();
+    // Location landing pages (e.g. /gagret/guglehar) are not the site homepage even if name collides.
+    if (locId && slugNorm && slugNorm !== "home") {
+        return false;
+    }
+    const pageType = String(pageMeta?.pageType || "").toLowerCase().trim();
+    const name = String(pageMeta?.name || "").toLowerCase().trim();
+    const slug = String(pageMeta?.slug || "").toLowerCase().trim();
+    return (
+        pageType === "home" ||
+        pageType === "homepage" ||
+        name === "home" ||
+        name === "homepage" ||
+        slug === "/" ||
+        slug === "" ||
+        slug === "home"
+    );
+}
+
+function resolveLocationPreferenceForPage({
+    preferredLocationId = null,
+    projectType = 0,
+    pageMeta = {},
+    businessLocations = [],
+}) {
+    const pageLocationId = pageMeta?.locationId ? String(pageMeta.locationId) : null;
+    const pageType = String(pageMeta?.pageType || "").toLowerCase().trim();
+
+    // Single-service pages are always tied to their WebsitePage.locationId (from URL slug).
+    if (pageType === "service" && pageLocationId) {
+        return pageLocationId;
+    }
+
+    // Location landing pages: content must match the page's own location, not a child from query.
+    if (pageLocationId && !isHomepageMeta(pageMeta)) {
+        return pageLocationId;
+    }
+
+    // Business projects (projectType: 1): homepage content uses parent location (type: 0)
+    // when no explicit locationId is set on the page or in the request.
+    if (Number(projectType) === 1 && isHomepageMeta(pageMeta) && !pageLocationId && !preferredLocationId) {
+        const parentLocation = (businessLocations || []).find(
+            (loc) => Number(loc?.type) === 0
+        );
+        if (parentLocation?._id) {
+            return String(parentLocation._id);
+        }
+    }
+
+    if (!preferredLocationId) {
+        return pageLocationId || null;
+    }
+    if (!isHomepageMeta(pageMeta)) return preferredLocationId;
+    return Number(projectType) === 1 ? preferredLocationId : null;
+}
+
+function pickServiceBundleDoc(serviceBundleMap, serviceId, locationId, parentById = null) {
+    if (!serviceId || !serviceBundleMap?.size) return null;
+    const sid = String(serviceId);
+    const loc = locationId != null && String(locationId).trim() !== ""
+        ? String(locationId).trim()
+        : "";
+
+    if (!loc) {
+        return serviceBundleMap.get(`${sid}::`) || null;
+    }
+
+    const exact = serviceBundleMap.get(`${sid}::${loc}`);
+    if (exact) return exact;
+
+    const { getAncestorIds } = require("../services/locationContentScope");
+    const parentMap = parentById || new Map();
+    for (const ancestorId of getAncestorIds(loc, parentMap)) {
+        const ancestorDoc = serviceBundleMap.get(`${sid}::${ancestorId}`);
+        if (ancestorDoc) return ancestorDoc;
+    }
+
+    return serviceBundleMap.get(`${sid}::`) || null;
+}
+
+function pickBestSectionDocByLocation(docs = [], preferredLocationId = null, parentById = null) {
+    const { pickSectionDocForLocation } = require("../services/locationContentScope");
+    return pickSectionDocForLocation(docs, preferredLocationId, parentById);
+}
+
+const PLUMBING_FAQ_PLACEHOLDER_FIRST =
+    "Do you offer 24/7 emergency plumbing services?";
+
+function isPlumbingDefaultFaqItems(items) {
+    if (!Array.isArray(items) || !items.length) return false;
+    const first = String(items[0]?.question || items[0]?.title || "").trim();
+    return first === PLUMBING_FAQ_PLACEHOLDER_FIRST;
+}
+
+function normalizePickedSectionContentData(data) {
+    if (Array.isArray(data)) {
+        return { items: data };
+    }
+    if (!data || typeof data !== "object") return {};
+    const out = { ...data };
+    if (!Array.isArray(out.items) && Array.isArray(out.faqs)) out.items = out.faqs;
+    if (!Array.isArray(out.items) && Array.isArray(out.questions)) out.items = out.questions;
+    return out;
+}
+
+function canonicalizeSectionContent(content = {}) {
+    if (Array.isArray(content)) {
+        return canonicalizeSectionContent({ items: content });
+    }
+    if (!content || typeof content !== "object") return {};
+    const title = String(content.title || content.heading || content.sectionTitle || "").trim();
+    const subtitle = String(
+        content.subtitle ||
+        content.descriptionText ||
+        content.description ||
+        content.sectionSubtitle ||
+        ""
+    ).trim();
+    const description = String(content.description || "").trim();
+
+    const next = { ...content };
+    if (title) next.title = title;
+    if (subtitle) next.subtitle = subtitle;
+    if (description) next.description = description;
+
+    delete next.heading;
+    delete next.descriptionText;
+    delete next.sectionTitle;
+    delete next.sectionSubtitle;
+    delete next.buttonText;
+    delete next.cta_label;
+    delete next.contentRef;
+    delete next.sectionContentId;
+    delete next.sectionContentIds;
+    delete next.locationIds;
+    delete next.fullDescription;
+    delete next.full_description;
+
+    if (next.description && next.subtitle && String(next.description).trim() === String(next.subtitle).trim()) {
+        delete next.description;
+    }
+
+    // Strip fullDescription from items[]; normalize FAQ rows for SiteNextJS / GenieBuild.
+    if (Array.isArray(next.items)) {
+        next.items = next.items.map((item) => {
+            if (!item || typeof item !== "object") return item;
+            const cleaned = { ...item };
+            if (cleaned.fullDescription) {
+                if (!cleaned.description) cleaned.description = cleaned.fullDescription;
+                delete cleaned.fullDescription;
+            }
+            delete cleaned.full_description;
+            const question = String(cleaned.question || cleaned.title || "").trim();
+            const answer = String(
+                cleaned.answer || cleaned.description || cleaned.content || ""
+            ).trim();
+            if (question) cleaned.question = question;
+            if (answer) cleaned.answer = answer;
+            return cleaned;
+        });
+    }
+    return next;
+}
+
+function compactOverrideObject(value) {
+    if (value === undefined) return undefined;
+    if (Array.isArray(value)) {
+        return value
+            .map((item) => compactOverrideObject(item))
+            .filter((item) => item !== undefined);
+    }
+    if (value && typeof value === "object") {
+        const out = {};
+        Object.entries(value).forEach(([k, v]) => {
+            const compacted = compactOverrideObject(v);
+            if (compacted !== undefined) out[k] = compacted;
+        });
+        return Object.keys(out).length ? out : undefined;
+    }
+    return value;
+}
+
+function compactElementRecords(elementIds = []) {
+    const walk = (el) => {
+        if (!el || typeof el !== "object") return null;
+
+        // GenieBuild canonical element shape
+        // { id, type, content, style, children? }
+        if (el.id) {
+            const next = {
+                id: String(el.id),
+                type: String(el.type || "text"),
+            };
+            const style = compactOverrideObject(el.style || {});
+            const content = compactOverrideObject(el.content || {});
+            if (style && Object.keys(style).length) next.style = style;
+            if (content && Object.keys(content).length) next.content = content;
+            if (typeof el.order === "number" && el.order !== 0) next.order = el.order;
+            if (el.parentElId) next.parentElId = el.parentElId;
+            if (Array.isArray(el.children) && el.children.length) {
+                const children = el.children.map(walk).filter(Boolean);
+                if (children.length) next.children = children;
+            }
+            return next;
+        }
+
+        // Legacy element record shape
+        // { elementId, elementType, style, data, children? }
+        if (el.elementId) {
+            const next = {
+                id: String(el.elementId),
+                type: String(el.elementType || "text"),
+            };
+            const style = compactOverrideObject(el.style || {});
+            const content = compactOverrideObject(el.data || {});
+            if (style && Object.keys(style).length) next.style = style;
+            if (content && Object.keys(content).length) next.content = content;
+            if (typeof el.order === "number" && el.order !== 0) next.order = el.order;
+            if (el.parentElId) next.parentElId = el.parentElId;
+            if (Array.isArray(el.children) && el.children.length) {
+                const children = el.children.map(walk).filter(Boolean);
+                if (children.length) next.children = children;
+            }
+            return next;
+        }
+
+        return null;
+    };
+    return (Array.isArray(elementIds) ? elementIds : []).map(walk).filter(Boolean);
+}
+
+function sanitizePageStyles(value = {}) {
+    const raw = (value && typeof value === "object" && !Array.isArray(value)) ? { ...value } : {};
+    delete raw.renderer;
+    return raw;
+}
+
+function compactSectionStyleOverrides(style = {}, theme = {}) {
+    const raw = compactOverrideObject(style || {}) || {};
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    if (Object.prototype.hasOwnProperty.call(raw, "variant")) delete raw.variant;
+
+    const defaults = {
+        backgroundColor: theme?.colorSecondary || "#0E1214",
+        textColor: "#D1D5DB",
+        titleColor: theme?.colorAccent || "#F8FAFC",
+        subtitleColor: "#D1D5DB",
+        descriptionColor: "#D1D5DB",
+        buttonBackgroundColor: theme?.colorPrimary || "#E11D48",
+        buttonTextColor: "#FFFFFF",
+        buttonStyle: "filled",
+        maxWidth: "max-w-7xl",
+        paddingTop: "py-24",
+        paddingBottom: "py-24",
+        backgroundImage: "",
+        overlayColor: "#000000",
+        overlayOpacityValue: "0.6",
+    };
+
+    for (const [key, defaultValue] of Object.entries(defaults)) {
+        if (!Object.prototype.hasOwnProperty.call(raw, key)) continue;
+        if (String(raw[key]) === String(defaultValue)) delete raw[key];
+    }
+    return raw;
+}
+
+function collectSectionContentIdsFromRef(contentRef = {}) {
+    const ids = new Set();
+    const legacyIds = Array.isArray(contentRef?.sectionContentIds) ? contentRef.sectionContentIds : [];
+    legacyIds.forEach((id) => ids.add(String(id)));
+    const sources = Array.isArray(contentRef?.sources) ? contentRef.sources : [];
+    sources.forEach((src) => {
+        if (String(src?.source || "").toLowerCase().trim() !== "section_content") return;
+        const srcIds = Array.isArray(src?.ids) ? src.ids : [];
+        srcIds.forEach((id) => ids.add(String(id)));
+    });
+    return Array.from(ids);
+}
+
+function buildContentRef({
+    resolver = "page_scoped",
+    sectionContentIds = [],
+    locationIds = [],
+    extraSources = []
+}) {
+    const normalizedSectionContentIds = (Array.isArray(sectionContentIds) ? sectionContentIds : [])
+        .map((id) => String(id).trim())
+        .filter(Boolean);
+    const sources = [];
+    if (normalizedSectionContentIds.length) {
+        sources.push({ source: "section_content", ids: normalizedSectionContentIds });
+    }
+    for (const src of (Array.isArray(extraSources) ? extraSources : [])) {
+        const source = String(src?.source || "").trim();
+        const ids = (Array.isArray(src?.ids) ? src.ids : []).map((id) => String(id).trim()).filter(Boolean);
+        if (!source || !ids.length) continue;
+        sources.push({ source, ids });
+    }
+    return {
+        resolver,
+        sources,
+    };
+}
+
+function getSectionEntriesFromPage(page = {}) {
+    const sections = getPageSections(page);
+    return sections
+        .map((comp, idx) => {
+            const sectionData = comp?.sectionData;
+            if (!sectionData || typeof sectionData !== "object") return null;
+            const fallbackType = String(comp?.variant_uniqueId || comp?.uniqueId || "")
+                .split(/[_-]/)[0]
+                .trim()
+                .toLowerCase();
+            const sectionType = normalizeSectionIdForStorage(String(sectionData?.type || fallbackType || "").toLowerCase().trim());
+            if (!sectionType) return null;
+            return {
+                index: idx,
+                sectionType,
+                sectionData,
+                compData: comp
+            };
+        })
+        .filter(Boolean);
+}
+
+function resolveSectionContentWithPriority({
+    sectionType,
+    contentRef = {},
+    pageIdStr,
+    scopedPreferredLocationId = null,
+    sectionContentDocs = [],
+    sectionContentRowsByKey = new Map(),
+    resolverType = "page_scoped",
+    serviceBundleMap = new Map(),
+    pageMeta = {},
+    businessLocations = [],
+    resolvedServicesGridContent = null,
+    websitePages = [],
+    projectType = 1,
+}) {
+    const key = `${pageIdStr}::${sectionType}`;
+    const referencedIds = collectSectionContentIdsFromRef(contentRef);
+    const referencedDocs = referencedIds.length
+        ? (sectionContentDocs || []).filter((doc) => referencedIds.includes(String(doc?._id || "")))
+        : [];
+    const locationParentMap = (() => {
+        const { buildLocationParentMap } = require("../services/locationContentScope");
+        return buildLocationParentMap(businessLocations || []);
+    })();
+    const pageScopedDoc = pickBestSectionDocByLocation(
+        sectionContentRowsByKey.get(key) || [],
+        scopedPreferredLocationId,
+        locationParentMap
+    );
+    let pickedDoc = pickBestSectionDocByLocation(
+        [pickBestSectionDocByLocation(referencedDocs, scopedPreferredLocationId, locationParentMap), pageScopedDoc].filter(Boolean),
+        scopedPreferredLocationId,
+        locationParentMap
+    );
+
+    const useServiceBundleResolver =
+        resolverType === "service_bundle" ||
+        String(contentRef?.scope || "").toLowerCase() === "service_bundle" ||
+        shouldUseServiceBundleForPage(sectionType, pageMeta);
+
+    if (!pickedDoc && useServiceBundleResolver) {
+        const serviceId = contentRef?.serviceId || pageMeta?.serviceId || null;
+        const bundleLocationId = contentRef?.locationId || pageMeta?.locationId || null;
+        const targetSection = String(contentRef?.sectionId || sectionType).toLowerCase().trim();
+
+        // Canonical copy for service pages: homepage/location "services" SectionContent data.items[]
+        // (matched by project + location + serviceId). Must win over service_sections bundles —
+        // bundles are often stale after the user edits the grid in GenieBuild.
+        let pickedFromServicesGrid = null;
+        if (
+            serviceId &&
+            (targetSection === "aboutservice" || targetSection === "servicehero")
+        ) {
+            const serviceLocationId = bundleLocationId || pageMeta?.locationId || scopedPreferredLocationId || null;
+            const servicesGridCandidates = (sectionContentDocs || []).filter((doc) => {
+                const sid = String(doc?.sectionId || "").toLowerCase().trim();
+                return (
+                    (sid === "services" || sid === "servicesgrid") &&
+                    Array.isArray(doc?.data?.items) &&
+                    doc.data.items.length
+                );
+            });
+            const servicesGridDoc = pickBestSectionDocByLocation(
+                servicesGridCandidates,
+                serviceLocationId,
+                locationParentMap
+            );
+            const matchedItem = servicesGridDoc
+                ? (servicesGridDoc.data.items || []).find(
+                    (it) => String(it?.serviceId || "") === String(serviceId)
+                )
+                : null;
+            const itemHit = matchedItem;
+            const parentBadge = servicesGridDoc?.data?.badgeText || resolvedServicesGridContent?.badgeText || "";
+            if (itemHit) {
+                if (targetSection === "aboutservice") {
+                    pickedFromServicesGrid = {
+                        status: "generated",
+                        data: {
+                            title: itemHit.title || "",
+                            about_service: itemHit.description || "",
+                            description: itemHit.description || "",
+                            imageUrl: itemHit.imageUrl || "",
+                            service_name: itemHit.title || "",
+                        }
+                    };
+                } else if (targetSection === "servicehero") {
+                    pickedFromServicesGrid = {
+                        status: "generated",
+                        data: {
+                            serviceHeroTitle: itemHit.title || "",
+                            serviceHeroSubtitle: itemHit.description || "",
+                            serviceHeroBadge: parentBadge,
+                        }
+                    };
+                }
+            }
+        }
+
+        let pickedFromBundle = null;
+        if (serviceId) {
+            const bundleLoc =
+                pageMeta?.locationId != null
+                    ? String(pageMeta.locationId)
+                    : bundleLocationId != null
+                      ? String(bundleLocationId)
+                      : "";
+            const bundleDoc = pickServiceBundleDoc(
+                serviceBundleMap,
+                serviceId,
+                bundleLoc,
+                locationParentMap
+            );
+            if (bundleDoc?.data?.sections?.[targetSection]) {
+                pickedFromBundle = { status: bundleDoc.status, data: bundleDoc.data.sections[targetSection] };
+            }
+        }
+
+        // Service detail pages should prefer their own generated service bundle.
+        // Homepage/services grid edits are a fallback only when bundle section is missing.
+        pickedDoc = pickedFromBundle || pickedFromServicesGrid;
+    }
+
+    let resolvedContent = normalizePickedSectionContentData(pickedDoc?.data);
+
+    // Areas must always come from BusinessLocation rows for the current project context.
+    // This prevents stale/static items saved in SectionContent from leaking into SiteNextJS.
+    if (sectionType === "areas" && resolverType === "business_locations") {
+        const dynamicItems = buildAreaItemsFromLocations({
+            allLocations: businessLocations || [],
+            pageMeta,
+            websitePages,
+            projectType,
+        });
+        resolvedContent = { ...resolvedContent, items: dynamicItems };
+    }
+
+    // Priority fallback after SectionContent: deterministic DB sources.
+    if (
+        sectionType !== "areas" &&
+        !isMeaningfulSectionData(resolvedContent) &&
+        resolverType === "business_locations"
+    ) {
+        const refLocationIds = Array.isArray(contentRef?.locationIds) ? contentRef.locationIds.map((id) => String(id)) : [];
+        const businessLocationIdsFromSources = (Array.isArray(contentRef?.sources) ? contentRef.sources : [])
+            .filter((s) => String(s?.source || "").toLowerCase().trim() === "business_locations")
+            .flatMap((s) => Array.isArray(s?.ids) ? s.ids.map((id) => String(id)) : []);
+        const effectiveLocationIds = refLocationIds.length ? refLocationIds : businessLocationIdsFromSources;
+        const scopedLocations = effectiveLocationIds.length
+            ? (businessLocations || []).filter((loc) => effectiveLocationIds.includes(String(loc?._id)))
+            : (businessLocations || []);
+        resolvedContent = {
+            ...resolvedContent,
+            items: buildAreaItemsFromLocations({
+                allLocations: scopedLocations,
+                pageMeta,
+                websitePages,
+                projectType,
+            })
+        };
+    }
+    if (
+        (sectionType === "services" || sectionType === "servicesgrid") &&
+        resolvedServicesGridContent
+    ) {
+        resolvedContent = mergeServicesGridWithBundle(
+            resolvedContent && typeof resolvedContent === "object" ? resolvedContent : {},
+            resolvedServicesGridContent
+        );
+
+        if (Array.isArray(resolvedContent?.items) && resolvedContent.items.length > 0) {
+            resolvedContent.items = attachServicePageLinksToGridItems(
+                resolvedContent.items,
+                websitePages
+            );
+        }
+    }
+
+    return {
+        pickedDoc,
+        resolvedContent
+    };
+}
+
+/**
+ * Merge design-row copy over resolved SectionContent for most sections.
+ * Services/servicesgrid are excluded — card copy comes from location-scoped
+ * SectionContent (OpenAI) merged with bundle links/images at resolve time.
+ */
+function mergeGenieBuildDesignSectionContent(sectionType, resolvedContent = {}, sectionData = {}) {
+    const st = String(sectionType || "").toLowerCase().trim();
+    if (st === "services" || st === "servicesgrid") {
+        return resolvedContent && typeof resolvedContent === "object" ? { ...resolvedContent } : {};
+    }
+    const design =
+        sectionData?.content && typeof sectionData.content === "object" && !Array.isArray(sectionData.content)
+            ? sectionData.content
+            : {};
+    if (!design || !Object.keys(design).length) {
+        return resolvedContent && typeof resolvedContent === "object" ? { ...resolvedContent } : {};
+    }
+    const resolved =
+        resolvedContent && typeof resolvedContent === "object" ? { ...resolvedContent } : {};
+    const contentRef = sectionData?.contentRef || {};
+    const isServiceBundleFaq =
+        st === "faq" &&
+        (String(contentRef?.scope || "").toLowerCase() === "service_bundle" ||
+            shouldUseServiceBundleForPage(st, { pageType: "service", serviceId: contentRef?.serviceId }));
+    if (isServiceBundleFaq) {
+        const merged = { ...design, ...resolved };
+        const resolvedItems = Array.isArray(resolved.items) ? resolved.items : [];
+        const designItems = Array.isArray(design.items) ? design.items : [];
+        if (resolvedItems.length > 0) {
+            merged.items = resolvedItems;
+        } else if (designItems.length > 0 && !isPlumbingDefaultFaqItems(designItems)) {
+            merged.items = designItems;
+        }
+        return merged;
+    }
+    if (st === "faq") {
+        const merged = { ...resolved, ...design };
+        const resolvedItems = Array.isArray(resolved.items) ? resolved.items : [];
+        const designItems = Array.isArray(design.items) ? design.items : [];
+        if (resolvedItems.length > 0) {
+            merged.items = resolvedItems;
+        } else if (designItems.length > 0 && !isPlumbingDefaultFaqItems(designItems)) {
+            merged.items = designItems;
+        }
+        return merged;
+    }
+    if (st === "cta") {
+        const merged = { ...resolved, ...design };
+        const resolvedItems = Array.isArray(resolved.items) ? resolved.items : [];
+        if (resolvedItems.length > 0) {
+            merged.items = resolvedItems;
+        }
+        if (resolved.phoneSubText) {
+            merged.phoneSubText = resolved.phoneSubText;
+        }
+        if (resolved.phoneNumber || resolved.contactText) {
+            merged.phoneNumber = resolved.phoneNumber || resolved.contactText;
+            merged.contactText = resolved.contactText || resolved.phoneNumber;
+        }
+        return merged;
+    }
+    const merged = { ...resolved, ...design };
+    return merged;
+}
+
+/**
+ * Keep content single-sourced in SectionContent. We do not persist content payloads
+ * into WebsiteDesignsData rows for services; only structure/styles belong there.
+ */
+function pickPersistableServicesSectionContent(rawSectionType, sectionContent = {}) {
+    return {};
+}
+
+function toResolvedSectionShape(sectionData = {}, fallbackId = "") {
+    const type = normalizeSectionTypeForClient(String(sectionData?.type || "").trim().toLowerCase());
+    const styles = sectionData?.styles && typeof sectionData.styles === "object" ? sectionData.styles : {};
+    const elements = Array.isArray(sectionData?.elements) ? sectionData.elements : [];
+    const elementsById = {};
+    const layout = [];
+    elements.forEach((el, idx) => {
+        const elementId = String(el?.id || `el_${idx + 1}`);
+        elementsById[elementId] = {
+            type: el?.type || "unknown",
+            content: el?.content && typeof el.content === "object" ? el.content : {},
+            style: el?.style && typeof el.style === "object" ? el.style : {},
+        };
+        layout.push({ order: idx + 1, elementId });
+    });
+
+    return {
+        id: String(sectionData?.id || fallbackId || `${type}-${Date.now()}`),
+        type,
+        variant: String(styles?.variant || ""),
+        status: String(sectionData?.status || "ready"),
+        styles,
+        data: canonicalizeSectionContent(sectionData?.content || {}),
+        layout,
+        elementsById,
+    };
+}
 // Helper function to ensure component exists in WebsiteComponent (create if not exists with variant "a")
 async function ensureComponentExists(componentName, uniqueId = null) {
     const normalizedName = componentName.toLowerCase().trim().replace(/-/g, '_');
@@ -462,9 +2124,10 @@ module.exports = {
         }
         catch (error) {
             console.error('Error in getUsageByProject:', error);
-            return res
-                .status(500)
-                .json({ message: 'An error occurred while fetching OpenAI usage.' });
+            const statusCode = Number(error?.statusCode) || 500;
+            return res.status(statusCode).json({
+                message: error?.message || 'An error occurred while fetching OpenAI usage.'
+            });
         }
     },
 
@@ -552,7 +2215,10 @@ module.exports = {
             });
         } catch (error) {
             console.error('Error in getProjectKeywords:', error);
-            return res.status(500).json({ message: 'Failed to generate keywords' });
+            const statusCode = Number(error?.statusCode) || 500;
+            return res.status(statusCode).json({
+                message: error?.message || 'Failed to generate keywords'
+            });
         }
     },
 
@@ -706,11 +2372,14 @@ Rules:
             return res.status(500).json({ message: "Failed to generate meta description" });
         }
     },
-    generateImage: async (req, res) => {
+    generateImageNanoBanana: async (req, res) => {
         try {
-            const { prompt } = req.body;
+            const { prompt, projectId, pageId } = req.body;
             if (!prompt) {
                 return res.status(400).json({ message: "prompt is required" });
+            }
+            if (!projectId || !String(projectId).trim()) {
+                return res.status(400).json({ message: "projectId is required" });
             }
 
             const API_KEY = process.env.GEMINI_API_KEY;
@@ -790,33 +2459,42 @@ Rules:
 
             // Extract base64 image data
             const base64Image = imagePart.inlineData.data;
-            const mimeType = imagePart.inlineData.mimeType || 'image/png';
 
             // Convert base64 to Buffer
             const imageBuffer = Buffer.from(base64Image, 'base64');
 
-            // Determine file extension from mimeType
-            const extension = mimeType.split('/')[1] || 'png';
-            const fileName = `generated_${Date.now()}.${extension}`;
+            const orientation = generateImages.parseOrientation(
+                req.body.orientation != null ? req.body.orientation : 1
+            );
 
-            // Create file object for upload
-            const fileObject = {
-                name: fileName,
-                mimetype: mimeType,
-                buffer: imageBuffer
-            };
+            const uploadFolder = `public/images/${String(projectId).trim()}`;
 
-            // Upload file to server
-            const folderPath = 'public/files/generated-images';
-            const savedFileName = await helper.uploadFile(fileObject, folderPath, null);
+            // Same premium WebP + HD resize as /generateImage (origin Gemini)
+            const imageUrl = await generateImages.saveBufferAsWebp(
+                imageBuffer,
+                "gemini-nano",
+                orientation,
+                uploadFolder
+            );
+            const savedFileName = imageUrl.split("/").pop() || `generated_${Date.now()}.webp`;
+            const mimeType = "image/webp";
 
-            // Construct the URL
-            // Default to localhost:1111, use live URL only if USE_LIVE_IMAGE_URL=true in .env (line 27)
-            const useLiveUrl = process.env.USE_LIVE_IMAGE_URL === 'true';
-            const baseUrl = useLiveUrl 
-                ? (process.env.BASE_URL || 'https://apis.smartlybuild.dev')
-                : 'http://localhost:1111';
-            const imageUrl = `${baseUrl}/files/generated-images/${savedFileName}`;
+            if (req.user?.userId && projectId) {
+                await trackCreditsUsage({
+                    userId: String(req.user.userId),
+                    projectId: String(projectId),
+                    usageType: 2, // images (gemini/nano)
+                    promptFrom: "AdminController",
+                    promptFor: "generateImageNanoBanana",
+                    pageId: String(pageId || projectId),
+                    inputTokens: inputTokens,
+                    outputTokens: outputTokens,
+                    imagesCount: 1,
+                    pricing: totalCostUSD,
+                    status: 1,
+                    is_retried: 0
+                });
+            }
 
             return res.status(200).json({
                 message: "Image generated successfully",
@@ -847,12 +2525,87 @@ Rules:
 
         } catch (error) {
             console.error("Error in generateImage:", error);
+            if (req.user?.userId && req.body?.projectId) {
+                await trackCreditsUsage({
+                    userId: String(req.user.userId),
+                    projectId: String(req.body.projectId),
+                    usageType: 2,
+                    promptFrom: "AdminController",
+                    promptFor: "generateImageNanoBanana",
+                    pageId: String(req.body?.pageId || req.body.projectId),
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    imagesCount: 0,
+                    pricing: 0,
+                    status: 0,
+                    is_retried: 0
+                });
+            }
             return res.status(500).json({
                 message: "Failed to generate image",
                 error: error.message
             });
         }
     },
+
+    generateImage: async (req, res) => {
+  try {
+    const { prompt, origin, orientation, projectId } = req.body;
+    let { total = 1 } = req.body;
+
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+      return res.status(400).json({ message: "prompt is required and must be a non-empty string" });
+    }
+    if (!projectId || !String(projectId).trim()) {
+      return res.status(400).json({ message: "projectId is required" });
+    }
+
+    const parsedOrigin = Number(origin);
+    if (!origin || ![1, 2, 3].includes(parsedOrigin)) {
+      return res.status(400).json({
+        message: "origin is required: 1 (freepik), 2 (gemini), 3 (mixed)"
+      });
+    }
+
+    const parsedOrientation = Number(orientation);
+    if (!orientation || ![1, 2].includes(parsedOrientation)) {
+      return res.status(400).json({
+        message: "orientation is required: 1 (landscape), 2 (portrait)"
+      });
+    }
+
+    total = Math.max(1, Math.min(10, Number(total) || 1));
+
+    const result = await generateImages(prompt.trim(), total, parsedOrientation, parsedOrigin, {
+      userId: req.user?.userId ? String(req.user.userId) : null,
+      projectId: String(projectId),
+      pageId: req.body?.pageId ? String(req.body.pageId) : (req.body?.projectId ? String(req.body.projectId) : null),
+      promptFrom: "AdminController",
+      promptFor: "generateImage",
+    });
+
+    if (!result.images || result.images.length === 0) {
+      return res.status(500).json({
+        message: "Image generation failed — no images were produced",
+        data: { requested: total, generated: 0, images: [] }
+      });
+    }
+
+    return res.status(200).json({
+      message: result.images.length < total
+        ? `Partial success: ${result.images.length} of ${total} images generated`
+        : "Images generated successfully",
+      data: result
+    });
+
+  } catch (error) {
+    console.error("Error in generateImage:", error);
+    return res.status(500).json({
+      message: "Failed to generate images",
+      error: error.message
+    });
+  }
+},
 
 
     getLocalAreasWithPincodes: async (req, res) => {
@@ -977,21 +2730,27 @@ Example format:
                 return res.status(400).json({ message: 'projectId is required' });
             }
 
-            // Find the usage document for this project
-            const usageDoc = await CreditsUsage.findOne({ projectId });
-            if (!usageDoc || !Array.isArray(usageDoc.usageData) || !usageDoc.usageData.length) {
+            const entriesRaw = await CreditTransaction.find({
+                project_id: projectId,
+                usage_type: 0,
+                source: "usage",
+            })
+                .select("usage_type prompt_from prompt_for page_id input_tokens output_tokens pricing created_at")
+                .sort({ created_at: -1 })
+                .lean();
+            if (!entriesRaw.length) {
                 return res.status(404).json({ message: 'No usage data found for this project' });
             }
 
-            const entries = usageDoc.usageData.map(entry => ({
-                usageType: entry.usageType,
-                promptFrom: entry.promptFrom,
-                promptFor: entry.promptFor,
-                pageId: entry.pageId,
-                inputTokens: entry.inputTokens,
-                outputTokens: entry.outputTokens,
+            const entries = entriesRaw.map(entry => ({
+                usageType: entry.usage_type,
+                promptFrom: entry.prompt_from,
+                promptFor: entry.prompt_for,
+                pageId: entry.page_id,
+                inputTokens: entry.input_tokens,
+                outputTokens: entry.output_tokens,
                 cost: entry.pricing,
-                when: entry.createdAt
+                when: entry.created_at
             }));
 
             // Totals
@@ -1018,6 +2777,149 @@ Example format:
         }
     },
 
+    getCreditsUsageReport: async (req, res) => {
+        try {
+            let { page = 1, limit = 50, search = "", usageType } = req.body || {};
+            page = Math.max(1, parseInt(page, 10) || 1);
+            limit = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+            const requesterId = req.user?.userId;
+            const requester = requesterId && mongoose.isValidObjectId(requesterId)
+                ? await User.findById(requesterId).select("isSuper").lean()
+                : null;
+            const canViewUserName = Number(requester?.isSuper || 0) === 1;
+            const requesterIdStr = requesterId ? String(requesterId) : "";
+
+            const usageTypeFilter = usageType !== undefined && usageType !== null && usageType !== ""
+                ? Number(usageType)
+                : null;
+
+            const docs = await CreditTransaction.find({})
+                .select("user_id project_id usage_type type amount pricing prompt_from prompt_for page_id input_tokens output_tokens images_count status transaction_id subscription_purchase_id balance_after created_at updated_at")
+                .lean();
+
+            const projectIdSet = new Set();
+            const userIdSet = new Set();
+            for (const d of docs) {
+                if (d?.project_id) projectIdSet.add(String(d.project_id));
+                if (d?.user_id) userIdSet.add(String(d.user_id));
+            }
+
+            const rawProjectIds = Array.from(projectIdSet);
+            const objectProjectIds = rawProjectIds.filter((id) => mongoose.isValidObjectId(id));
+            const projects = objectProjectIds.length
+                ? await UserProject.find({ _id: { $in: objectProjectIds } })
+                    .select("_id projectName userId")
+                    .lean()
+                : [];
+
+            const projectMap = new Map(projects.map((p) => [String(p._id), p]));
+
+            const rawUserIds = Array.from(userIdSet);
+            const objectUserIds = rawUserIds.filter((id) => mongoose.isValidObjectId(id));
+            const users = objectUserIds.length
+                ? await User.find({ _id: { $in: objectUserIds } })
+                    .select("_id fullName email")
+                    .lean()
+                : [];
+            const mergedUsers = [...users];
+            const userMap = new Map(mergedUsers.map((u) => [String(u._id), u]));
+
+            const usageTypeLabel = {
+                0: "OpenAI",
+                1: "FreePik",
+                2: "Images",
+                3: "Other",
+            };
+
+            const rows = [];
+            for (const entry of docs) {
+                const projectIdStr = String(entry.project_id || "");
+                const project = projectMap.get(projectIdStr) || null;
+                const ownerUserId = String(entry.user_id || (project?.userId || ""));
+                if (!canViewUserName && requesterIdStr && ownerUserId !== requesterIdStr) continue;
+
+                const ownerUser = userMap.get(ownerUserId) || null;
+                const ownerName = ownerUser?.fullName || ownerUser?.email || "Unknown";
+
+                const entryUsageType = Number(entry?.usage_type ?? 3);
+                if (usageTypeFilter !== null && entryUsageType !== usageTypeFilter) continue;
+                if (Number(entry?.amount || 0) <= 0) continue;
+
+                rows.push({
+                    projectId: projectIdStr || "-",
+                    projectName: project?.projectName || "Unknown Project",
+                    userId: ownerUserId || "system",
+                    name: canViewUserName ? ownerName : "-",
+                    usageType: entryUsageType,
+                    usageTypeLabel: usageTypeLabel[entryUsageType] || "Other",
+                    transactionType: String(entry.type || "debit"),
+                    creditUsage: Number(entry.amount || 0),
+                    pricing: Number(entry.pricing || 0),
+                    creditsLeft: Number(entry?.balance_after || 0),
+                    totalCredits: 0,
+                    promptFrom: entry?.prompt_from || "default",
+                    promptFor: entry?.prompt_for || "default",
+                    pageId: entry?.page_id || projectIdStr,
+                    inputTokens: Number(entry?.input_tokens || 0),
+                    outputTokens: Number(entry?.output_tokens || 0),
+                    imagesCount: Number(entry?.images_count || 0),
+                    status: Number(entry?.status ?? 1),
+                    transactionId: String(entry?.transaction_id || ""),
+                    subscriptionPurchaseId: entry?.subscription_purchase_id ? String(entry.subscription_purchase_id) : "",
+                    createdAt: entry?.created_at || null,
+                    updatedAt: entry?.updated_at || null,
+                });
+            }
+
+            rows.sort((a, b) => {
+                const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return tb - ta;
+            });
+
+            // creditsLeft is directly stored as balance_after on each transaction.
+
+            const q = String(search || "").trim().toLowerCase();
+            const filtered = q
+                ? rows.filter((r) =>
+                    String(r.projectId).toLowerCase().includes(q) ||
+                    String(r.projectName).toLowerCase().includes(q) ||
+                    String(r.name).toLowerCase().includes(q) ||
+                    String(r.promptFrom).toLowerCase().includes(q) ||
+                    String(r.promptFor).toLowerCase().includes(q) ||
+                    String(r.usageTypeLabel).toLowerCase().includes(q)
+                )
+                : rows;
+
+            const total = filtered.length;
+            const start = (page - 1) * limit;
+            const end = start + limit;
+            const pageRows = filtered.slice(start, end).map((r, idx) => ({
+                serialNo: start + idx + 1,
+                ...r,
+            }));
+
+            return res.status(200).json({
+                message: "Credits usage report fetched successfully",
+                data: pageRows,
+                meta: {
+                    page,
+                    limit,
+                    total,
+                    totalPages: Math.ceil(total / limit),
+                    hasNext: end < total,
+                    hasPrev: page > 1,
+                    canViewUserName,
+                },
+            });
+        } catch (error) {
+            console.error("Error in getCreditsUsageReport:", error);
+            return res.status(500).json({
+                message: "Failed to fetch credits usage report",
+                error: error.message,
+            });
+        }
+    },
 
     openAiString: async (req, res) => {
 
@@ -1763,14 +3665,21 @@ Example format:
                 phone,
                 password: hashedPassword,
                 address,
-                wallet: {
-                    balance: 0,  // New user starts with a balance of 0
-                    transactions: [],
-                },
             });
 
             // Save the new user to the database
             await newUser.save();
+            await CreditWallet.findOneAndUpdate(
+                { user_id: newUser._id },
+                {
+                    $setOnInsert: {
+                        balance: 0,
+                        total_earned: 0,
+                        total_spent: 0,
+                    },
+                },
+                { upsert: true, new: true }
+            );
 
             // Create notification for super admins
             try {
@@ -1804,6 +3713,9 @@ Example format:
                 return res.status(400).json({ message: 'Project ID and User ID are required' });
             }
 
+            const hasMenu = Array.isArray(menu) && menu.length > 0;
+            const prepared = !hasMenu ? await prepareDefaultHeaderFooterPayload(projectId, 0) : null;
+
             const header = new SiteHeaderFooter({
                 projectId,
                 userId,
@@ -1811,11 +3723,11 @@ Example format:
                 variant: variant || 'a',
                 status: 'inactive',
                 logo: logo || {},
-                menu: menu || [],
-                contactDetails: contactDetails || {},
-                style: style || {},
+                menu: prepared?.menu || menu || [],
+                contactDetails: prepared?.contactDetails || contactDetails || {},
+                style: prepared?.style || style || {},
                 elementIds: elementIds || [],
-                settings: settings || {}
+                settings: prepared?.settings || settings || {}
             });
 
             await header.save();
@@ -1845,28 +3757,39 @@ Example format:
             // Update fields if provided (check for null/undefined, but allow empty arrays/objects)
             if (variant !== undefined && variant !== null) header.variant = variant;
             if (logo !== undefined && logo !== null) header.logo = logo;
-            // Helper function to sanitize menu items
-            const sanitizeMenuItems = (menuItems) => {
+            const sanitizeMenuItems = (menuItems, logPrefix = "headerUpdate") => {
                 if (!Array.isArray(menuItems)) return [];
 
-                return menuItems.map(item => {
+                return menuItems.map((item) => {
                     const sanitizedItem = { ...item };
 
-                    // Validate pageId - must be a valid ObjectId or null/undefined
-                    if (sanitizedItem.pageId) {
-                        // Check if it's a valid ObjectId string (24 hex characters)
+                    if (sanitizedItem.serviceId) {
+                        const sid = String(sanitizedItem.serviceId).trim();
+                        const sidValid = /^[0-9a-fA-F]{24}$/.test(sid);
+                        if (sidValid) {
+                            sanitizedItem.serviceId = sid;
+                            sanitizedItem.linkPerArea = true;
+                            sanitizedItem.pageId = null;
+                            sanitizedItem.id = `svc-${sid}`;
+                        } else {
+                            delete sanitizedItem.serviceId;
+                        }
+                    }
+
+                    if (sanitizedItem.linkPerArea) {
+                        sanitizedItem.pageId = null;
+                    } else if (sanitizedItem.pageId) {
                         const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(String(sanitizedItem.pageId));
                         if (!isValidObjectId) {
-                            console.warn('[headerUpdate] Invalid pageId format, setting to null:', sanitizedItem.pageId);
+                            console.warn(`[${logPrefix}] Invalid pageId format, setting to null:`, sanitizedItem.pageId);
                             sanitizedItem.pageId = null;
                         }
                     } else {
                         sanitizedItem.pageId = null;
                     }
 
-                    // Recursively sanitize children
                     if (sanitizedItem.children && Array.isArray(sanitizedItem.children)) {
-                        sanitizedItem.children = sanitizeMenuItems(sanitizedItem.children);
+                        sanitizedItem.children = sanitizeMenuItems(sanitizedItem.children, logPrefix);
                     }
 
                     return sanitizedItem;
@@ -1874,7 +3797,13 @@ Example format:
             };
 
             if (menu !== undefined && menu !== null) {
-                header.menu = sanitizeMenuItems(menu);
+                const catalogNav = await buildNavSources(header.projectId, { catalogOnly: true });
+                header.menu = sortMenuByOrder(
+                    mergeMenuWithNavSources(
+                        sanitizeMenuItems(menu, "headerUpdate"),
+                        catalogNav
+                    )
+                );
                 console.log('[headerUpdate] Menu set:', { menuLength: header.menu.length, menu: header.menu });
             }
             if (contactDetails !== undefined && contactDetails !== null) header.contactDetails = contactDetails;
@@ -1885,6 +3814,13 @@ Example format:
             if (settings !== undefined && settings !== null) header.settings = settings;
 
             await header.save();
+
+            try {
+                await syncHeaderFooterSectionsForProject(header.projectId);
+            } catch (syncErr) {
+                console.warn("[headerUpdate] header/footer section sync:", syncErr.message);
+            }
+
             return res.status(200).json({
                 success: true,
                 message: 'Header updated successfully',
@@ -1974,12 +3910,12 @@ Example format:
                 return res.status(404).json({ message: 'No active header found' });
             }
 
-            console.log('Active header fetched successfully', header);
+            const enriched = await enrichHeaderFooterDocument(header, projectId);
 
             return res.status(200).json({
                 success: true,
                 message: 'Active header fetched successfully',
-                data: header
+                data: enriched
             });
         } catch (error) {
             console.error('Error in headerGetActive:', error);
@@ -2009,6 +3945,12 @@ Example format:
             header.status = 'active';
             await header.save();
 
+            try {
+                await syncHeaderFooterSectionsForProject(header.projectId);
+            } catch (syncErr) {
+                console.warn("[headerActivate] header/footer section sync:", syncErr.message);
+            }
+
             return res.status(200).json({
                 message: 'Header activated successfully',
                 data: header
@@ -2033,6 +3975,13 @@ Example format:
                 return res.status(400).json({ message: 'Project ID and User ID are required' });
             }
 
+            const hasMenu = Array.isArray(menu) && menu.length > 0;
+            const hasFooterLayout = Boolean(settings?.custom?.footer);
+            const prepared =
+                !hasMenu && !hasFooterLayout
+                    ? await prepareDefaultHeaderFooterPayload(projectId, 1)
+                    : null;
+
             const footer = new SiteHeaderFooter({
                 projectId,
                 userId,
@@ -2040,11 +3989,11 @@ Example format:
                 variant: variant || 'a',
                 status: 'inactive',
                 logo: logo || {},
-                menu: menu || [],
-                contactDetails: contactDetails || {},
-                style: style || {},
+                menu: prepared?.menu || menu || [],
+                contactDetails: prepared?.contactDetails || contactDetails || {},
+                style: prepared?.style || style || {},
                 elementIds: elementIds || [],
-                settings: settings || {}
+                settings: prepared?.settings || settings || {}
             });
 
             await footer.save();
@@ -2083,28 +4032,39 @@ Example format:
                 return res.status(404).json({ message: 'Footer not found' });
             }
 
-            // Helper function to sanitize menu items
-            const sanitizeMenuItems = (menuItems) => {
+            const sanitizeMenuItems = (menuItems, logPrefix = "footerUpdate") => {
                 if (!Array.isArray(menuItems)) return [];
 
-                return menuItems.map(item => {
+                return menuItems.map((item) => {
                     const sanitizedItem = { ...item };
 
-                    // Validate pageId - must be a valid ObjectId or null/undefined
-                    if (sanitizedItem.pageId) {
-                        // Check if it's a valid ObjectId string (24 hex characters)
+                    if (sanitizedItem.serviceId) {
+                        const sid = String(sanitizedItem.serviceId).trim();
+                        const sidValid = /^[0-9a-fA-F]{24}$/.test(sid);
+                        if (sidValid) {
+                            sanitizedItem.serviceId = sid;
+                            sanitizedItem.linkPerArea = true;
+                            sanitizedItem.pageId = null;
+                            sanitizedItem.id = `svc-${sid}`;
+                        } else {
+                            delete sanitizedItem.serviceId;
+                        }
+                    }
+
+                    if (sanitizedItem.linkPerArea) {
+                        sanitizedItem.pageId = null;
+                    } else if (sanitizedItem.pageId) {
                         const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(String(sanitizedItem.pageId));
                         if (!isValidObjectId) {
-                            console.warn('[footerUpdate] Invalid pageId format, setting to null:', sanitizedItem.pageId);
+                            console.warn(`[${logPrefix}] Invalid pageId format, setting to null:`, sanitizedItem.pageId);
                             sanitizedItem.pageId = null;
                         }
                     } else {
                         sanitizedItem.pageId = null;
                     }
 
-                    // Recursively sanitize children
                     if (sanitizedItem.children && Array.isArray(sanitizedItem.children)) {
-                        sanitizedItem.children = sanitizeMenuItems(sanitizedItem.children);
+                        sanitizedItem.children = sanitizeMenuItems(sanitizedItem.children, logPrefix);
                     }
 
                     return sanitizedItem;
@@ -2114,17 +4074,69 @@ Example format:
             // Update fields if provided
             if (variant !== undefined) footer.variant = variant;
             if (logo !== undefined) footer.logo = logo;
-            if (menu !== undefined && menu !== null) {
-                footer.menu = sanitizeMenuItems(menu);
-                console.log('[footerUpdate] Menu set:', { menuLength: footer.menu.length, menu: footer.menu });
+            const catalogNav = await buildNavSources(footer.projectId, { catalogOnly: true });
+            const pagesById = buildPagesByIdMap(catalogNav.pages || []);
+
+            if (settings !== undefined) {
+                footer.settings = settings;
+                const rawFooterLayout = settings?.custom?.footer;
+                if (rawFooterLayout && typeof rawFooterLayout === "object") {
+                    const normalizedLayout = normalizeFooterLayout(rawFooterLayout);
+                    const sanitizedLayout = applyPageUrlsToFooterLayout(
+                        {
+                            ...normalizedLayout,
+                            quickLinks: {
+                                items: sanitizeMenuItems(
+                                    normalizedLayout.quickLinks?.items || [],
+                                    "footerLayout.quickLinks"
+                                ),
+                            },
+                            services: {
+                                children: sanitizeMenuItems(
+                                    normalizedLayout.services?.children || [],
+                                    "footerLayout.services"
+                                ),
+                            },
+                        },
+                        pagesById
+                    );
+                    footer.settings = mergeFooterLayoutIntoSettings(footer.settings || {}, sanitizedLayout);
+                    footer.menu = sortMenuByOrder(
+                        mergeMenuWithNavSources(
+                            syncLegacyMenuFromFooterLayout(sanitizedLayout),
+                            catalogNav
+                        )
+                    );
+                }
             }
+
+            if (menu !== undefined && menu !== null && !settings?.custom?.footer) {
+                footer.menu = sortMenuByOrder(
+                    mergeMenuWithNavSources(
+                        sanitizeMenuItems(menu, "footerUpdate"),
+                        catalogNav
+                    )
+                );
+                const migratedLayout = buildFooterLayoutFromDefaultMenu(
+                    footer.menu,
+                    catalogNav.services || []
+                );
+                footer.settings = mergeFooterLayoutIntoSettings(footer.settings || {}, migratedLayout);
+                console.log('[footerUpdate] Menu migrated to footer layout');
+            }
+
             if (contactDetails !== undefined) footer.contactDetails = contactDetails;
             if (style !== undefined) footer.style = style;
             if (elementIds !== undefined) footer.elementIds = elementIds;
-            if (settings !== undefined) footer.settings = settings;
 
             await footer.save();
             console.log('[footerUpdate] Footer saved successfully:', { id: footer._id, menuLength: footer.menu?.length });
+
+            try {
+                await syncHeaderFooterSectionsForProject(footer.projectId);
+            } catch (syncErr) {
+                console.warn("[footerUpdate] header/footer section sync:", syncErr.message);
+            }
 
             return res.status(200).json({
                 success: true,
@@ -2214,12 +4226,13 @@ Example format:
             if (!footer) {
                 return res.status(404).json({ message: 'No active footer found' });
             }
-            console.log('Active footer fetched successfully', footer);
+
+            const enriched = await enrichHeaderFooterDocument(footer, projectId);
 
             return res.status(200).json({
                 success: true,
                 message: 'Active footer fetched successfully',
-                data: footer
+                data: enriched
             });
         } catch (error) {
             console.error('Error in footerGetActive:', error);
@@ -2235,7 +4248,7 @@ Example format:
     // Body: { pageId: string, newSlug: string }
     updateMenuUrlsForPage: async (req, res) => {
         try {
-            const { pageId, newSlug } = req.body;
+            const { pageId, newSlug, oldSlug = "" } = req.body;
 
             if (!pageId || !newSlug) {
                 return res.status(400).json({
@@ -2244,58 +4257,12 @@ Example format:
                 });
             }
 
-            console.log(`[updateMenuUrlsForPage] Updating menu URLs for pageId: ${pageId}, newSlug: ${newSlug}`);
-
-            // Recursive function to update menu items and their children
-            const updateMenuItems = (menuItems, pageId, newSlug) => {
-                if (!Array.isArray(menuItems)) return menuItems;
-
-                return menuItems.map(item => {
-                    const updatedItem = { ...item };
-
-                    // If this menu item is linked to the page, update its URL
-                    if (item.pageId && item.pageId.toString() === pageId.toString()) {
-                        updatedItem.url = `/${newSlug}`;
-                        console.log(`[updateMenuUrlsForPage] Updated menu item "${item.name}" URL to /${newSlug}`);
-                    }
-
-                    // Recursively update children
-                    if (item.children && Array.isArray(item.children) && item.children.length > 0) {
-                        updatedItem.children = updateMenuItems(item.children, pageId, newSlug);
-                    }
-
-                    return updatedItem;
-                });
-            };
-
-            // Find all headers and footers that have menu items linked to this page
-            const headersFooters = await SiteHeaderFooter.find({
-                $or: [
-                    { 'menu.pageId': pageId },
-                    { 'menu.children.pageId': pageId }
-                ]
-            });
-
-            console.log(`[updateMenuUrlsForPage] Found ${headersFooters.length} headers/footers to update`);
-
-            let updatedCount = 0;
-
-            // Update each header/footer
-            for (const headerFooter of headersFooters) {
-                const updatedMenu = updateMenuItems(headerFooter.menu, pageId, newSlug);
-
-                // Check if menu actually changed
-                const menuChanged = JSON.stringify(headerFooter.menu) !== JSON.stringify(updatedMenu);
-
-                if (menuChanged) {
-                    headerFooter.menu = updatedMenu;
-                    await headerFooter.save();
-                    updatedCount++;
-                    console.log(`[updateMenuUrlsForPage] Updated ${headerFooter.type === 0 ? 'header' : 'footer'} ${headerFooter._id}`);
-                }
-            }
-
-            console.log(`[updateMenuUrlsForPage] Completed updating ${updatedCount} headers/footers`);
+            const normalizedNewSlug = normalizeSlugInput(newSlug);
+            const updatedCount = await updateHeaderFooterMenuUrls(
+                pageId,
+                oldSlug || normalizedNewSlug,
+                normalizedNewSlug
+            );
 
             return res.status(200).json({
                 success: true,
@@ -2330,6 +4297,12 @@ Example format:
             // Activate this footer
             footer.status = 'active';
             await footer.save();
+
+            try {
+                await syncHeaderFooterSectionsForProject(footer.projectId);
+            } catch (syncErr) {
+                console.warn("[footerActivate] header/footer section sync:", syncErr.message);
+            }
 
             return res.status(200).json({
                 message: 'Footer activated successfully',
@@ -2387,100 +4360,11 @@ Example format:
                 });
             }
 
-            // Default menu structure
-            const defaultMenu = [
-                {
-                    id: 'home',
-                    name: 'Home',
-                    url: '/',
-                    icon: '',
-                    target: '_self',
-                    order: 0,
-                    children: [],
-                    style: {}
-                },
-                {
-                    id: 'about',
-                    name: 'About',
-                    url: '/about',
-                    icon: '',
-                    target: '_self',
-                    order: 1,
-                    children: [],
-                    style: {}
-                },
-                {
-                    id: 'services',
-                    name: 'Services',
-                    url: '/services',
-                    icon: '',
-                    target: '_self',
-                    order: 2,
-                    children: [],
-                    style: {}
-                },
-                {
-                    id: 'contact',
-                    name: 'Contact',
-                    url: '/contact',
-                    icon: '',
-                    target: '_self',
-                    order: 3,
-                    children: [],
-                    style: {}
-                }
-            ];
-
-            // Default contact details
-            const defaultContactDetails = {
-                phone: {
-                    enabled: true,
-                    number: '',
-                    label: 'Phone',
-                    style: {}
-                },
-                email: {
-                    enabled: true,
-                    address: '',
-                    label: 'Email',
-                    style: {}
-                },
-                address: {
-                    enabled: false,
-                    text: '',
-                    style: {}
-                }
-            };
-
-            // Default style
-            const defaultStyle = type === 0 ? {
-                backgroundColor: '#ffffff',
-                color: '#000000',
-                padding: '16px 0',
-                borderBottom: '1px solid #e5e7eb'
-            } : {
-                backgroundColor: '#1f2937',
-                color: '#ffffff',
-                padding: '48px 0',
-                borderTop: '1px solid #374151'
-            };
-
-            // Default settings
-            const defaultSettings = type === 0 ? {
-                sticky: false,
-                transparent: false,
-                showOnMobile: true,
-                showOnTablet: true,
-                showOnDesktop: true,
-                custom: {}
-            } : {
-                sticky: false,
-                transparent: false,
-                showOnMobile: true,
-                showOnTablet: true,
-                showOnDesktop: true,
-                custom: {}
-            };
+            const prepared = await prepareDefaultHeaderFooterPayload(projectId, type);
+            const defaultMenu = prepared.menu;
+            const defaultSettings = prepared.settings;
+            const defaultContactDetails = prepared.contactDetails;
+            const defaultStyle = prepared.style;
 
             // Deactivate any existing active header/footer of this type
             await SiteHeaderFooter.updateMany(
@@ -2510,9 +4394,17 @@ Example format:
 
             await defaultItem.save();
 
+            try {
+                await syncHeaderFooterSectionsForProject(projectId);
+            } catch (syncErr) {
+                console.warn("[createDefaultHeaderFooter] section sync:", syncErr.message);
+            }
+
+            const enriched = await enrichHeaderFooterDocument(defaultItem, projectId);
+
             return res.status(201).json({
                 message: `Default ${type === 0 ? 'header' : 'footer'} created successfully`,
-                data: defaultItem
+                data: enriched || defaultItem
             });
         } catch (error) {
             console.error('Error in createDefaultHeaderFooter:', error);
@@ -2824,6 +4716,7 @@ Example format:
                 serviceType,
                 projectName,
                 wantImages,
+                sectionImageOrigin,
                 focusKeyword,
                 projectKeywordsText,
                 categories,
@@ -2958,6 +4851,12 @@ Example format:
                 }
             }
 
+            let finalSectionImageOrigin = 1;
+            if (sectionImageOrigin !== undefined && sectionImageOrigin !== null) {
+                const o = parseInt(sectionImageOrigin, 10);
+                if (o === 2) finalSectionImageOrigin = 2;
+            }
+
             // Save minimal project data immediately, include categories
             const newProject = new UserProject({
                 userId,
@@ -2966,6 +4865,7 @@ Example format:
                 projectKeywordsText,
                 focusKeyword,
                 wantImages: finalWantImages, // Always defaults to 1
+                sectionImageOrigin: finalSectionImageOrigin,
                 status: 1,
                 projectType: 0, // 0 = location based site
                 categories: categories || [],
@@ -2975,9 +4875,8 @@ Example format:
 
             const savedProject = await newProject.save();
 
-            // Enqueue background job
-            console.log(savedProject._id.toString(), "This project sent for projectBackgroundQueue From step 1")
-            await projectBackgroundQueue.add({ projectId: savedProject._id.toString() });
+            // Bulk sites now use the business-website pipeline (BusinessLocation + section queue).
+            // Legacy projectBackgroundQueue is not started on create.
 
             // Create notification for super admins
             try {
@@ -2999,187 +4898,6 @@ Example format:
 
         } catch (error) {
             console.error('Error in createProject:', error);
-            return res
-                .status(500)
-                .json({ message: 'An error occurred while processing your request.' });
-        }
-    },
-
-    createBusinessWebsite: async (req, res) => {
-        try {
-            let {
-                userId,
-                serviceType,
-                projectName,
-                wantImages,
-                focusKeyword,
-                projectKeywordsText,
-                categories,
-                subCategories,
-                microCategories
-            } = req.body;
-
-            if (!serviceType) serviceType = categories[0];
-
-            // wantImages always defaults to 1 (hidden field, always enabled)
-            let finalWantImages = 1; // Default to 1
-            if (wantImages !== undefined && wantImages !== null) {
-                const parsed = parseInt(wantImages, 10);
-                if (!isNaN(parsed) && parsed === 0) {
-                    finalWantImages = 0; // Only allow 0 if explicitly set
-                }
-            }
-
-            // Mandatory keywords
-            if (!projectKeywordsText || !focusKeyword) {
-                return res.status(400).json({
-                    message: 'projectKeywordsText and focusKeyword are required'
-                });
-            }
-
-            // Normalize arrays
-            try {
-                categories = normalizeArray(categories, 'categories', true);
-                subCategories = normalizeArray(subCategories, 'subCategories', true);
-                microCategories = normalizeArray(microCategories, 'microCategories', false);
-            } catch (err) {
-                return res.status(400).json({ message: err.message });
-            }
-
-            if (!userId) userId = "676556920ee225052d8cd600";
-            if (!userId || !projectName) {
-                return res.status(400).json({
-                    message: 'userId and projectName are required'
-                });
-            }
-
-            // Process categories: Check if exists, if not create with isManual: 1
-            let categoryId = null;
-            if (categories && categories.length > 0) {
-                const categoryName = categories[0].trim();
-
-                // Check if category exists
-                let category = await ProjectCategory.findOne({ name: categoryName });
-
-                if (!category) {
-                    // Category doesn't exist, create it with isManual: 1
-                    category = new ProjectCategory({
-                        name: categoryName,
-                        isManual: 1
-                    });
-                    await category.save();
-                    console.log(`[CreateBusinessWebsite] Created manual category: ${categoryName}`);
-                }
-
-                categoryId = category._id;
-            }
-
-            // Process subcategories: Check if exists, if not create with isManual: 1
-            const processedSubCategories = [];
-            if (subCategories && subCategories.length > 0 && categoryId) {
-                for (const subCatName of subCategories) {
-                    const trimmedName = subCatName.trim();
-                    if (!trimmedName) continue;
-
-                    // Check if subcategory exists for this category
-                    let subCategory = await SubCategory.findOne({
-                        categoryId: categoryId,
-                        name: trimmedName
-                    });
-
-                    if (!subCategory) {
-                        // Subcategory doesn't exist, create it with isManual: 1
-                        subCategory = new SubCategory({
-                            categoryId: categoryId,
-                            name: trimmedName,
-                            isManual: 1
-                        });
-                        await subCategory.save();
-                        console.log(`[CreateBusinessWebsite] Created manual subcategory: ${trimmedName} for category: ${categoryId}`);
-                    }
-
-                    processedSubCategories.push(trimmedName);
-                }
-            }
-
-            // Process micro categories: Check if exists, if not create with isManual: 1
-            const processedMicroCategories = [];
-            if (microCategories && microCategories.length > 0 && categoryId && processedSubCategories.length > 0) {
-                // Get the first subcategory ID for micro categories
-                const firstSubCategory = await SubCategory.findOne({
-                    categoryId: categoryId,
-                    name: processedSubCategories[0]
-                });
-
-                if (firstSubCategory) {
-                    for (const microCatName of microCategories) {
-                        const trimmedName = microCatName.trim();
-                        if (!trimmedName) continue;
-
-                        // Check if micro category exists for this subcategory
-                        let microCategory = await MicroCategory.findOne({
-                            subCategoryId: firstSubCategory._id,
-                            name: trimmedName
-                        });
-
-                        if (!microCategory) {
-                            // Micro category doesn't exist, create it with isManual: 1
-                            microCategory = new MicroCategory({
-                                categoryId: categoryId,
-                                subCategoryId: firstSubCategory._id,
-                                name: trimmedName,
-                                isManual: 1
-                            });
-                            await microCategory.save();
-                            console.log(`[CreateBusinessWebsite] Created manual micro category: ${trimmedName} for subcategory: ${firstSubCategory._id}`);
-                        }
-
-                        processedMicroCategories.push(trimmedName);
-                    }
-                }
-            }
-
-            // Save minimal project data immediately, include categories
-            const newProject = new UserProject({
-                userId,
-                serviceType, // optional
-                projectName,
-                projectKeywordsText,
-                focusKeyword,
-                wantImages: finalWantImages, // Always defaults to 1
-                status: 1,
-                projectType: 1, // 1 = business site
-                categories: categories || [],
-                subCategories: processedSubCategories,
-                microCategories: processedMicroCategories
-            });
-
-            const savedProject = await newProject.save();
-
-            // Enqueue background job
-            console.log(savedProject._id.toString(), "This business website project sent for projectBackgroundQueue From step 1")
-            await projectBackgroundQueue.add({ projectId: savedProject._id.toString() });
-
-            // Create notification for super admins
-            try {
-                const user = await Users.findById(userId).select('email username').lean();
-                await Notification.create({
-                    userFromId: userId,
-                    isSuperAdminNotification: true,
-                    message: `${user?.username || user?.email || 'User'} created new business website "${projectName}"`,
-                    type: 'project_created',
-                    relatedId: savedProject._id
-                });
-            } catch (notifError) {
-                console.error('Error creating business website creation notification:', notifError);
-            }
-
-            return res
-                .status(201)
-                .json({ message: 'Business website created successfully', data: savedProject });
-
-        } catch (error) {
-            console.error('Error in createBusinessWebsite:', error);
             return res
                 .status(500)
                 .json({ message: 'An error occurred while processing your request.' });
@@ -3320,33 +5038,32 @@ Example format:
 
     getUserProjects: async (req, res) => {
         try {
-            // 1. Extract pagination and search params from query, with defaults
-            let { page = 1, limit = 10, search } = req.query;
+            let { page = 1, limit = 10, search, projectId } = req.query;
             page = parseInt(page, 10);
             limit = parseInt(limit, 10);
             if (isNaN(page) || page < 1) page = 1;
             if (isNaN(limit) || limit < 1) limit = 10;
             const skip = (page - 1) * limit;
 
-            // 2. Get authenticated userId
             const userId = req.user.userId;
             if (!userId) {
                 return res.status(400).json({ message: "userId is required" });
             }
 
-            // 3. Verify user exists
-            const user = await User.findById(userId);
+            const user = await User.findById(userId).select("isSuper").lean();
             if (!user) {
                 return res.status(404).json({ message: "User not found" });
             }
 
-            // 4. Build base filter:
             const baseFilter = {};
             if (user.isSuper === 0) {
                 baseFilter.userId = userId;
             }
 
-            // 5. If a search term is provided, match against projectName or serviceType
+            if (projectId) {
+                baseFilter._id = projectId;
+            }
+
             if (search) {
                 const regex = { $regex: search, $options: "i" };
                 baseFilter.$or = [
@@ -3355,35 +5072,69 @@ Example format:
                 ];
             }
 
-            // 6. Compute totalProjects (no status filter)
-            const totalProjects = await UserProject.countDocuments(baseFilter);
+            const attachDeploymentStatus = async (projects = []) => {
+                const ids = projects.map((p) => p._id).filter(Boolean);
+                if (!ids.length) return projects.map((p) => ({ ...p, deploymentStatus: "Not deployed yet" }));
 
-            // 7. Compute totalActiveProjects (status === 2)
-            const activeFilter = { ...baseFilter, status: 2 };
-            const totalActiveProjects = await UserProject.countDocuments(activeFilter);
+                const deployments = await ProjectDeployment.find({ projectId: { $in: ids } })
+                    .sort({ createdAt: -1 })
+                    .select("projectId deploymentStatus")
+                    .lean();
 
-            // 8. Fetch paginated projects matching baseFilter
-            const rawProjects = await UserProject
-                .find(baseFilter)
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit);
+                const statusByProjectId = new Map();
+                for (const row of deployments) {
+                    const key = String(row.projectId);
+                    if (!statusByProjectId.has(key)) {
+                        statusByProjectId.set(key, row.deploymentStatus || "Not deployed yet");
+                    }
+                }
 
-            // 9. Enrich each project with deployment status
-            const enrichedProjects = await Promise.all(
-                rawProjects.map(async (project) => {
-                    const deployment = await ProjectDeployment.findOne({ projectId: project._id }).sort({ createdAt: -1 });
-                    const deploymentStatus = deployment?.deploymentStatus || "Not deployed yet";
-                    return {
-                        ...project.toObject(),
-                        deploymentStatus
-                    };
-                })
-            );
+                return projects.map((project) => ({
+                    ...project,
+                    deploymentStatus: statusByProjectId.get(String(project._id)) || "Not deployed yet",
+                }));
+            };
 
-            const totalPages = Math.ceil(totalProjects / limit);
+            if (projectId) {
+                const project = await UserProject.findOne(baseFilter).lean();
+                if (!project) {
+                    return res.status(404).json({
+                        message: "Project not found",
+                        data: [],
+                        count: 0,
+                        page: 1,
+                        limit: 1,
+                        total: 0,
+                        totalActiveProjects: 0,
+                        totalPages: 0,
+                    });
+                }
+                const [enrichedProject] = await attachDeploymentStatus([project]);
+                return res.status(200).json({
+                    message: "Project retrieved successfully",
+                    data: [enrichedProject],
+                    count: 1,
+                    page: 1,
+                    limit: 1,
+                    total: 1,
+                    totalActiveProjects: Number(project.status) === 2 ? 1 : 0,
+                    totalPages: 1,
+                });
+            }
 
-            // 10. Return response
+            const [totalProjects, totalActiveProjects, rawProjects] = await Promise.all([
+                UserProject.countDocuments(baseFilter),
+                UserProject.countDocuments({ ...baseFilter, status: 2 }),
+                UserProject.find(baseFilter)
+                    .sort({ createdAt: -1 })
+                    .skip(skip)
+                    .limit(limit)
+                    .lean(),
+            ]);
+
+            const enrichedProjects = await attachDeploymentStatus(rawProjects);
+            const totalPages = Math.ceil(totalProjects / limit) || 1;
+
             return res.status(200).json({
                 message: enrichedProjects.length
                     ? "Projects retrieved successfully"
@@ -4077,12 +5828,7 @@ Example format:
 
             // console.log(allLocations,"all locations are here");return 
 
-            // Trigger queue for ALL locations in bulk
-            await generateServiceDescQueue.add({
-                projectId,
-                worktype: "areapages",
-                locations: allLocations
-            });
+            // Deprecated: generateServiceDescQueue is no longer used for area/service generation.
 
             return res.status(200).json({
                 message: 'Area Service Page generation triggered for ALL locations of the project.',
@@ -4230,8 +5976,7 @@ Example format:
 
 
 
-            // Generate Service Description
-            await generateServiceDescQueue.add({ projectId });
+            // Deprecated: generateServiceDescQueue is no longer used.
 
 
 
@@ -4509,16 +6254,7 @@ Example format:
                 console.log(`[addServicesToLocation] Business website detected. Preparing ${allBusinessLocationsForQueues.length} locations for queues:`,
                     allBusinessLocationsForQueues.map(l => ({ id: l.id, name: l.name, areaType: l.areaType })));
 
-                // Send to generateServiceDescQueue for service pages
-                if (allBusinessLocationsForQueues.length > 0) {
-                    console.log(`[addServicesToLocation] Sending ${allBusinessLocationsForQueues.length} locations to generateServiceDescQueue`);
-                    await generateServiceDescQueue.add({
-                        projectId,
-                        worktype: "areapages",
-                        locations: allBusinessLocationsForQueues
-                    });
-                    console.log(`[addServicesToLocation] ✅ Successfully added to generateServiceDescQueue`);
-                }
+                // Deprecated: generateServiceDescQueue flow removed. Service content comes from step-6 generated sections.
 
                 // Send to projectBackgroundQueue for area pages
                 if (allBusinessLocationsForQueues.length > 0) {
@@ -4540,8 +6276,7 @@ Example format:
                     { $set: { pageGenerated: true } }
                 );
             } else {
-                // For location-based websites, use existing logic
-                await generateServiceDescQueue.add({ projectId });
+                // Deprecated: generateServiceDescQueue flow removed.
 
                 // Mark location-based pages as pageGenerated
                 project.locations.country.forEach(c => { if (!c.pageGenerated) c.pageGenerated = true; });
@@ -4732,30 +6467,6 @@ Example format:
         }
     },
 
-    generateServiceDesc: async (req, res) => {
-        try {
-            const { projectId } = req.body;
-
-            // Validate required fields
-            if (!projectId) {
-                return res.status(400).json({ message: 'projectId is required!' });
-            }
-
-            console.log("Adding generateServiceDesc task to the queue for projectId:", projectId);
-
-            // Add task to Redis queue
-            await generateServiceDescQueue.add({ projectId });
-
-            // Send immediate response to the client
-            return res.status(200).json({
-                message: "The service description generation task has been added to the queue. It will process in the background.",
-            });
-        } catch (error) {
-            console.log(error, "Error in generateServiceDesc API");
-            return helper.sendError(res, 500, error);
-        }
-    },
-
     generateUnsplashImages: async (req, res) => {
         try {
             let query = req.body.query;
@@ -4877,11 +6588,22 @@ Example format:
             page = Number(page);
             limit = Number(limit);
 
-            // Ensure `country_ids` is an array
+            // Ensure `country_ids` is an array (supports comma-separated string)
             if (typeof country_ids === "string") {
-                country_ids = [country_ids]; // Convert single value to array
-            } else if (!Array.isArray(country_ids)) {
-                country_ids = []; // Default to empty array if undefined
+                country_ids = country_ids
+                    .split(",")
+                    .map((id) => String(id).trim())
+                    .filter(Boolean);
+            } else if (Array.isArray(country_ids)) {
+                country_ids = country_ids
+                    .flatMap((id) =>
+                        String(id).includes(",")
+                            ? String(id).split(",").map((s) => s.trim())
+                            : [String(id).trim()]
+                    )
+                    .filter(Boolean);
+            } else {
+                country_ids = [];
             }
 
 
@@ -4918,13 +6640,32 @@ Example format:
 
 
     fetch_cities: async (req, res) => {
-        const { page = 1, limit = 100, search = "", state_ids = [], sort = "asc" } = req.query;
+        let { page = 1, limit = 100, search = "", state_ids, state_id, sort = "asc" } = req.query;
         console.log("Fetching cities:", req.query);
 
         try {
+            if (!state_ids && state_id) state_ids = state_id;
+
+            if (typeof state_ids === "string") {
+                state_ids = state_ids
+                    .split(",")
+                    .map((id) => String(id).trim())
+                    .filter(Boolean);
+            } else if (Array.isArray(state_ids)) {
+                state_ids = state_ids
+                    .flatMap((id) =>
+                        String(id).includes(",")
+                            ? String(id).split(",").map((s) => s.trim())
+                            : [String(id).trim()]
+                    )
+                    .filter(Boolean);
+            } else {
+                state_ids = [];
+            }
+
             const query = {
                 ...(search && { name: { $regex: search, $options: "i" } }),
-                ...(state_ids.length && { state_id: { $in: state_ids.split(",") } }),
+                ...(state_ids.length && { state_id: { $in: state_ids } }),
             };
             const sortOrder = sort === "desc" ? -1 : 1;
 
@@ -4988,7 +6729,7 @@ Example format:
 
     updateAboutUs: async (req, res) => {
         try {
-            const { projectId, email, phone, mainLocation } = req.body;
+            const { projectId, email, phone, emails, phones, mainLocation, address } = req.body;
 
             // Ensure the project exists
             const project = await UserProject.findById(projectId);
@@ -4996,26 +6737,68 @@ Example format:
                 return res.status(404).json({ message: 'Project not found' });
             }
 
-            // Always create a new AboutUs document (no update path)
-            const aboutUs = new AboutUs({
-                projectId,
-                email,
-                phone,
-                mainLocation
-            });
+            let normalizedEmails = Array.isArray(emails)
+                ? emails
+                    .filter((item) => item && typeof item.value === "string" && item.value.trim())
+                    .map((item) => ({
+                        value: item.value.trim(),
+                        is_primary: item.is_primary === true,
+                    }))
+                : (email
+                    ? [{ value: String(email).trim(), is_primary: true }]
+                    : []);
+            if (normalizedEmails.length > 0 && !normalizedEmails.some((e) => e.is_primary)) {
+                normalizedEmails[0].is_primary = true;
+            }
 
-            await aboutUs.save();
+            let normalizedPhones = Array.isArray(phones)
+                ? phones
+                    .filter((item) => item && typeof item.value === "string" && item.value.trim())
+                    .map((item) => ({
+                        value: item.value.trim(),
+                        is_primary: item.is_primary === true,
+                    }))
+                : (phone
+                    ? [{ value: String(phone).trim(), is_primary: true }]
+                    : []);
+            if (normalizedPhones.length > 0 && !normalizedPhones.some((p) => p.is_primary)) {
+                normalizedPhones[0].is_primary = true;
+            }
+
+            const primaryEmail = normalizedEmails.find((item) => item.is_primary)?.value || normalizedEmails[0]?.value || "";
+            const primaryPhone = normalizedPhones.find((item) => item.is_primary)?.value || normalizedPhones[0]?.value || "";
+            const normalizedAddress = address || mainLocation || "";
+
+            // Keep a single AboutUs document per project (no duplicates)
+            const aboutUs = await AboutUs.findOneAndUpdate(
+                { projectId },
+                {
+                    $set: {
+                        email: primaryEmail,
+                        phone: primaryPhone,
+                        emails: normalizedEmails,
+                        phones: normalizedPhones,
+                        address: normalizedAddress,
+                        mainLocation: normalizedAddress
+                    }
+                },
+                {
+                    new: true,
+                    upsert: true,
+                    setDefaultsOnInsert: true
+                }
+            );
 
             // Generate/Upsert Contact Us FAQs (non-blocking)
             upsertContactUsFAQ({
                 project,
-                email: aboutUs.email,
-                phone: aboutUs.phone,
-                mainLocation: aboutUs.mainLocation
+                email: primaryEmail,
+                phone: primaryPhone,
+                mainLocation: normalizedAddress
             }).catch(err => console.warn('[ContactUs FAQ] async error:', err.message));
 
             return res.status(201).json({
-                message: 'About Us created successfully',
+                message: 'About Us saved successfully',
                 data: aboutUs
             });
         } catch (error) {
@@ -5040,8 +6823,8 @@ Example format:
                 return res.status(404).json({ message: 'Project not found' });
             }
 
-            // Fetch AboutUs record for the given projectId
-            const aboutUs = await AboutUs.findOne({ projectId });
+            // Fetch latest AboutUs record for the given projectId
+            const aboutUs = await AboutUs.findOne({ projectId }).sort({ _id: -1 });
 
             if (!aboutUs) {
                 return res.status(404).json({ message: 'About Us information not found for this project' });
@@ -5098,7 +6881,9 @@ Example format:
 
             // If pageId is provided, try to find by ID first (and verify it belongs to this project)
             if (pageId) {
-                try {
+                if (!mongoose.Types.ObjectId.isValid(pageId)) {
+                    console.log('[upsertWebsitePage] Invalid pageId format, will search by name');
+                } else {
                     const existingPage = await WebsitePage.findOne({
                         _id: pageId,
                         projectId: projectId
@@ -5106,120 +6891,31 @@ Example format:
                     if (existingPage) {
                         console.log('[upsertWebsitePage] Page found by ID:', existingPage._id);
 
-                        // IMPORTANT: name is non-changeable once created
-                        // Only update slug, displayName, and description
-                        let updated = false;
-                        let slugChanged = false;
-                        const oldSlug = existingPage.slug;
+                        try {
+                            const { page: updatedPage } = await updateExistingWebsitePage({
+                                projectId,
+                                pageDoc: existingPage,
+                                slug,
+                                displayName,
+                                description,
+                            });
 
-                        // Update slug if provided and different
-                        if (slug !== undefined && slug !== null) {
-                            const normalizedSlug = slug.trim().toLowerCase().replace(/^\/+|\/+$/g, ''); // Remove leading/trailing slashes
-                            if (normalizedSlug !== existingPage.slug) {
-                                existingPage.slug = normalizedSlug;
-                                updated = true;
-                                slugChanged = true;
-                                console.log('[upsertWebsitePage] Slug changed from', oldSlug, 'to', normalizedSlug);
+                            await ensurePageInDesignData(projectId, updatedPage._id);
+
+                            return res.status(200).json({
+                                message: 'Page updated successfully',
+                                page: updatedPage,
+                                data: updatedPage
+                            });
+                        } catch (slugError) {
+                            if (slugError.statusCode === 409) {
+                                return res.status(409).json({ message: slugError.message });
                             }
+                            throw slugError;
                         }
-
-                        // Update displayName if provided and different
-                        if (displayName && displayName.trim() !== existingPage.displayName) {
-                            existingPage.displayName = displayName.trim();
-                            updated = true;
-                        }
-
-                        // Update description if provided
-                        if (description !== undefined && description !== existingPage.description) {
-                            existingPage.description = description ? description.trim() : '';
-                            updated = true;
-                        }
-
-                        if (updated) {
-                            await existingPage.save();
-                            console.log('[upsertWebsitePage] Page updated:', existingPage._id);
-
-                            // If slug changed, update menu URLs in headers/footers
-                            if (slugChanged && oldSlug) {
-                                try {
-                                    // Helper function to update menu URLs
-                                    const updateMenuUrls = async (pageId, newSlug) => {
-                                        // Recursive function to update menu items and their children
-                                        const updateMenuItems = (menuItems, pageId, newSlug) => {
-                                            if (!Array.isArray(menuItems)) return menuItems;
-
-                                            return menuItems.map(item => {
-                                                const updatedItem = { ...item };
-
-                                                // If this menu item is linked to the page, update its URL
-                                                if (item.pageId && item.pageId.toString() === pageId.toString()) {
-                                                    updatedItem.url = `/${newSlug}`;
-                                                    console.log(`[updateMenuUrls] Updated menu item "${item.name}" URL to /${newSlug}`);
-                                                }
-
-                                                // Recursively update children
-                                                if (item.children && Array.isArray(item.children) && item.children.length > 0) {
-                                                    updatedItem.children = updateMenuItems(item.children, pageId, newSlug);
-                                                }
-
-                                                return updatedItem;
-                                            });
-                                        };
-
-                                        // Find all headers and footers that have menu items linked to this page
-                                        const headersFooters = await SiteHeaderFooter.find({
-                                            $or: [
-                                                { 'menu.pageId': pageId },
-                                                { 'menu.children.pageId': pageId }
-                                            ]
-                                        });
-
-                                        console.log(`[updateMenuUrls] Found ${headersFooters.length} headers/footers to update`);
-
-                                        let updatedCount = 0;
-
-                                        // Update each header/footer
-                                        for (const headerFooter of headersFooters) {
-                                            const updatedMenu = updateMenuItems(headerFooter.menu, pageId, newSlug);
-
-                                            // Check if menu actually changed
-                                            const menuChanged = JSON.stringify(headerFooter.menu) !== JSON.stringify(updatedMenu);
-
-                                            if (menuChanged) {
-                                                headerFooter.menu = updatedMenu;
-                                                await headerFooter.save();
-                                                updatedCount++;
-                                                console.log(`[updateMenuUrls] Updated ${headerFooter.type === 0 ? 'header' : 'footer'} ${headerFooter._id}`);
-                                            }
-                                        }
-
-                                        console.log(`[updateMenuUrls] Completed updating ${updatedCount} headers/footers`);
-                                        return updatedCount;
-                                    };
-
-                                    await updateMenuUrls(existingPage._id.toString(), existingPage.slug);
-                                    console.log('[upsertWebsitePage] Menu URLs updated successfully');
-                                } catch (menuUpdateError) {
-                                    console.error('[upsertWebsitePage] Error updating menu URLs:', menuUpdateError);
-                                    // Don't fail the request if menu update fails
-                                }
-                            }
-                        }
-
-                        // Ensure page exists in WebsiteDesignsData
-                        await ensurePageInDesignData(projectId, existingPage._id);
-
-                        return res.status(200).json({
-                            message: 'Page updated successfully',
-                            page: existingPage,
-                            data: existingPage
-                        });
                     } else {
                         console.log('[upsertWebsitePage] Page not found with given ID and projectId, will search by name');
                     }
-                } catch (err) {
-                    // pageId is not a valid ObjectId, continue with name lookup
-                    console.log('[upsertWebsitePage] Invalid pageId format, will search by name');
                 }
             }
 
@@ -5245,111 +6941,28 @@ Example format:
                 if (page.projectId && page.projectId.toString() === projectId.toString()) {
                     console.log('[upsertWebsitePage] Page already exists for this project:', page._id);
 
-                    // Update page if slug/displayName/description changed (name cannot change)
-                    let updated = false;
-                    let slugChanged = false;
-                    const oldSlug = page.slug;
+                    try {
+                        const { page: updatedPage } = await updateExistingWebsitePage({
+                            projectId,
+                            pageDoc: page,
+                            slug,
+                            displayName,
+                            description,
+                        });
 
-                    // Update slug if provided and different
-                    if (slug !== undefined && slug !== null) {
-                        const normalizedSlug = slug.trim().toLowerCase().replace(/^\/+|\/+$/g, ''); // Remove leading/trailing slashes
-                        if (normalizedSlug !== page.slug) {
-                            page.slug = normalizedSlug;
-                            updated = true;
-                            slugChanged = true;
-                            console.log('[upsertWebsitePage] Slug changed from', oldSlug, 'to', normalizedSlug);
+                        await ensurePageInDesignData(projectId, updatedPage._id);
+
+                        return res.status(200).json({
+                            message: 'Page already exists',
+                            page: updatedPage,
+                            data: updatedPage
+                        });
+                    } catch (slugError) {
+                        if (slugError.statusCode === 409) {
+                            return res.status(409).json({ message: slugError.message });
                         }
+                        throw slugError;
                     }
-
-                    if (displayName && displayName.trim() !== page.displayName) {
-                        page.displayName = displayName.trim();
-                        updated = true;
-                    }
-                    if (description !== undefined && description !== page.description) {
-                        page.description = description ? description.trim() : '';
-                        updated = true;
-                    }
-
-                    if (updated) {
-                        await page.save();
-                        console.log('[upsertWebsitePage] Page updated:', page._id);
-
-                        // If slug changed, update menu URLs in headers/footers
-                        if (slugChanged && oldSlug) {
-                            try {
-                                // Helper function to update menu URLs
-                                const updateMenuUrls = async (pageId, newSlug) => {
-                                    // Recursive function to update menu items and their children
-                                    const updateMenuItems = (menuItems, pageId, newSlug) => {
-                                        if (!Array.isArray(menuItems)) return menuItems;
-
-                                        return menuItems.map(item => {
-                                            const updatedItem = { ...item };
-
-                                            // If this menu item is linked to the page, update its URL
-                                            if (item.pageId && item.pageId.toString() === pageId.toString()) {
-                                                updatedItem.url = `/${newSlug}`;
-                                                console.log(`[updateMenuUrls] Updated menu item "${item.name}" URL to /${newSlug}`);
-                                            }
-
-                                            // Recursively update children
-                                            if (item.children && Array.isArray(item.children) && item.children.length > 0) {
-                                                updatedItem.children = updateMenuItems(item.children, pageId, newSlug);
-                                            }
-
-                                            return updatedItem;
-                                        });
-                                    };
-
-                                    // Find all headers and footers that have menu items linked to this page
-                                    const headersFooters = await SiteHeaderFooter.find({
-                                        $or: [
-                                            { 'menu.pageId': pageId },
-                                            { 'menu.children.pageId': pageId }
-                                        ]
-                                    });
-
-                                    console.log(`[updateMenuUrls] Found ${headersFooters.length} headers/footers to update`);
-
-                                    let updatedCount = 0;
-
-                                    // Update each header/footer
-                                    for (const headerFooter of headersFooters) {
-                                        const updatedMenu = updateMenuItems(headerFooter.menu, pageId, newSlug);
-
-                                        // Check if menu actually changed
-                                        const menuChanged = JSON.stringify(headerFooter.menu) !== JSON.stringify(updatedMenu);
-
-                                        if (menuChanged) {
-                                            headerFooter.menu = updatedMenu;
-                                            await headerFooter.save();
-                                            updatedCount++;
-                                            console.log(`[updateMenuUrls] Updated ${headerFooter.type === 0 ? 'header' : 'footer'} ${headerFooter._id}`);
-                                        }
-                                    }
-
-                                    console.log(`[updateMenuUrls] Completed updating ${updatedCount} headers/footers`);
-                                    return updatedCount;
-                                };
-
-                                await updateMenuUrls(page._id.toString(), page.slug);
-                                console.log('[upsertWebsitePage] Menu URLs updated successfully');
-                            } catch (menuUpdateError) {
-                                console.error('[upsertWebsitePage] Error updating menu URLs:', menuUpdateError);
-                                // Don't fail the request if menu update fails
-                            }
-                        }
-                    }
-
-                    // Ensure page exists in WebsiteDesignsData
-                    await ensurePageInDesignData(projectId, page._id);
-
-                    // Page exists, return it
-                    return res.status(200).json({
-                        message: 'Page already exists',
-                        page: page,
-                        data: page
-                    });
                 } else {
                     // Page exists but for different project - this shouldn't happen, but handle it
                     console.warn('[upsertWebsitePage] Page found but projectId mismatch. This may indicate a data inconsistency.');
@@ -5361,9 +6974,14 @@ Example format:
             console.log('[upsertWebsitePage] Creating new page for project:', projectId);
 
             // Normalize slug (remove leading/trailing slashes, default to name if not provided)
-            let normalizedSlug = slug ? slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '') : normalizedName;
+            let normalizedSlug = slug ? normalizeSlugInput(slug) : normalizedName;
             if (!normalizedSlug) {
-                normalizedSlug = normalizedName; // Fallback to name if slug is empty
+                normalizedSlug = normalizedName;
+            }
+
+            const availability = await assertSlugAvailable(projectId, normalizedSlug);
+            if (!availability.ok) {
+                return res.status(409).json({ message: availability.message });
             }
 
             page = new WebsitePage({
@@ -5373,6 +6991,8 @@ Example format:
                 displayName: displayName.trim(),
                 description: description ? description.trim() : ''
             });
+
+            const isNewPageRecord = true;
 
             try {
                 await page.save();
@@ -5431,6 +7051,20 @@ Example format:
 
             // Add page to WebsiteDesignsData (for both new and existing pages)
             await ensurePageInDesignData(projectId, page._id);
+
+            if (isNewPageRecord) {
+                const newPageId = String(page._id);
+                const userIdForSeo = req.user?._id;
+                setImmediate(() => {
+                    generateMissingSeoForAllProjectPages({
+                        projectId,
+                        userId: userIdForSeo,
+                        pageIds: [newPageId],
+                    }).catch((err) =>
+                        console.error("[upsertWebsitePage] Auto SEO generation failed:", err.message)
+                    );
+                });
+            }
 
             return res.status(201).json({
                 message: 'Page created successfully',
@@ -5532,523 +7166,217 @@ Example format:
     // Accepts array of pages and optionally deletes pages not in the list
     bulkUpsertWebsitePages: async (req, res) => {
         try {
-            console.log('[bulkUpsertWebsitePages] Request received:', req.body);
-            const { projectId, pages, deleteMissing = false } = req.body;
+            const { projectId, pages, deleteMissing } = req.body;
+            console.log(req.body, "this is body data of pages which need to upsert");
 
             if (!projectId) {
-                return res.status(400).json({ message: 'projectId is required' });
+                return res.status(400).json({ message: "projectId is required" });
             }
 
-            if (!Array.isArray(pages)) {
-                return res.status(400).json({ message: 'pages must be an array' });
+            if (!Array.isArray(pages) || pages.length === 0) {
+                return res.status(400).json({ message: "pages array is required" });
             }
 
-            // Validate projectId
-            if (!mongoose.Types.ObjectId.isValid(projectId)) {
-                return res.status(400).json({ message: 'Invalid projectId format' });
-            }
-
-            // Verify project exists
             const project = await UserProject.findById(projectId);
             if (!project) {
-                return res.status(404).json({ message: 'Project not found' });
+                return res.status(404).json({ message: "Project not found" });
             }
-
             const results = {
                 created: [],
                 updated: [],
+                deleted: [],
                 errors: [],
-                deleted: []
             };
 
-            // Step 1: Upsert all pages in the array
-            const pageNames = new Set();
+            const normalizedSelectedNames = pages
+                .map((p) => String(p?.name || "").toLowerCase().trim())
+                .filter(Boolean);
+
             for (const pageData of pages) {
-                const { name, slug, displayName, description, componentIds } = pageData;
+                const { name, slug, displayName, componentIds = [], perLocationContent } = pageData;
+                if (!name || !displayName) continue;
 
-                if (!name || !displayName) {
-                    results.errors.push({
-                        page: name || 'unknown',
-                        error: 'name and displayName are required'
-                    });
-                    continue;
-                }
+                const normalizedName = String(name).toLowerCase().trim();
+                const inputSlug =
+                    slug !== undefined && slug !== null && String(slug).trim() !== ""
+                        ? String(slug)
+                        : normalizedName;
+                const normalizedSlug = normalizeSlugInput(inputSlug) || normalizedName;
 
-                const normalizedName = name.toLowerCase().trim();
-                pageNames.add(normalizedName);
-
-                try {
-                    // Process componentIds: ensure components exist and prepare for saving
-                    const processedComponentIds = [];
-                    if (componentIds && Array.isArray(componentIds) && componentIds.length > 0) {
-                        for (const compData of componentIds) {
-                            try {
-                                let componentName = null;
-                                let uniqueId = null;
-                                let variant = 'a'; // Default to variant "a"
-
-                                // Handle different input formats
-                                if (typeof compData === 'string') {
-                                    // If it's a string like "hero" or "hero_a"
-                                    if (compData.includes('_')) {
-                                        uniqueId = compData.toLowerCase().trim().replace(/-/g, '_');
-                                        const parts = uniqueId.split('_');
-                                        componentName = parts[0];
-                                        variant = parts.slice(1).join('_') || 'a';
-                                    } else {
-                                        componentName = compData.toLowerCase().trim().replace(/-/g, '_');
-                                        uniqueId = `${componentName}_a`;
-                                    }
-                                } else if (compData && compData.componentName) {
-                                    // Object with componentName
-                                    componentName = compData.componentName.toLowerCase().trim().replace(/-/g, '_');
-                                    variant = compData.variant ? compData.variant.toLowerCase().trim() : 'a';
-                                    uniqueId = compData.uniqueId ? compData.uniqueId.toLowerCase().trim().replace(/-/g, '_') : `${componentName}_${variant}`;
-                                } else if (compData && compData.uniqueId) {
-                                    // Object with uniqueId
-                                    uniqueId = compData.uniqueId.toLowerCase().trim().replace(/-/g, '_');
-                                    const parts = uniqueId.split('_');
-                                    componentName = parts[0];
-                                    variant = parts.slice(1).join('_') || 'a';
-                                } else if (compData && compData.id) {
-                                    // Section ID format (e.g., from frontend)
-                                    const sectionId = compData.id.toLowerCase().trim();
-                                    // Map section IDs to component names
-                                    const sectionToComponentMap = {
-                                        'hero': 'hero',
-                                        'features': 'features',
-                                        'testimonials': 'testimonial',
-                                        'testimonial': 'testimonial',
-                                        'faq': 'faq',
-                                        'process': 'process',
-                                        'services': 'services',
-                                        'cta': 'cta',
-                                        'stats': 'stats',
-                                        'partners': 'partners',
-                                        'benefits': 'benefits',
-                                        'video': 'video',
-                                        'pricing-preview': 'pricing',
-                                        'newsletter': 'newsletter',
-                                        'social-proof': 'socialproof',
-                                        'awards': 'awards',
-                                        'case-studies': 'casestudies',
-                                        'blog-preview': 'blog',
-                                        'location-map': 'locationmap',
-                                        'contact-info': 'contactinfosection',
-                                        'footer-cta': 'footerctasection',
-                                    };
-                                    componentName = (sectionToComponentMap[sectionId] || sectionId).replace(/-/g, '_');
-                                    uniqueId = `${componentName}_a`;
-                                    variant = 'a';
-                                }
-
-                                if (!componentName) {
-                                    console.warn(`[bulkUpsertWebsitePages] Could not determine component name from:`, compData);
-                                    continue;
-                                }
-
-                                // Ensure component exists in WebsiteComponent (create if not exists)
-                                const component = await ensureComponentExists(componentName, uniqueId);
-
-                                // Add to processedComponentIds - save full uniqueId in componentVariant
-                                processedComponentIds.push({
-                                    componentId: component._id,
-                                    componentVariant: uniqueId // Save full uniqueId (e.g., "hero_a") instead of just variant letter
-                                });
-
-                            } catch (compError) {
-                                console.error(`[bulkUpsertWebsitePages] Error processing component:`, compError);
-                                // Continue with other components
-                            }
-                        }
+                const processedComponents = componentIds.map((comp) => {
+                    if (typeof comp === "string") {
+                        const normalizedComponent = comp.toLowerCase().trim();
+                        return {
+                            componentName: normalizedComponent,
+                            componentVariant: `${normalizedComponent}_a`,
+                        };
                     }
 
-                    // Find existing page by projectId + name
-                    let page = await WebsitePage.findOne({
-                        projectId: projectId,
-                        name: normalizedName
+                    return {
+                        componentName: comp.componentName,
+                        componentVariant: comp.componentVariant || `${comp.componentName}_a`,
+                    };
+                });
+
+                let page = await WebsitePage.findOne({
+                    projectId,
+                    name: normalizedName,
+                });
+
+                if (page) {
+                    page.slug = normalizedSlug || normalizedName;
+                    page.displayName = displayName;
+                    page.componentIds = processedComponents;
+                    page.isPublished = true;
+                    if (typeof perLocationContent === "boolean") {
+                        page.perLocationContent = perLocationContent;
+                    }
+                    await page.save();
+
+                    results.updated.push({
+                        name: normalizedName,
+                        pageId: page._id,
+                    });
+                } else {
+                    page = await WebsitePage.create({
+                        projectId,
+                        name: normalizedName,
+                        slug: normalizedSlug || normalizedName,
+                        displayName,
+                        componentIds: processedComponents,
+                        isPublished: true,
+                        perLocationContent: typeof perLocationContent === "boolean" ? perLocationContent : false,
                     });
 
-                    if (page) {
-                        // Update existing page
-                        let updated = false;
-                        if (slug !== undefined && slug !== null) {
-                            const normalizedSlug = slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '');
-                            if (normalizedSlug !== page.slug) {
-                                page.slug = normalizedSlug;
-                                updated = true;
-                            }
-                        }
-                        if (displayName && displayName.trim() !== page.displayName) {
-                            page.displayName = displayName.trim();
-                            updated = true;
-                        }
-                        if (description !== undefined && description !== page.description) {
-                            page.description = description ? description.trim() : '';
-                            updated = true;
-                        }
-
-                        // Update componentIds if provided
-                        if (componentIds && Array.isArray(componentIds) && componentIds.length > 0) {
-                            page.componentIds = processedComponentIds;
-                            updated = true;
-                        }
-
-                        if (updated) {
-                            await page.save();
-                        }
-
-                        // Ensure page exists in WebsiteDesignsData
-                        await ensurePageInDesignData(projectId, page._id);
-
-                        results.updated.push({
-                            name: normalizedName,
-                            pageId: page._id,
-                            page: page
-                        });
-                    } else {
-                        // Create new page
-                        const normalizedSlug = slug ? slug.trim().toLowerCase().replace(/^\/+|\/+$/g, '') : normalizedName;
-                        page = new WebsitePage({
-                            projectId: projectId,
-                            name: normalizedName,
-                            slug: normalizedSlug || normalizedName,
-                            displayName: displayName.trim(),
-                            description: description ? description.trim() : '',
-                            componentIds: processedComponentIds // Save componentIds
-                        });
-
-                        try {
-                            await page.save();
-                            await ensurePageInDesignData(projectId, page._id);
-                            results.created.push({
-                                name: normalizedName,
-                                pageId: page._id,
-                                page: page
-                            });
-                        } catch (saveError) {
-                            if (saveError.code === 11000) {
-                                // Duplicate key - page was created concurrently, find and use it
-                                const existingPage = await WebsitePage.findOne({
-                                    projectId: projectId,
-                                    name: normalizedName
-                                });
-                                if (existingPage) {
-                                    // Update componentIds if provided
-                                    if (componentIds && Array.isArray(componentIds) && componentIds.length > 0) {
-                                        existingPage.componentIds = processedComponentIds;
-                                        await existingPage.save();
-                                    }
-                                    await ensurePageInDesignData(projectId, existingPage._id);
-                                    results.updated.push({
-                                        name: normalizedName,
-                                        pageId: existingPage._id,
-                                        page: existingPage
-                                    });
-                                } else {
-                                    results.errors.push({
-                                        page: normalizedName,
-                                        error: 'Duplicate key error but page not found'
-                                    });
-                                }
-                            } else {
-                                throw saveError;
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error(`[bulkUpsertWebsitePages] Error processing page ${normalizedName}:`, error);
-                    results.errors.push({
-                        page: normalizedName,
-                        error: error.message
+                    results.created.push({
+                        name: normalizedName,
+                        pageId: page._id,
                     });
                 }
             }
 
-            // Step 2: Delete pages not in the list (if deleteMissing is true)
+            // Optionally "delete" missing pages by unpublishing them.
+            // Critical: never touch service detail pages (pageType:"service" with serviceId).
             if (deleteMissing) {
-                try {
-                    // Get all pages for this project
-                    const allProjectPages = await WebsitePage.find({ projectId: projectId });
+                // Always keep these core pages published
+                const corePageNames = ["home", "contact", "about", "services"];
+                const keep = normalizedSelectedNames.length
+                    ? [...new Set([...normalizedSelectedNames, ...corePageNames])]
+                    : corePageNames;
 
-                    // Find pages to delete (pages not in the provided list)
-                    const pagesToDelete = allProjectPages.filter(page => {
-                        const pageName = page.name.toLowerCase().trim();
-                        return !pageNames.has(pageName);
-                    });
+                // Find pages to unpublish, but EXCLUDE:
+                // - Core pages (home, contact, about, services)
+                // - Location pages (name starts with "location-" or has locationId)
+                // - Service pages (pageType: "service" or has serviceId)
+                const pagesToUnpublish = await WebsitePage.find({
+                    projectId,
+                    pageType: "default",
+                    $or: [{ serviceId: { $exists: false } }, { serviceId: null }],
+                    name: { $nin: keep, $not: /^location-/ }, // Exclude location pages by name pattern
+                    locationId: { $in: [null, undefined] }, // Also exclude pages with locationId set
+                    isPublished: true,
+                }).select("_id name").lean();
 
-                    if (pagesToDelete.length > 0) {
-                        const pageIdsToDelete = pagesToDelete.map(p => p._id);
-
-                        // Delete from WebsitePage
-                        const deleteResult = await WebsitePage.deleteMany({
-                            _id: { $in: pageIdsToDelete },
-                            projectId: projectId
-                        });
-
-                        // Also remove from WebsiteDesignsData
-                        const designData = await WebsiteDesignsData.findOne({ projectId: projectId });
-                        if (designData) {
-                            designData.pages = designData.pages.filter(p => {
-                                const pageId = p.pageId?._id || p.pageId;
-                                return !pageIdsToDelete.some(id => id.toString() === pageId.toString());
-                            });
-                            await designData.save();
-                        }
-
-                        results.deleted = pagesToDelete.map(p => ({
-                            name: p.name,
-                            pageId: p._id
-                        }));
-
-                        console.log(`[bulkUpsertWebsitePages] Deleted ${deleteResult.deletedCount} pages`);
-                    }
-                } catch (deleteError) {
-                    console.error('[bulkUpsertWebsitePages] Error deleting missing pages:', deleteError);
-                    results.errors.push({
-                        operation: 'deleteMissing',
-                        error: deleteError.message
-                    });
+                if (pagesToUnpublish.length) {
+                    const ids = pagesToUnpublish.map((p) => p._id);
+                    await WebsitePage.updateMany(
+                        { _id: { $in: ids } },
+                        { $set: { isPublished: false } }
+                    );
+                    results.deleted = pagesToUnpublish.map((p) => ({
+                        name: p.name,
+                        pageId: p._id,
+                    }));
                 }
             }
 
             return res.status(200).json({
-                message: 'Bulk upsert completed',
-                results: {
-                    created: results.created.length,
-                    updated: results.updated.length,
-                    deleted: results.deleted.length,
-                    errors: results.errors.length
-                },
-                data: results
+                message: "Pages saved successfully",
+                results,
             });
         } catch (error) {
-            console.error('[bulkUpsertWebsitePages] Error:', error);
+            console.error("bulkUpsertWebsitePages error:", error);
             return res.status(500).json({
-                message: 'Server error while bulk upserting pages',
-                error: error.message
+                message: "Server error",
             });
         }
     },
 
 
-    // Upsert Website Component - if name exists, return existing, else create
+    // Upsert Website Component — merges variants into ONE document per section (name)
     upsertWebsiteComponent: async (req, res) => {
         try {
-            console.log('[upsertWebsiteComponent] Request received:', req.body);
+            const { mergeWebsiteComponentsFromScan } = require('../additional/mergeWebsiteComponentsFromScan');
+            const pathMod = require('path');
 
-            // If request body is empty or has a special flag, register default components
             if (!req.body || (typeof req.body === 'object' && Object.keys(req.body).length === 0) || req.body.registerDefaults === true) {
-                console.log('[upsertWebsiteComponent] Registering default homepage components...');
-
-                // Default homepage components to register
-                // Only register required components: hero_a/b/c, services_a, cta_a/b/c/d
-                const defaultComponents = [
-                    // Hero variants
-                    {
-                        name: "hero",
-                        uniqueId: "hero_a",
-                        variant: "a"
-                    },
-                    {
-                        name: "hero",
-                        uniqueId: "hero_b",
-                        variant: "b"
-                    },
-                    {
-                        name: "hero",
-                        uniqueId: "hero_c",
-                        variant: "c"
-                    },
-                    // Services
-                    {
-                        name: "services",
-                        uniqueId: "services_a",
-                        variant: "a"
-                    },
-                    // CTA variants
-                    {
-                        name: "cta",
-                        uniqueId: "cta_a",
-                        variant: "a"
-                    },
-                    {
-                        name: "cta",
-                        uniqueId: "cta_b",
-                        variant: "b"
-                    },
-                    {
-                        name: "cta",
-                        uniqueId: "cta_c",
-                        variant: "c"
-                    },
-                    {
-                        name: "cta",
-                        uniqueId: "cta_d",
-                        variant: "d"
-                    }
-                ];
-
-                const defaultResults = [];
-
-                for (const componentData of defaultComponents) {
-                    const { name, uniqueId, variant } = componentData;
-
-                    // Normalize
-                    const normalizedName = name.toLowerCase().trim();
-                    const normalizedUniqueId = uniqueId.toLowerCase().trim();
-                    const normalizedVariant = variant.toLowerCase().trim();
-
-                    // Check if component already exists
-                    let component = await WebsiteComponent.findOne({ uniqueId: normalizedUniqueId });
-
-                    if (component) {
-                        console.log(`[upsertWebsiteComponent] Component ${normalizedUniqueId} already exists`);
-                        defaultResults.push({
-                            message: 'Component already exists',
-                            data: component
-                        });
-                        continue;
-                    }
-
-                    // Create new component
-                    component = new WebsiteComponent({
-                        name: normalizedName,
-                        variant: normalizedVariant,
-                        uniqueId: normalizedUniqueId
-                    });
-
-                    await component.save();
-                    console.log(`[upsertWebsiteComponent] Component ${normalizedUniqueId} created successfully`);
-
-                    defaultResults.push({
-                        message: 'Component created successfully',
-                        data: component
-                    });
-                }
-
-                return res.status(201).json({
-                    message: 'Default homepage components registered successfully',
-                    data: defaultResults,
-                    summary: {
-                        total: defaultResults.length,
-                        created: defaultResults.filter(r => r.message === 'Component created successfully').length,
-                        existing: defaultResults.filter(r => r.message === 'Component already exists').length
-                    }
+                const genieBuildSectionsPath = pathMod.join(__dirname, '../../apps/geniebuild/components/sections');
+                const out = await mergeWebsiteComponentsFromScan(WebsiteComponent, genieBuildSectionsPath);
+                return res.status(200).json({
+                    message: 'Default components synced from filesystem',
+                    data: [],
+                    summary: out.summary,
+                    logLines: out.logLines,
                 });
             }
 
-            // Support both single component and array of components
             const componentsToProcess = Array.isArray(req.body) ? req.body : [req.body];
             const results = [];
 
             for (const componentData of componentsToProcess) {
-                const { name, variant, uniqueId, pageId } = componentData;
-
-                // Validate required fields
+                if (!componentData || typeof componentData !== 'object') {
+                    results.push({ error: 'invalid body', data: null });
+                    continue;
+                }
+                const { name, variant, uniqueId } = componentData;
                 if (!name) {
-                    console.error('[upsertWebsiteComponent] Missing required field: name');
-                    results.push({
-                        error: 'name is required',
-                        data: null
-                    });
+                    results.push({ error: 'name is required', data: null });
                     continue;
                 }
+                const normalizedName = String(name).toLowerCase().trim();
+                const raw = (uniqueId || variant || '').toString().trim();
+                if (!raw) {
+                    results.push({ error: 'uniqueId or variant is required', data: null });
+                    continue;
+                }
+                const vid = raw.toLowerCase().replace(/\.tsx$/i, '');
 
-                // Normalize name
-                const normalizedName = name.toLowerCase().trim();
+                let doc = await WebsiteComponent.findOne({ name: normalizedName });
+                const variants = [...(doc?.variants || [])];
+                const idx = variants.findIndex((v) => v.uniqueId === vid);
+                if (idx === -1) {
+                    variants.push({ uniqueId: vid, status: 1 });
+                }
 
-                // Determine variant (default to 'a' if not provided)
-                let finalVariant = 'a';
-                if (variant) {
-                    finalVariant = variant.toLowerCase().trim();
+                if (doc) {
+                    await WebsiteComponent.updateOne(
+                        { _id: doc._id },
+                        { $set: { variants }, $unset: { variant: '', uniqueId: '' } }
+                    );
+                    doc = await WebsiteComponent.findById(doc._id);
                 } else {
-                    // Find existing variants for this name (NO pageId - websitecomponents is global)
-                    const query = { name: normalizedName };
-
-                    const existingVariants = await WebsiteComponent.find(query).sort({ variant: 1 });
-
-                    if (existingVariants.length > 0) {
-                        // Get the last variant and increment
-                        const lastVariant = existingVariants[existingVariants.length - 1].variant;
-                        const lastVariantCode = lastVariant.charCodeAt(0);
-                        if (lastVariantCode >= 97 && lastVariantCode < 122) { // a-z
-                            finalVariant = String.fromCharCode(lastVariantCode + 1);
-                        } else {
-                            // If z is reached, start with aa, ab, etc.
-                            finalVariant = 'a' + String.fromCharCode(97 + (existingVariants.length % 26));
-                        }
-                    }
-                }
-
-                // Generate uniqueId: {name}_{variant} e.g., "hero_a", "services_b"
-                const generatedUniqueId = `${normalizedName}_${finalVariant}`;
-                const finalUniqueId = (uniqueId || generatedUniqueId).toLowerCase().trim();
-
-                console.log('[upsertWebsiteComponent] Processing component:', {
-                    name: normalizedName,
-                    variant: finalVariant,
-                    uniqueId: finalUniqueId,
-                    pageId: pageId || 'none'
-                });
-
-                // Check if component exists by uniqueId (websitecomponents is global, no pageId)
-                const component = await WebsiteComponent.findOne({ uniqueId: finalUniqueId });
-
-                if (component) {
-                    console.log('[upsertWebsiteComponent] Component already exists (by uniqueId):', component._id);
-                    results.push({
-                        message: 'Component already exists',
-                        component: component,
-                        data: component
+                    doc = await WebsiteComponent.create({
+                        name: normalizedName,
+                        variants: [{ uniqueId: vid, status: 1 }],
                     });
-                    continue;
                 }
-
-                // Component doesn't exist, create new one
-                console.log('[upsertWebsiteComponent] Creating new component (global registry, no pageId)');
-                const componentDataToSave = {
-                    name: normalizedName,
-                    variant: finalVariant,
-                    uniqueId: finalUniqueId
-                    // NO pageId - websitecomponents is global registry only
-                };
-
-                component = new WebsiteComponent(componentDataToSave);
-
-                await component.save();
-                console.log('[upsertWebsiteComponent] Component created successfully:', component._id);
 
                 results.push({
-                    message: 'Component created successfully',
-                    component: component,
-                    data: component
+                    message: 'Component merged',
+                    data: doc,
+                    uniqueId: vid,
+                    componentId: doc._id,
                 });
             }
 
-            // Return results
-            const successCount = results.filter(r => r.data && !r.error).length;
-            const errorCount = results.filter(r => r.error).length;
-
-            return res.status(successCount > 0 ? 201 : 400).json({
-                message: `Processed ${componentsToProcess.length} component(s): ${successCount} created, ${errorCount} errors`,
+            const ok = results.filter((r) => r.data && !r.error).length;
+            return res.status(ok > 0 ? 201 : 400).json({
+                message: `Processed ${componentsToProcess.length} component(s)`,
                 data: results,
-                summary: {
-                    total: componentsToProcess.length,
-                    created: successCount,
-                    errors: errorCount,
-                    existing: results.filter(r => r.data && r.message === 'Component already exists').length
-                }
+                summary: { total: componentsToProcess.length, merged: ok, errors: results.length - ok },
             });
         } catch (error) {
             console.error('Error upserting Website Component:', error);
-            if (error.code === 11000) {
-                // Duplicate key error - component was created between check and save
-                return res.status(200).json({
-                    message: 'Component already exists (duplicate key)',
-                    data: null
-                });
-            }
             return res.status(500).json({ message: 'Server error while upserting Website Component', error: error.message });
         }
     },
@@ -6063,11 +7391,11 @@ Example format:
             }
 
             const normalizedName = name.toLowerCase().trim();
-            const variants = await WebsiteComponent.find({ name: normalizedName }).sort({ variant: 1 });
+            const doc = await WebsiteComponent.findOne({ name: normalizedName });
 
             return res.status(200).json({
                 message: 'Component variants retrieved successfully',
-                data: variants
+                data: doc ? [doc] : []
             });
         } catch (error) {
             console.error('Error getting component variants:', error);
@@ -6124,14 +7452,12 @@ Example format:
                 const randomIndex = Math.floor(Math.random() * enabledVariants.length);
                 const selectedVariant = enabledVariants[randomIndex];
 
-                // Extract variant letter from uniqueId (e.g., "hero_a" -> "A")
-                const variantLetter = selectedVariant.uniqueId.split('_').pop()?.toUpperCase() || 'A';
-
+                // uniqueId is lowercase file basename (e.g. heroplumbing1); variant label for UI = same slug
                 selectedComponents.push({
                     componentName: normalizedName,
-                    componentId: component._id, // Keep for backward compatibility
-                    variant: variantLetter,
-                    uniqueId: selectedVariant.uniqueId // Primary field - use this!
+                    componentId: component._id,
+                    variant: selectedVariant.uniqueId,
+                    uniqueId: selectedVariant.uniqueId
                 });
             }
 
@@ -6163,6 +7489,9 @@ Example format:
                 pageStyles,  // Default styles for whole website
                 pages        // Pages array (replaces selectPages)
             } = req.body;
+
+            // Phase 1 requirement: when skipAutoEnqueue is true, persist ONLY structure (no SectionContent writes).
+            const skipAutoEnqueue = Boolean(req.body?.skipAutoEnqueue);
 
             if (!projectId) {
                 console.error('[saveWebsiteDesignData] projectId is missing');
@@ -6199,7 +7528,14 @@ Example format:
 
             // Process pageStyles (default styles for whole website) - just a single object with style key
             const processedPageStyles = pageStyles && typeof pageStyles === 'object' && !Array.isArray(pageStyles)
-                ? { style: pageStyles.style || {} }
+                ? {
+                    style: pageStyles.style || {},
+                    ...(pageStyles.perLocationContentByPage &&
+                    typeof pageStyles.perLocationContentByPage === 'object' &&
+                    !Array.isArray(pageStyles.perLocationContentByPage)
+                        ? { perLocationContentByPage: pageStyles.perLocationContentByPage }
+                        : {}),
+                }
                 : { style: {} };
 
             console.log('[saveWebsiteDesignData] Processing pageStyles (default website styles)');
@@ -6212,7 +7548,33 @@ Example format:
 
             console.log('[saveWebsiteDesignData] Processing pages:', pages?.length || 0);
 
-            // Process pages array with pageId, style, componentIds (with style and elementIds with style and data)
+            const incomingPageIds = (pages || [])
+                .map((p) => p?.pageId)
+                .filter((id) => mongoose.Types.ObjectId.isValid(String(id)))
+                .map((id) => new mongoose.Types.ObjectId(id));
+            const [pageMetaDocs, allBusinessLocations] = await Promise.all([
+                incomingPageIds.length
+                    ? WebsitePage.find({ projectId, _id: { $in: incomingPageIds } })
+                        .select("_id name slug pageType serviceId locationId")
+                        .lean()
+                    : [],
+                BusinessLocation.find({ projectId, status: 1 })
+                    .select("_id type parentId areaName")
+                    .lean()
+            ]);
+            const pageMetaById = new Map((pageMetaDocs || []).map((p) => [String(p._id), p]));
+            const allParentLocationIds = (allBusinessLocations || [])
+                .filter((l) => Number(l?.type) === 0)
+                .map((l) => String(l._id));
+            const childLocationIdsByParent = new Map();
+            for (const loc of (allBusinessLocations || [])) {
+                if (Number(loc?.type) !== 1 || !loc?.parentId) continue;
+                const key = String(loc.parentId);
+                if (!childLocationIdsByParent.has(key)) childLocationIdsByParent.set(key, []);
+                childLocationIdsByParent.get(key).push(String(loc._id));
+            }
+
+            // Process pages array with pageStyles + sections structure.
             // Note: Using Promise.all because we need async operations inside the map (for component lookups)
             const processedPagesPromises = (pages || []).map(async (pageData, index) => {
                 try {
@@ -6220,12 +7582,13 @@ Example format:
                         ? new mongoose.Types.ObjectId(pageData.pageId)
                         : pageData.pageId;
 
-                    // Main style of this whole page
-                    const pageStyle = pageData.style || {};
+                    // Page-level override styles (if any)
+                    const pageStyle = sanitizePageStyles(pageData.pageStyles || pageData.style || {});
 
-                    // Process components with their styles and elements
+                    // Process sections with style/layout overrides
                     // Note: Using Promise.all because we need async operations inside the map
-                    const processedComponentsPromises = (pageData.componentIds || []).map(async (compData) => {
+                    const rawSections = Array.isArray(pageData.sections) ? pageData.sections : (pageData.componentIds || []);
+                    const processedComponentsPromises = rawSections.map(async (compData) => {
                         try {
                             // GENIEBUILD FORMAT: variant_uniqueId, componentId, sectionData
                             // OLD FORMAT: uniqueId or componentId (backward compatibility)
@@ -6252,7 +7615,7 @@ Example format:
                                 // GENIEBUILD FORMAT: variant_uniqueId, componentId, sectionData
                                 uniqueId = compData.variant_uniqueId.toLowerCase().trim();
                                 sectionData = compData.sectionData || null;
-                                
+
                                 if (compData.componentId) {
                                     const compIdValue = compData.componentId;
                                     if (typeof compIdValue === 'string' && mongoose.Types.ObjectId.isValid(compIdValue)) {
@@ -6341,6 +7704,17 @@ Example format:
                                 }
                             }
 
+                            // One WebsiteComponent document per section (name === sectionData.type)
+                            if (!componentId && sectionData && sectionData.type) {
+                                try {
+                                    const sectionName = String(sectionData.type).toLowerCase().trim();
+                                    const sectionDoc = await WebsiteComponent.findOne({ name: sectionName });
+                                    if (sectionDoc) {
+                                        componentId = sectionDoc._id;
+                                    }
+                                } catch (_e) { /* ignore */ }
+                            }
+
                             // If we have componentId but no uniqueId, try to get uniqueId from component (for backward compatibility)
                             if (componentId && !uniqueId) {
                                 try {
@@ -6376,7 +7750,11 @@ Example format:
                             }
 
                             // Component style (from sectionData.styles for GenieBuild, or compData.style for old format)
-                            const componentStyle = sectionData?.styles || compData.style || {};
+                            const componentStyle = compactSectionStyleOverrides(sectionData?.styles || compData.style || {}, {
+                                colorPrimary,
+                                colorSecondary,
+                                colorAccent
+                            }) || {};
 
                             // Process elementIds array (each element has elementId, style, and data)
                             // For GenieBuild, elementIds come from sectionData.elements if available
@@ -6396,8 +7774,8 @@ Example format:
                                         return {
                                             elementId: elementData.elementId,
                                             elementType: elementData.elementType || 'text',
-                                            style: elementData.style || {},
-                                            data: elementData.data || {},
+                                            style: compactOverrideObject(elementData.style || {}) || {},
+                                            data: compactOverrideObject(elementData.data || {}) || {},
                                             order: elementData.order !== undefined ? elementData.order : 0,
                                             parentElId: elementData.parentElId || null
                                         };
@@ -6410,19 +7788,125 @@ Example format:
                                     return null;
                                 }
                             }).filter(el => el !== null);
+                            const compactedElements = compactElementRecords(processedElements);
 
                             // Build the component object
                             const componentObj = {
-                                variant_uniqueId: compData.variant_uniqueId || uniqueId, // GenieBuild format
-                                uniqueId: uniqueId, // Required field (lowercase)
-                                componentId: componentId, // Keep for backward compatibility (deprecated)
-                                style: componentStyle,
-                                elementIds: processedElements
+                                variant_uniqueId: uniqueId,
+                                uniqueId: uniqueId,
+                                componentId: componentId || undefined,
+                                elementIds: compactedElements
                             };
+                            if (!sectionData && componentStyle && Object.keys(componentStyle).length > 0) {
+                                componentObj.style = componentStyle;
+                            }
 
-                            // Add sectionData for GenieBuild format (single source of truth)
+                            // Add sectionData for GenieBuild format (structure/styles only).
+                            // Content is persisted in SectionContent as single source of truth.
                             if (sectionData) {
-                                componentObj.sectionData = sectionData;
+                                const rawSectionType = String(sectionData?.type || '').toLowerCase().trim();
+                                const sectionContent = sectionData?.content ?? {};
+                                const resolverType = getSectionResolver(rawSectionType);
+                                const pageMeta = pageMetaById.get(String(pageId));
+                                let sectionContentDoc = null;
+                                if (rawSectionType) {
+                                    const pageNameForLoc = String(pageMeta?.name || "").toLowerCase().trim();
+                                    const pageSlugForLoc = String(pageMeta?.slug || pageNameForLoc).toLowerCase().trim();
+                                    const isHomepageForLoc = pageNameForLoc === "home" || pageNameForLoc === "homepage" || pageSlugForLoc === "home";
+                                    const firstParentLocationId = allParentLocationIds.length ? allParentLocationIds[0] : null;
+                                    const isSiteWideShell =
+                                        rawSectionType === "header" ||
+                                        rawSectionType === "navbar" ||
+                                        rawSectionType === "footer";
+                                    if (isSiteWideShell) {
+                                        componentObj.sectionData = {
+                                            type: rawSectionType,
+                                            styles: compactSectionStyleOverrides(sectionData?.styles || {}, {
+                                                colorPrimary,
+                                                colorSecondary,
+                                                colorAccent
+                                            }) || {},
+                                            elements: compactElementRecords(sectionData?.elements || []),
+                                            content: {},
+                                            contentRef: buildContentRef({
+                                                resolver: "page_scoped",
+                                                sectionContentIds: [],
+                                                locationIds: [],
+                                                extraSources: [{ source: "static_shell", ids: ["navbar_footer_shell"] }]
+                                            })
+                                        };
+                                        return componentObj;
+                                    }
+                                    // Phase 1 structure-only save: do NOT create SectionContent placeholders.
+                                    // Phase 2 generation/enqueue will create/fill SectionContent.
+                                    if (!skipAutoEnqueue) {
+                                        const preferredLocationId =
+                                            sectionData?.locationId ||
+                                            pageMeta?.locationId ||
+                                            (isHomepageForLoc ? firstParentLocationId : null) ||
+                                            null;
+                                        if (shouldUseServiceBundleForPage(rawSectionType, pageMeta)) {
+                                            sectionContentDoc = await upsertServiceBundleSectionRecord({
+                                                projectId,
+                                                serviceId: pageMeta.serviceId,
+                                                locationId: preferredLocationId,
+                                                sectionId: rawSectionType,
+                                                data: sectionContent,
+                                                meta: {
+                                                    source: "saveWebsiteDesignData",
+                                                    variantUniqueId: uniqueId,
+                                                }
+                                            });
+                                        } else {
+                                            sectionContentDoc = await upsertSectionContentRecord({
+                                                projectId,
+                                                pageId,
+                                                sectionId: rawSectionType,
+                                                locationId: preferredLocationId,
+                                                data: sectionContent,
+                                                meta: {
+                                                    source: "saveWebsiteDesignData",
+                                                    variantUniqueId: uniqueId,
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+
+                                let resolverLocationIds = [];
+                                if (resolverType === "business_locations") {
+                                    const pageName = String(pageMeta?.name || "").toLowerCase().trim();
+                                    const pageSlug = String(pageMeta?.slug || pageName).toLowerCase().trim();
+                                    const isHomepage = pageName === "home" || pageName === "homepage" || pageSlug === "home";
+                                    if (isHomepage) {
+                                        resolverLocationIds = allParentLocationIds;
+                                    } else if (pageMeta?.locationId) {
+                                        const pageLocationId = String(pageMeta.locationId);
+                                        const childIds = childLocationIdsByParent.get(pageLocationId) || [];
+                                        resolverLocationIds = childIds.length ? childIds : [pageLocationId];
+                                    } else {
+                                        resolverLocationIds = (allBusinessLocations || []).map((l) => String(l._id));
+                                    }
+                                }
+
+                                componentObj.sectionData = {
+                                    type: rawSectionType || sectionData?.type,
+                                    styles: compactSectionStyleOverrides(sectionData?.styles || {}, {
+                                        colorPrimary,
+                                        colorSecondary,
+                                        colorAccent
+                                    }) || {},
+                                    elements: compactElementRecords(sectionData?.elements || []),
+                                    content: pickPersistableServicesSectionContent(rawSectionType, sectionContent),
+                                    contentRef: buildContentRef({
+                                        resolver: resolverType,
+                                        sectionContentIds: sectionContentDoc?._id ? [String(sectionContentDoc._id)] : [],
+                                        locationIds: resolverLocationIds,
+                                        extraSources: resolverType === "business_locations"
+                                            ? [{ source: "business_locations", ids: resolverLocationIds }]
+                                            : []
+                                    })
+                                };
                             }
 
                             return componentObj;
@@ -6433,13 +7917,14 @@ Example format:
                     });
 
                     // Wait for all promises to resolve
-                    const processedComponents = await Promise.all(processedComponentsPromises);
-
-                    return {
+                    const processedSections = await Promise.all(processedComponentsPromises);
+                    const pageObj = {
                         pageId,
-                        style: pageStyle,
-                        componentIds: processedComponents.filter(comp => comp !== null)
+                        pageStyles: pageStyle,
+                        sectionLayout: [],
                     };
+                    assignPageSections(pageObj, processedSections.filter(comp => comp !== null));
+                    return pageObj;
                 } catch (err) {
                     console.error(`[saveWebsiteDesignData] Error processing pageData at index ${index}:`, err);
                     return null;
@@ -6455,14 +7940,11 @@ Example format:
             // Check if design data already exists for this project
             let designData = await WebsiteDesignsData.findOne({ projectId });
 
+            let createdNewDesignData = false;
             if (designData) {
                 console.log('[saveWebsiteDesignData] Updating existing design data');
                 // Update existing design data
-                // Theme colors are now in ThemeSetting table, but keep these for backward compatibility
-                designData.colorScheme = colorScheme || 'default';
-                designData.colorPrimary = colorPrimary || '';
-                designData.colorSecondary = colorSecondary || '';
-                designData.colorAccent = colorAccent || '';
+                designData.schemaVersion = 2;
                 designData.pageStyles = processedPageStyles;
                 designData.pages = processedPages;
                 await designData.save();
@@ -6470,19 +7952,60 @@ Example format:
             } else {
                 console.log('[saveWebsiteDesignData] Creating new design data');
                 // Create new design data
-                // Theme colors are now in ThemeSetting table, but keep these for backward compatibility
                 designData = new WebsiteDesignsData({
+                    schemaVersion: 2,
                     projectId: new mongoose.Types.ObjectId(projectId),
                     userId: new mongoose.Types.ObjectId(userId),
-                    colorScheme: colorScheme || 'default',
-                    colorPrimary: colorPrimary || '',
-                    colorSecondary: colorSecondary || '',
-                    colorAccent: colorAccent || '',
                     pageStyles: processedPageStyles,
                     pages: processedPages
                 });
                 await designData.save();
                 console.log('[saveWebsiteDesignData] Design data created successfully:', designData._id);
+                createdNewDesignData = true;
+            }
+
+            // Auto-enqueue on first save unless caller will enqueue (business website create).
+            try {
+                const skipAutoEnqueue = Boolean(req.body?.skipAutoEnqueue);
+                if (createdNewDesignData && !skipAutoEnqueue) {
+                    const allLocations = await BusinessLocation.find({ projectId, status: 1 })
+                        .select("_id areaName parentId type")
+                        .lean();
+                    const selectedSectionIds = [...new Set(
+                        (processedPages || [])
+                            .flatMap((p) => getPageSections(p))
+                            .map((comp) => String(comp?.sectionData?.type || "").toLowerCase().trim())
+                            .filter((s) => s && s !== "header" && s !== "navbar" && s !== "footer")
+                    )];
+                    if (selectedSectionIds.length > 0) {
+                        const queueLocations = (allLocations || []).map((loc) => ({
+                            _id: String(loc._id),
+                            name: String(loc.areaName || "").trim(),
+                            parent_id: loc.parentId ? String(loc.parentId) : null,
+                            type: Number(loc.type || 0),
+                        }));
+                        const queuedJob = await enqueueSectionGeneration({
+                            projectId: String(projectId),
+                            selectedSectionIds,
+                            locations: queueLocations,
+                            includeDefaultHomepage: true,
+                            homepageLocationId: null,
+                            perLocationContentByPage:
+                                processedPageStyles?.perLocationContentByPage || null,
+                            userId: String(userId),
+                        });
+                        console.log("[saveWebsiteDesignData] Auto-enqueued section generation job:", {
+                            projectId: String(projectId),
+                            jobId: queuedJob?.id || null,
+                            selectedSectionsCount: selectedSectionIds.length,
+                            locationsCount: queueLocations.length,
+                        });
+                    } else {
+                        console.warn("[saveWebsiteDesignData] Auto-enqueue skipped: no selected sections found");
+                    }
+                }
+            } catch (enqueueErr) {
+                console.error("[saveWebsiteDesignData] Auto-enqueue failed:", enqueueErr.message);
             }
 
             return res.status(200).json({
@@ -6501,10 +8024,10 @@ Example format:
             console.log('[updateWebsiteDesignData] Request received:', {
                 projectId: req.body.projectId,
                 pageId: req.body.pageId,
-                componentIdsCount: req.body.componentIds?.length || 0
+                sectionsCount: req.body.sections?.length || req.body.componentIds?.length || 0
             });
 
-            const { projectId, pageId, componentIds, layout } = req.body;
+            const { projectId, pageId, sections, componentIds, layout, sectionLayout, pageStyles } = req.body;
 
             if (!projectId) {
                 console.error('[updateWebsiteDesignData] projectId is missing');
@@ -6577,9 +8100,26 @@ Example format:
                 });
             }
 
-            // Process componentIds - ensure each component exists
+            // Process sections - ensure each component exists
             const processedComponentIds = [];
-            for (const compData of componentIds || []) {
+            const pageMeta = await WebsitePage.findOne({ _id: finalPageId, projectId })
+                .select("_id name slug pageType serviceId locationId")
+                .lean();
+            const allBusinessLocations = await BusinessLocation.find({ projectId, status: 1 })
+                .select("_id type parentId areaName")
+                .lean();
+            const allParentLocationIds = (allBusinessLocations || [])
+                .filter((l) => Number(l?.type) === 0)
+                .map((l) => String(l._id));
+            const childLocationIdsByParent = new Map();
+            for (const loc of (allBusinessLocations || [])) {
+                if (Number(loc?.type) !== 1 || !loc?.parentId) continue;
+                const key = String(loc.parentId);
+                if (!childLocationIdsByParent.has(key)) childLocationIdsByParent.set(key, []);
+                childLocationIdsByParent.get(key).push(String(loc._id));
+            }
+            const incomingSections = Array.isArray(sections) ? sections : (componentIds || []);
+            for (const compData of incomingSections) {
                 try {
                     let componentId = compData.componentId?._id || compData.componentId;
 
@@ -6597,11 +8137,97 @@ Example format:
                             continue;
                         }
 
+                        const normalizedType = String(compData?.sectionData?.type || "").toLowerCase().trim();
+                        if (normalizedType === "header" || normalizedType === "navbar" || normalizedType === "footer") {
+                            processedComponentIds.push({
+                                componentId: component._id,
+                                variant_uniqueId: compData.variant_uniqueId || compData.uniqueId || compData.variant || component.variant || 'A',
+                                uniqueId: compData.variant_uniqueId || compData.uniqueId || compData.variant || component.variant || 'A',
+                                elementIds: compactElementRecords(compData.elementIds || []),
+                                sectionData: {
+                                    type: normalizedType,
+                                    styles: compactSectionStyleOverrides(compData?.sectionData?.styles || {}, {}) || {},
+                                    elements: compactElementRecords(compData?.sectionData?.elements || []),
+                                    content: {},
+                                    contentRef: buildContentRef({
+                                        resolver: "page_scoped",
+                                        sectionContentIds: [],
+                                        locationIds: [],
+                                        extraSources: [{ source: "static_shell", ids: ["navbar_footer_shell"] }]
+                                    })
+                                }
+                            });
+                            continue;
+                        }
+                        const resolverType = getSectionResolver(normalizedType);
+                        const sectionContent = compData?.sectionData?.content || {};
+                        let sectionContentDoc = null;
+                        const pageNameForLoc = String(pageMeta?.name || "").toLowerCase().trim();
+                        const pageSlugForLoc = String(pageMeta?.slug || pageNameForLoc).toLowerCase().trim();
+                        const isHomepageForLoc = pageNameForLoc === "home" || pageNameForLoc === "homepage" || pageSlugForLoc === "home";
+                        const firstParentLocationId = allParentLocationIds.length ? allParentLocationIds[0] : null;
+                        const preferredLocationId =
+                            compData?.sectionData?.locationId ||
+                            pageMeta?.locationId ||
+                            (isHomepageForLoc ? firstParentLocationId : null) ||
+                            null;
+                        if (normalizedType) {
+                            if (shouldUseServiceBundleForPage(normalizedType, pageMeta)) {
+                                sectionContentDoc = await upsertServiceBundleSectionRecord({
+                                    projectId,
+                                    serviceId: pageMeta.serviceId,
+                                    locationId: preferredLocationId,
+                                    sectionId: normalizedType,
+                                    data: sectionContent,
+                                    meta: { source: "updateWebsiteDesignData" }
+                                });
+                            } else {
+                                sectionContentDoc = await upsertSectionContentRecord({
+                                    projectId,
+                                    pageId: finalPageId,
+                                    sectionId: normalizedType,
+                                    locationId: preferredLocationId,
+                                    data: sectionContent,
+                                    meta: { source: "updateWebsiteDesignData" }
+                                });
+                            }
+                        }
+
+                        let resolverLocationIds = [];
+                        if (resolverType === "business_locations") {
+                            const pageName = String(pageMeta?.name || "").toLowerCase().trim();
+                            const pageSlug = String(pageMeta?.slug || pageName).toLowerCase().trim();
+                            const isHomepage = pageName === "home" || pageName === "homepage" || pageSlug === "home";
+                            if (isHomepage) {
+                                resolverLocationIds = allParentLocationIds;
+                            } else if (pageMeta?.locationId) {
+                                const pageLocationId = String(pageMeta.locationId);
+                                const childIds = childLocationIdsByParent.get(pageLocationId) || [];
+                                resolverLocationIds = childIds.length ? childIds : [pageLocationId];
+                            } else {
+                                resolverLocationIds = (allBusinessLocations || []).map((l) => String(l._id));
+                            }
+                        }
+
                         processedComponentIds.push({
                             componentId: component._id,
-                            variant: compData.variant || component.variant || 'A',
-                            style: compData.style || {},
-                            elementIds: compData.elementIds || []
+                            variant_uniqueId: compData.variant_uniqueId || compData.uniqueId || compData.variant || component.variant || 'A',
+                            uniqueId: compData.variant_uniqueId || compData.uniqueId || compData.variant || component.variant || 'A',
+                            elementIds: compactElementRecords(compData.elementIds || []),
+                            sectionData: {
+                                type: normalizedType || compData?.sectionData?.type || "",
+                                styles: compactSectionStyleOverrides(compData?.sectionData?.styles || {}, {}) || {},
+                                elements: compactElementRecords(compData?.sectionData?.elements || []),
+                                content: {},
+                                contentRef: buildContentRef({
+                                    resolver: resolverType,
+                                    sectionContentIds: sectionContentDoc?._id ? [String(sectionContentDoc._id)] : [],
+                                    locationIds: resolverLocationIds,
+                                    extraSources: resolverType === "business_locations"
+                                        ? [{ source: "business_locations", ids: resolverLocationIds }]
+                                        : []
+                                })
+                            }
                         });
                     } else {
                         // No componentId provided - component should be created by frontend first
@@ -6626,19 +8252,50 @@ Example format:
 
                 if (pageIndex >= 0) {
                     // Update existing page
-                    designData.pages[pageIndex].componentIds = processedComponentIds;
+                    assignPageSections(designData.pages[pageIndex], processedComponentIds);
+                    designData.pages[pageIndex].pageStyles = sanitizePageStyles(pageStyles || designData.pages[pageIndex].pageStyles || {});
                     // Update layout if provided (for element-only pages)
-                    if (layout && Array.isArray(layout)) {
-                        designData.pages[pageIndex].layout = layout;
+                    const incomingLayout = Array.isArray(sectionLayout) ? sectionLayout : layout;
+                    if (incomingLayout && Array.isArray(incomingLayout)) {
+                        const validSectionIds = new Set(
+                            (getPageSections(designData.pages[pageIndex]) || [])
+                                .map((sec, idx) => String(
+                                    sec?.sectionData?.id ||
+                                    sec?.id ||
+                                    sec?._id ||
+                                    sec?.uniqueId ||
+                                    sec?.variant_uniqueId ||
+                                    `${String(sec?.sectionData?.type || "section").toLowerCase()}-${idx + 1}`
+                                ))
+                        );
+                        const normalizedIncoming = incomingLayout
+                            .map((l) => ({
+                                ...(typeof l?.order === "number" ? { order: l.order } : {}),
+                                ...(l?.elementId ? { elementId: l.elementId } : {}),
+                                ...(l?.sectionId ? { sectionId: l.sectionId } : {}),
+                            }))
+                            .filter((l) => l.elementId || l.sectionId)
+                            .filter((l) => l.elementId || validSectionIds.has(String(l.sectionId || "")));
+                        if (normalizedIncoming.length) {
+                            designData.pages[pageIndex].sectionLayout = normalizedIncoming;
+                        }
                     }
                 } else {
                     // Add new page
                     designData.pages.push({
                         pageId: finalPageId,
-                        style: {},
-                        componentIds: processedComponentIds,
-                        layout: (layout && Array.isArray(layout)) ? layout : []
+                        pageStyles: sanitizePageStyles(pageStyles || {}),
+                        sectionLayout: ((Array.isArray(sectionLayout) ? sectionLayout : layout) && Array.isArray(Array.isArray(sectionLayout) ? sectionLayout : layout))
+                            ? (Array.isArray(sectionLayout) ? sectionLayout : layout)
+                                .map((l) => ({
+                                    ...(typeof l?.order === "number" ? { order: l.order } : {}),
+                                    ...(l?.elementId ? { elementId: l.elementId } : {}),
+                                    ...(l?.sectionId ? { sectionId: l.sectionId } : {}),
+                                }))
+                                .filter((l) => l.elementId || l.sectionId)
+                            : []
                     });
+                    assignPageSections(designData.pages[designData.pages.length - 1], processedComponentIds);
                 }
                 await designData.save();
                 console.log('[updateWebsiteDesignData] Design data updated successfully');
@@ -6649,18 +8306,22 @@ Example format:
                 designData = new WebsiteDesignsData({
                     projectId: new mongoose.Types.ObjectId(projectId),
                     userId: new mongoose.Types.ObjectId(userId || project.userId),
-                    colorScheme: 'default',
-                    colorPrimary: '',
-                    colorSecondary: '',
-                    colorAccent: '',
-                    pageStyles: { style: {} },
+                    pageStyles: {},
                     pages: [{
                         pageId: finalPageId,
-                        style: {},
-                        componentIds: processedComponentIds,
-                        layout: (layout && Array.isArray(layout)) ? layout : []
+                        pageStyles: sanitizePageStyles(pageStyles || {}),
+                        sectionLayout: ((Array.isArray(sectionLayout) ? sectionLayout : layout) && Array.isArray(Array.isArray(sectionLayout) ? sectionLayout : layout))
+                            ? (Array.isArray(sectionLayout) ? sectionLayout : layout)
+                                .map((l) => ({
+                                    ...(typeof l?.order === "number" ? { order: l.order } : {}),
+                                    ...(l?.elementId ? { elementId: l.elementId } : {}),
+                                    ...(l?.sectionId ? { sectionId: l.sectionId } : {}),
+                                }))
+                                .filter((l) => l.elementId || l.sectionId)
+                            : []
                     }]
                 });
+                assignPageSections(designData.pages[0], processedComponentIds);
                 await designData.save();
                 console.log('[updateWebsiteDesignData] Design data created successfully:', designData._id);
             }
@@ -6741,9 +8402,10 @@ Example format:
             }
 
             const page = designData.pages[pageIndex];
+            const pageSections = getPageSections(page);
 
             // Find the component in the page
-            const componentIndex = page.componentIds.findIndex(
+            const componentIndex = pageSections.findIndex(
                 (comp) => {
                     const compId = comp.componentId?._id?.toString() || comp.componentId?.toString() || comp.componentId;
                     return compId === componentId.toString();
@@ -6759,10 +8421,14 @@ Example format:
 
             // Update the component's style and elementIds
             if (style !== undefined) {
-                // Merge with existing style (only update changed values)
-                page.componentIds[componentIndex].style = {
-                    ...(page.componentIds[componentIndex].style || {}),
-                    ...style
+                const incomingStyle = compactOverrideObject(style || {}) || {};
+                const sectionStyles = {
+                    ...((pageSections[componentIndex].sectionData || {}).styles || {}),
+                    ...incomingStyle
+                };
+                pageSections[componentIndex].sectionData = {
+                    ...(pageSections[componentIndex].sectionData || {}),
+                    styles: compactSectionStyleOverrides(sectionStyles, designData?.theme || {}) || {}
                 };
             }
 
@@ -6797,8 +8463,8 @@ Example format:
                     const processed = {
                         elementId: el.elementId,
                         elementType: el.elementType || 'text', // Always include elementType (required field)
-                        style: el.style || {},
-                        data: el.data || {},
+                        style: compactOverrideObject(el.style || {}) || {},
+                        data: compactOverrideObject(el.data || {}) || {},
                         order: el.order !== undefined ? el.order : 0 // Ensure order is saved
                     };
 
@@ -6827,8 +8493,23 @@ Example format:
                     console.log(`[updateComponentElements] ✓ All ${processedElements.length} processed elements have elementType`);
                 }
 
-                page.componentIds[componentIndex].elementIds = processedElements;
+                const compacted = compactElementRecords(processedElements);
+                pageSections[componentIndex].elementIds = compacted;
+                pageSections[componentIndex].sectionData = {
+                    ...(pageSections[componentIndex].sectionData || {}),
+                    elements: compactElementRecords(
+                        compacted.map((el) => ({
+                            elementId: el.elementId,
+                            elementType: el.elementType,
+                            style: el.style || {},
+                            data: el.data || {},
+                            order: typeof el.order === "number" ? el.order : 0,
+                            children: el.children || []
+                        }))
+                    )
+                };
             }
+            assignPageSections(page, pageSections);
 
             // CRITICAL: Before saving, ensure ALL elements in ALL components have elementType
             // This fixes existing data that might be missing elementType
@@ -6856,8 +8537,9 @@ Example format:
             // Clean up ALL components in ALL pages to ensure elementType exists
             let totalElementsFixed = 0;
             designData.pages.forEach((page, pageIdx) => {
-                if (page.componentIds && Array.isArray(page.componentIds)) {
-                    page.componentIds.forEach((component, compIdx) => {
+                const sectionsForPage = getPageSections(page);
+                if (sectionsForPage && Array.isArray(sectionsForPage)) {
+                    sectionsForPage.forEach((component, compIdx) => {
                         if (component.elementIds && Array.isArray(component.elementIds)) {
                             component.elementIds.forEach(element => {
                                 const hadElementType = !!element.elementType;
@@ -6904,96 +8586,301 @@ Example format:
     getWebsiteDesignData: async (req, res) => {
         try {
             const { projectId } = req.params;
+            const targetPageId = req.params?.pageId || req.query?.pageId || null;
+            const preferredLocationId =
+                (req.query?.locationId != null && String(req.query.locationId).trim() !== "")
+                    ? String(req.query.locationId).trim()
+                    : (req.body?.locationId != null && String(req.body.locationId).trim() !== "")
+                        ? String(req.body.locationId).trim()
+                        : null;
 
             if (!projectId) {
                 return res.status(400).json({ message: 'projectId is required' });
             }
-
-            // Fetch design data with populated page and component references
-            // Note: Mongoose populate for nested arrays can be tricky, so we'll use lean() and manual population
-            let designData = await WebsiteDesignsData.findOne({ projectId })
-                .populate({
-                    path: 'pages.pageId',
-                    select: 'name displayName description'
-                })
-                .lean(); // Use lean() for better performance and to get plain objects
+            if (!targetPageId) {
+                return res.status(400).json({ message: 'pageId is required for GenieBuild page data' });
+            }
+            const designData = await WebsiteDesignsData.findOne({ projectId }).lean();
 
             if (!designData) {
                 return res.status(404).json({ message: 'Website design data not found for this project' });
             }
+            let selectedPage = (designData.pages || []).find((p) => {
+                const currentPageId = p?.pageId?._id || p?.pageId;
+                return String(currentPageId) === String(targetPageId);
+            });
+            let sectionContentLookupPageId = String(targetPageId);
+            const [projectDoc, pageMeta, themeSettings, sectionContentDocs, businessLocations, websitePages] = await Promise.all([
+                userProjects.findById(projectId).select("projectType").lean(),
+                WebsitePage.findById(targetPageId).select("_id pageType name slug displayName serviceId locationId seoSettings isPublished").lean(),
+                ThemeSetting.findOne({ projectId }).lean(),
+                SectionContent.find({
+                    projectId,
+                    isDeleted: { $ne: true }
+                })
+                    .select('pageId serviceId sectionId locationId data status')
+                    .lean(),
+                BusinessLocation.find({ projectId, status: 1 }).select("_id areaName type parentId locationType").lean(),
+                WebsitePage.find({ projectId }).select("_id slug locationId pageType isPublished").lean()
+            ]);
 
-            // Manually populate componentIds for each page (fetch all in parallel for better performance)
-            if (designData.pages && Array.isArray(designData.pages)) {
-                // Collect all unique componentIds that need to be populated
-                const componentIdsToPopulate = new Set();
-                designData.pages.forEach((page) => {
-                    if (page.componentIds && Array.isArray(page.componentIds)) {
-                        page.componentIds.forEach((compData) => {
-                            if (compData.componentId) {
-                                const compId = compData.componentId._id || compData.componentId;
-                                if (compId) {
-                                    componentIdsToPopulate.add(compId.toString());
-                                }
-                            }
-                        });
-                    }
-                });
+            const allowAdminBypass = Boolean(req.user?.userId);
 
-                // Fetch all components in parallel
-                const componentsMap = new Map();
-                if (componentIdsToPopulate.size > 0) {
-                    const componentIdsArray = Array.from(componentIdsToPopulate).map(id => {
-                        try {
-                            return mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id;
-                        } catch (err) {
-                            return id;
-                        }
-                    });
-
-                    const components = await WebsiteComponent.find({
-                        _id: { $in: componentIdsArray }
-                    })
-                        .select('name displayName description category variant uniqueId')
+            if (pageMeta && !allowAdminBypass) {
+                if (pageMeta.isPublished === false) {
+                    return res.status(404).json({ message: "This page is not published" });
+                }
+                if (pageMeta.locationId) {
+                    const linkedLoc = await BusinessLocation.findById(pageMeta.locationId)
+                        .select("status")
                         .lean();
-
-                    // Create a map for quick lookup
-                    components.forEach((comp) => {
-                        componentsMap.set(comp._id.toString(), comp);
-                    });
-                }
-
-                // Replace ObjectIds with populated objects
-                designData.pages.forEach((page) => {
-                    if (page.componentIds && Array.isArray(page.componentIds)) {
-                        page.componentIds.forEach((compData) => {
-                            if (compData.componentId) {
-                                const compId = compData.componentId._id || compData.componentId;
-                                const compIdStr = compId?.toString() || compId;
-                                const populatedComponent = componentsMap.get(compIdStr);
-                                if (populatedComponent) {
-                                    compData.componentId = populatedComponent;
-                                }
-                            }
-                        });
+                    if (linkedLoc && Number(linkedLoc.status) !== 1) {
+                        return res.status(404).json({ message: "This location is disabled" });
                     }
-                });
-            }
-
-            // Safe debug logging (only if pages exist and have componentIds)
-            if (designData.pages && designData.pages.length > 0) {
-                const firstPage = designData.pages[0];
-                if (firstPage.componentIds && Array.isArray(firstPage.componentIds) && firstPage.componentIds.length > 0) {
-                    console.log('[getWebsiteDesignData] First page componentIds[0].elementIds:', firstPage.componentIds[0].elementIds);
-                } else if (firstPage.layout && Array.isArray(firstPage.layout) && firstPage.layout.length > 0) {
-                    console.log('[getWebsiteDesignData] First page has layout JSON (element-only page):', firstPage.layout.length, 'sections');
-                } else {
-                    console.log('[getWebsiteDesignData] First page has no componentIds or layout');
                 }
             }
+
+            const isServicePageRequest =
+                String(pageMeta?.pageType || "").toLowerCase().trim() === "service" &&
+                !!pageMeta?.serviceId;
+
+            // When request is for a service page, render service-specific sections from the
+            // wizard service template (selected sections only — no forced FAQ).
+            // Keep navbar/footer from existing entry when available; never fall back
+            // to homepage/location sections for a service URL.
+            if (isServicePageRequest) {
+                const serviceIdStr = String(pageMeta.serviceId);
+                const locationIdStr = pageMeta.locationId ? String(pageMeta.locationId) : null;
+                const homepageDesign = (designData.pages || []).find((p) => {
+                    const pid = String(p?.pageId?._id || p?.pageId || "");
+                    const wp = (websitePages || []).find((w) => String(w._id) === pid);
+                    const slug = String(wp?.slug || "").trim().replace(/^\/+|\/+$/g, "").toLowerCase();
+                    return wp?.pageType === "default" && (slug === "" || slug === "home");
+                }) || designData.pages?.[0] || null;
+                const homepageSections = getSectionEntriesFromPage(homepageDesign).map((e) => e.compData);
+                const headerComp = homepageSections.find((c) => {
+                    const t = String(c?.sectionData?.type || "").toLowerCase();
+                    return t === "header" || t === "navbar";
+                });
+                const footerComp = homepageSections.find(
+                    (c) => String(c?.sectionData?.type || "").toLowerCase() === "footer"
+                );
+
+                const existingServiceDesign = selectedPage;
+                const existingSections = existingServiceDesign
+                    ? getSectionEntriesFromPage(existingServiceDesign).map((e) => e.compData)
+                    : [];
+                const findExistingByType = (type) =>
+                    existingSections.find(
+                        (c) => String(c?.sectionData?.type || "").toLowerCase().trim() === type
+                    );
+
+                const makeBundleSection = (type, variantKey) => {
+                    const existing = findExistingByType(type);
+                    if (existing) return existing;
+                    return {
+                        variant_uniqueId: variantKey,
+                        componentId: null,
+                        sectionData: {
+                            type,
+                            content: {},
+                            contentRef: {
+                                scope: "service_bundle",
+                                sectionId: type,
+                                serviceId: serviceIdStr,
+                                locationId: locationIdStr
+                            },
+                            styles: {}
+                        }
+                    };
+                };
+
+                const syntheticSections = buildServiceRenderSections({
+                    designData,
+                    websitePages: websitePages || [],
+                    headerComp,
+                    footerComp,
+                    serviceId: serviceIdStr,
+                    locationId: locationIdStr,
+                    existingSections,
+                    makeBundleSection,
+                });
+
+                selectedPage = {
+                    pageId: targetPageId,
+                    pageStyles: existingServiceDesign?.pageStyles || {},
+                    sections: syntheticSections
+                };
+                sectionContentLookupPageId = String(targetPageId);
+                console.log(
+                    `[getWebsiteDesignData] Service page render (synthetic=${!existingServiceDesign}) ` +
+                    `project=${projectId} page=${targetPageId} service=${serviceIdStr} location=${locationIdStr}`
+                );
+            } else {
+                // Helper to check if a design page has actual content sections (not just header/footer).
+                const pageHasContentSections = (page) => {
+                    if (!page) return false;
+                    const entries = getSectionEntriesFromPage(page);
+                    return entries.some((e) => {
+                        const t = String(e?.sectionType || e?.sectionData?.type || "").toLowerCase().trim();
+                        return t && t !== "header" && t !== "navbar" && t !== "footer";
+                    });
+                };
+
+                // Pages added by ensurePageInDesignData only have header/footer and should
+                // fall back to homepage template for content sections.
+                const needsHomepageFallback = !selectedPage || !pageHasContentSections(selectedPage);
+
+                if (needsHomepageFallback) {
+                    // Default/location page without content sections → fall back to homepage template.
+                    const homepagePage = (websitePages || []).find((p) => {
+                        const slug = String(p?.slug || "").trim().replace(/^\/+|\/+$/g, "").toLowerCase();
+                        return p?.pageType === "default" && (slug === "" || slug === "home");
+                    });
+                    const fallbackTemplateId = homepagePage?._id
+                        ? String(homepagePage._id)
+                        : (designData.pages?.[0]?.pageId?._id || designData.pages?.[0]?.pageId || null);
+                    if (fallbackTemplateId) {
+                        const homepageDesign = (designData.pages || []).find((p) => {
+                            const pid = String(p?.pageId?._id || p?.pageId || "");
+                            return pid === String(fallbackTemplateId);
+                        }) || null;
+                        if (homepageDesign && pageHasContentSections(homepageDesign)) {
+                            selectedPage = homepageDesign;
+                            sectionContentLookupPageId = String(fallbackTemplateId);
+                            console.log(
+                                `[getWebsiteDesignData] Location page fallback to homepage template ` +
+                                `project=${projectId} page=${targetPageId} homepage=${fallbackTemplateId}`
+                            );
+                        }
+                    }
+                    // Final check after fallback attempt
+                    if (!selectedPage || !pageHasContentSections(selectedPage)) {
+                        return res.status(404).json({ message: 'Page data not found for this project' });
+                    }
+                }
+            }
+            const projectType = Number(projectDoc?.projectType ?? 0);
+            const scopedPreferredLocationId = resolveLocationPreferenceForPage({
+                preferredLocationId,
+                projectType,
+                pageMeta: pageMeta || {},
+                businessLocations: businessLocations || [],
+            });
+
+            const resolvedServicesGridContent = await buildServicesGridContentFromBundle({
+                projectId,
+                locationId: scopedPreferredLocationId,
+                businessLocations: businessLocations || [],
+                projectType,
+            });
+
+            // Build lookup maps for section content rows.
+            const sectionContentRowsByKey = new Map();
+            const serviceBundleMap = new Map();
+            (sectionContentDocs || []).forEach((doc) => {
+                const pageKey = String(doc?.pageId || '');
+                const sectionKey = String(doc?.sectionId || '').toLowerCase().trim();
+                if (!pageKey || !sectionKey) return;
+                const key = `${pageKey}::${sectionKey}`;
+                const existing = sectionContentRowsByKey.get(key) || [];
+                existing.push(doc);
+                sectionContentRowsByKey.set(key, existing);
+
+                if (sectionKey === "service_sections") {
+                    const bundleKey = `${String(doc?.serviceId || doc?.pageId || "")}::${String(doc?.locationId || "")}`;
+                    serviceBundleMap.set(bundleKey, doc);
+                }
+            });
+
+            const sections = getSectionEntriesFromPage(selectedPage)
+                .map((entry) => {
+                    const { sectionData, sectionType, index, compData } = entry;
+                    const sectionId = String(sectionData?.id || compData?.id || `${sectionType}-${index + 1}`);
+                    const contentRef = sectionData?.contentRef || {};
+                    const resolverType = getSectionResolver(sectionType);
+                    const { pickedDoc, resolvedContent } = resolveSectionContentWithPriority({
+                        sectionType,
+                        contentRef,
+                        pageIdStr: sectionContentLookupPageId,
+                        scopedPreferredLocationId,
+                        sectionContentDocs,
+                        sectionContentRowsByKey,
+                        resolverType,
+                        serviceBundleMap,
+                        pageMeta,
+                        businessLocations,
+                        resolvedServicesGridContent,
+                        websitePages,
+                        projectType,
+                    });
+                    const mergedContent = mergeGenieBuildDesignSectionContent(
+                        sectionType,
+                        resolvedContent,
+                        sectionData
+                    );
+                    const mergedSectionData = {
+                        ...sectionData,
+                        id: sectionId,
+                        type: sectionType,
+                        content: mergedContent,
+                        status: pickedDoc?.status === "generated" ? "ready" : "generating"
+                    };
+                    return toResolvedSectionShape(mergedSectionData, `${sectionType}-${index + 1}`);
+                })
+                .filter(Boolean);
+
+            const sectionsWithContact = await applyContactDynamicsToAllSections(
+                sections,
+                projectId
+            );
+            const navContextLocationId = pageMeta?.locationId
+                ? String(pageMeta.locationId)
+                : scopedPreferredLocationId || null;
+
+            const sectionsWithDynamics = await applyHeaderFooterDynamicsToSections(
+                sectionsWithContact,
+                projectId,
+                {
+                    contextLocationId: navContextLocationId,
+                    pageMeta: pageMeta || {},
+                }
+            );
+
+            const pageSeoEntry = pageMeta ? await getSeoForWebsitePage(pageMeta) : null;
+            const seoForBuilder = pageSeoEntry ? seoEntryToGeniebuild(pageSeoEntry, pageMeta) : {};
 
             return res.status(200).json({
-                message: 'Website design data fetched successfully',
-                data: designData
+                message: 'GenieBuild page data fetched successfully',
+                data: {
+                    projectId,
+                    pageId: targetPageId,
+                    locationId: scopedPreferredLocationId || null,
+                    seo: seoForBuilder,
+                    seoSettings: pageSeoEntry ? [seoEntryToLegacyApi(pageSeoEntry, pageMeta)] : [],
+                    sections: sectionsWithDynamics,
+                    sectionOrder: sectionsWithDynamics.map((s, idx) => ({ order: idx + 1, sectionId: s.id, type: s.type })),
+                    themeSettings: themeSettings
+                        ? {
+                            theme: themeSettings.theme || 'crimson-jet',
+                            presetId: themeSettings.presetId || null,
+                            customColors: themeSettings.customColors || null,
+                            defaultSizes: themeSettings.defaultSizes || null,
+                            defaultTypography: themeSettings.defaultTypography || null,
+                            defaultFont: themeSettings.defaultFont || null,
+                            globalElementStyles: themeSettings.globalElementStyles || null,
+                        }
+                        : {
+                            theme: 'crimson-jet',
+                            presetId: null,
+                            customColors: null,
+                            defaultSizes: null,
+                            defaultTypography: null,
+                            defaultFont: null,
+                            globalElementStyles: null,
+                        },
+                    colors: resolveThemeColorsForApi(themeSettings),
+                }
             });
         } catch (error) {
             console.error('Error fetching Website Design Data:', error);
@@ -7015,16 +8902,33 @@ Example format:
                 return res.status(400).json({ message: 'Invalid projectId format' });
             }
 
-            // Fetch all pages for this project directly from WebsitePage (project-specific)
-            const websitePages = await WebsitePage.find({ projectId })
-                .select('name slug displayName description')
-                .sort({ createdAt: -1 })
-                .lean();
-
             // Also fetch design data to get component counts
             const designData = await WebsiteDesignsData.findOne({ projectId })
-                .select('pages.pageId pages.componentIds')
+                .select('pages.pageId pages.sections pages.componentIds')
                 .lean();
+            const designPageIdSet = new Set(
+                ((designData?.pages || [])
+                    .map((page) => page?.pageId?._id || page?.pageId || page?._id)
+                    .filter(Boolean)
+                    .map((id) => String(id)))
+            );
+
+            // Fetch all pages for this project directly from WebsitePage (project-specific)
+            let websitePages = await WebsitePage.find({ projectId })
+                .select('name slug displayName description seoSettings pageType serviceId locationId isPublished')
+                .sort({ createdAt: -1 })
+                .lean();
+            // Show only pages that user actually selected/saved in design flow.
+            if (designPageIdSet.size) {
+                websitePages = websitePages.filter((page) => {
+                    const pageId = String(page?._id || "");
+                    const pageType = String(page?.pageType || "").toLowerCase().trim();
+                    const name = String(page?.name || "").toLowerCase().trim();
+                    const hasServiceScope = Boolean(page?.serviceId) || pageType === "service" || name.startsWith("service-");
+                    const hasLocationScope = Boolean(page?.locationId) || name.startsWith("location-");
+                    return designPageIdSet.has(pageId) || hasServiceScope || hasLocationScope;
+                });
+            }
 
             // Create a map of pageId to component count from designData
             const componentCountMap = new Map();
@@ -7032,21 +8936,27 @@ Example format:
                 designData.pages.forEach(page => {
                     const pageId = page.pageId?._id || page.pageId;
                     if (pageId) {
-                        componentCountMap.set(pageId.toString(), page.componentIds?.length || 0);
+                        componentCountMap.set(pageId.toString(), getPageSections(page).length || 0);
                     }
                 });
             }
 
             // Map website pages to response format
-            const pages = websitePages.map(page => ({
+            const pages = websitePages.map(page => {
+                const activeSeo = getActiveSeoFromPage(page);
+                return {
                 pageId: page._id,
                 _id: page._id,
                 name: page.name || '', // Unique identifier, non-changeable
                 slug: page.slug || page.name || '', // Changeable URL path
                 displayName: page.displayName || '',
                 description: page.description || '',
-                componentCount: componentCountMap.get(page._id.toString()) || 0
-            }));
+                componentCount: componentCountMap.get(page._id.toString()) || 0,
+                seoSettings: page.seoSettings || [],
+                hasSeo: Boolean(activeSeo?.meta_title && activeSeo?.meta_description),
+                isPublished: page.isPublished !== false,
+            };
+            });
 
             return res.status(200).json({
                 message: 'Website pages fetched successfully',
@@ -7055,6 +8965,33 @@ Example format:
         } catch (error) {
             console.error('Error fetching Website Pages:', error);
             return res.status(500).json({ message: 'Server error while fetching Website Pages', error: error.message });
+        }
+    },
+
+    getPageSlugHistory: async (req, res) => {
+        try {
+            const { projectId, pageId } = req.params;
+
+            if (!projectId || !pageId) {
+                return res.status(400).json({ message: 'projectId and pageId are required' });
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(projectId) || !mongoose.Types.ObjectId.isValid(pageId)) {
+                return res.status(400).json({ message: 'Invalid projectId or pageId format' });
+            }
+
+            const history = await getPageSlugHistory(projectId, pageId);
+            if (!history) {
+                return res.status(404).json({ message: 'Page not found for this project' });
+            }
+
+            return res.status(200).json({
+                message: 'Page slug history fetched successfully',
+                data: history
+            });
+        } catch (error) {
+            console.error('Error fetching page slug history:', error);
+            return res.status(500).json({ message: 'Server error while fetching page slug history' });
         }
     },
 
@@ -7351,8 +9288,8 @@ Example format:
         try {
             console.log("we are in updateProjectTheme", req.body); // Debugging the incoming request
 
-            // Extract projectId, theme, presetId, themeSubColor, customColors, defaultStyles, defaultFont, defaultSizes, and defaultTypography from request body
-            const { projectId, theme, presetId, themeSubColor, customColors, defaultStyles, defaultFont, defaultSizes, defaultTypography } = req.body;
+            // Extract projectId, theme, presetId, themeSubColor, customColors, defaultStyles, defaultFont, defaultSizes, defaultTypography, and globalElementStyles from request body
+            const { projectId, theme, presetId, themeSubColor, customColors, defaultStyles, defaultFont, defaultSizes, defaultTypography, globalElementStyles } = req.body;
 
             if (!projectId) {
                 return res.status(400).json({ message: "projectId is required" });
@@ -7368,15 +9305,22 @@ Example format:
                 return res.status(404).json({ message: "Project not found" });
             }
 
-            // Look up presetId from Theme collection if not provided but theme name is provided
-            let finalPresetId = presetId;
-            if (!finalPresetId && theme && theme !== 'custom') {
-                // Convert theme name to match themeName format (e.g., "crimson-jet" -> "Crimson Jet")
-                const themeNameForLookup = theme.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-                const themeDoc = await Theme.findOne({ themeName: themeNameForLookup });
-                if (themeDoc) {
-                    finalPresetId = themeDoc._id;
-                }
+            const { resolveNumericPresetIdFromPayload } = require('../additional/presetThemeCatalog');
+            // Always store numeric GenieBuild preset index (0–10), never Mongo Theme _id.
+            let finalPresetId = null;
+            if (theme && theme !== 'custom') {
+                finalPresetId = resolveNumericPresetIdFromPayload({ theme, presetId });
+            }
+
+            const resolvedUserId =
+                req.user?.userId ||
+                project.userId ||
+                (mongoose.Types.ObjectId.isValid(String(req.body.userId || ""))
+                    ? req.body.userId
+                    : null);
+
+            if (!resolvedUserId) {
+                return res.status(400).json({ message: "userId is required" });
             }
 
             // Fetch the current theme settings for the project
@@ -7419,12 +9363,16 @@ Example format:
                 if (defaultTypography) {
                     themeSettings.defaultTypography = { ...themeSettings.defaultTypography, ...defaultTypography };
                 }
+                // Save globalElementStyles if provided (typography settings for headings, body, buttons, links)
+                if (globalElementStyles !== undefined && globalElementStyles !== null) {
+                    themeSettings.globalElementStyles = globalElementStyles;
+                }
                 await themeSettings.save();
             } else {
                 // If no theme settings exist, create new theme settings
                 const newThemeData = {
                     projectId,
-                    userId: req.user?.userId || req.body.userId, // Ensure the userId is included
+                    userId: resolvedUserId,
                     theme, // Set the theme
                     presetId: finalPresetId || null, // Set presetId (looked up from theme name if needed)
                     themeSubColor: themeSubColor || null, // Set the sub color if provided
@@ -7460,6 +9408,10 @@ Example format:
                 if (defaultTypography) {
                     newThemeData.defaultTypography = defaultTypography;
                 }
+                // Save globalElementStyles if provided
+                if (globalElementStyles !== undefined && globalElementStyles !== null) {
+                    newThemeData.globalElementStyles = globalElementStyles;
+                }
 
                 themeSettings = new ThemeSetting(newThemeData);
                 await themeSettings.save();
@@ -7469,7 +9421,8 @@ Example format:
                 projectId,
                 theme: themeSettings.theme,
                 hasCustomColors: !!themeSettings.customColors,
-                hasDefaultStyles: !!themeSettings.defaultStyles
+                hasDefaultStyles: !!themeSettings.defaultStyles,
+                hasGlobalElementStyles: !!themeSettings.globalElementStyles
             });
 
             // Send success response
@@ -7477,54 +9430,6 @@ Example format:
         } catch (error) {
             console.error("Error updating project theme:", error);
             return res.status(500).json({ message: "Server error while updating project theme" });
-        }
-    },
-
-    getThemeSettings: async (req, res) => {
-        try {
-            const { projectId } = req.query;
-
-            if (!projectId) {
-                return res.status(400).json({ message: "projectId is required" });
-            }
-
-            // Fetch theme settings for the project
-            const themeSettings = await ThemeSetting.findOne({ projectId });
-
-            if (!themeSettings) {
-                // Return default theme if not found
-                return res.status(200).json({
-                    success: true,
-                    message: "Theme settings not found, returning default",
-                    data: {
-                        theme: 'crimson-jet',
-                        customColors: null
-                    }
-                });
-            }
-
-
-            // console.log(themeSettings, "fetched theme settings");return
-
-            // Return theme settings
-            return res.status(200).json({
-                success: true,
-                message: "Theme settings retrieved successfully",
-                data: {
-                    theme: themeSettings.theme,
-                    presetId: themeSettings.presetId || null,
-                    themeSubColor: themeSettings.themeSubColor,
-                    themeSecondaryColor: themeSettings.themeSecondaryColor,
-                    customColors: themeSettings.customColors || null,
-                    defaultStyles: themeSettings.defaultStyles || null,
-                    defaultFont: themeSettings.defaultFont || "Inter, sans-serif",
-                    defaultSizes: themeSettings.defaultSizes || null,
-                    defaultTypography: themeSettings.defaultTypography || null
-                }
-            });
-        } catch (error) {
-            console.error("Error fetching theme settings:", error);
-            return res.status(500).json({ message: "Server error while fetching theme settings" });
         }
     },
 
@@ -7714,14 +9619,17 @@ Example format:
             const skip = (page - 1) * limit;
 
             // Fetch services with pagination
-            const services = await Service.find({ projectId, is_main: true })
-                .select('_id service_name fas_fa_icon service_description')
+            const servicesRaw = await Service.find({ projectId })
+                .select('_id name slug createdAt updatedAt')
                 .skip(skip) // Skip previous records
                 .limit(limit); // Limit the number of services returned
+            const services = servicesRaw.map((s) => ({
+                ...s.toObject(),
+                service_name: s.name,
+            }));
 
             // Get the total count of services for pagination
-            const totalServices = await Service.countDocuments({ projectId, is_main: true });
-
+            const totalServices = await Service.countDocuments({ projectId });
 
             return res.json({
                 project_info,
@@ -7731,6 +9639,95 @@ Example format:
         } catch (error) {
             console.error('Error fetching content:', error);
             return res.status(500).json({ message: 'Error fetching content' });
+        }
+    },
+
+    fetch_service_location_pages_status: async (req, res) => {
+        try {
+            const { projectId, serviceId } = req.body;
+            if (!projectId || !serviceId) {
+                return res.status(400).json({ message: "projectId and serviceId are required" });
+            }
+
+            const [project, service, locations] = await Promise.all([
+                userProjects.findById(projectId).select("_id").lean(),
+                Service.findOne({ _id: serviceId, projectId }).select("_id name slug").lean(),
+                BusinessLocation.find({ projectId, status: 1 })
+                    .select("_id areaName type parentId")
+                    .lean(),
+            ]);
+            if (!project) return res.status(404).json({ message: "Project not found" });
+            if (!service) return res.status(404).json({ message: "Service not found for project" });
+
+            const locationIds = locations.map((l) => l._id);
+            const [pages, sectionRows] = await Promise.all([
+                WebsitePage.find({
+                    projectId,
+                    pageType: "service",
+                    serviceId,
+                    locationId: { $in: locationIds },
+                })
+                    .select("_id locationId slug updatedAt")
+                    .lean(),
+                SectionContent.find({
+                    projectId,
+                    sectionId: "service_sections",
+                    serviceId,
+                    locationId: { $in: locationIds },
+                    isDeleted: { $ne: true },
+                })
+                    .select("locationId status error updatedAt")
+                    .lean(),
+            ]);
+
+            const pagesByLocation = new Map(pages.map((p) => [String(p.locationId), p]));
+            const contentByLocation = new Map(sectionRows.map((r) => [String(r.locationId), r]));
+            const parentById = new Map(locations.map((l) => [String(l._id), l]));
+
+            const statusFor = (pageDoc, contentDoc) => {
+                if (!pageDoc) return "not_created"; // silver
+                if (!contentDoc) return "pending"; // yellow
+                if (contentDoc.status === "generated") return "generated"; // green
+                if (contentDoc.status === "failed" || contentDoc.error) return "failed"; // red
+                return "pending"; // yellow
+            };
+
+            const rows = locations
+                .map((loc) => {
+                    const key = String(loc._id);
+                    const page = pagesByLocation.get(key) || null;
+                    const content = contentByLocation.get(key) || null;
+                    const parent =
+                        loc.parentId && parentById.has(String(loc.parentId))
+                            ? parentById.get(String(loc.parentId))
+                            : null;
+                    return {
+                        locationId: key,
+                        locationName: loc.areaName,
+                        locationType: Number(loc.type || 0),
+                        parentName: parent ? parent.areaName : null,
+                        pageId: page ? String(page._id) : null,
+                        pageUrl: page?.slug ? `/${String(page.slug).replace(/^\/+/, "")}` : null,
+                        status: statusFor(page, content),
+                        error: content?.error || null,
+                        updatedAt: (content?.updatedAt || page?.updatedAt || null),
+                    };
+                })
+                .sort((a, b) => {
+                    if (a.locationType !== b.locationType) return a.locationType - b.locationType;
+                    return String(a.locationName).localeCompare(String(b.locationName));
+                });
+
+            return res.status(200).json({
+                message: "Service location page status fetched successfully",
+                data: {
+                    service: { _id: String(service._id), name: service.name, slug: service.slug },
+                    rows,
+                },
+            });
+        } catch (error) {
+            console.error("Error fetching service location page status:", error);
+            return res.status(500).json({ message: "Failed to fetch service location page status" });
         }
     },
 
@@ -7757,30 +9754,27 @@ Example format:
                 {
                     $match: {
                         projectId: new mongoose.Types.ObjectId(projectId),
-                        is_main: true,
                     }
                 },
                 {
                     $project: {
-                        // include only these fields in the pipeline
                         _id: 1,
-                        service_name: 1,
-                        fas_fa_icon: 1,
-                        // compute uppercase first letter
+                        name: 1,
+                        slug: 1,
                         firstLetter: {
-                            $toUpper: { $substr: ["$service_name", 0, 1] }
+                            $toUpper: { $substr: ["$name", 0, 1] }
                         }
                     }
                 },
-                { $sort: { service_name: 1 } },    // A→Z overall
+                { $sort: { name: 1 } },    // A→Z overall
                 {
                     $group: {
                         _id: "$firstLetter",
                         services: {
                             $push: {
                                 _id: "$_id",
-                                service_name: "$service_name",
-                                fas_fa_icon: "$fas_fa_icon"
+                                service_name: "$name",
+                                slug: "$slug"
                             }
                         }
                     }
@@ -7809,11 +9803,12 @@ Example format:
 
     create_service: async (req, res) => {
         try {
-            const { projectId, service_name, service_description, fas_fa_icon } = req.body;
+            const { projectId, name, service_name } = req.body;
+            const incomingName = name || service_name;
 
             // Validate required fields
-            if (!projectId || !service_name || !service_description || !fas_fa_icon) {
-                return res.status(400).json({ message: 'All fields are required' });
+            if (!projectId || !incomingName) {
+                return res.status(400).json({ message: 'projectId and name are required' });
             }
 
             // Find the project by ID
@@ -7822,174 +9817,32 @@ Example format:
                 return res.status(404).json({ message: 'Project not found' });
             }
 
-            // Create the new service in the database
-            const newService = new Service({
-                projectId,
-                service_name,
-                service_description,
-                fas_fa_icon,
-                is_main: true, // assuming the service should be marked as main by default
-            });
+            const normalizedName = String(incomingName).trim().toLowerCase();
+            const normalizedSlug = slugify(normalizedName);
 
-            // Save the service to the database
-            await newService.save();
-
-            // Trigger OpenAI processing for the new service
-            const prompts = {
-                whyChooseUs: `
-                  Write a persuasive "Why Choose Us" section for a service called "${service_name}" offered as part of the "${project.projectName}" project. 
-                  Highlight the key benefits, expertise, and customer satisfaction according to this service description: "${service_description}". 
-                  Add professional heading tags for headings and p tags for paragraphs. Do not add the title "Why Choose Us" as it is already in my static HTML structure.
-                `,
-                ourProcess: `
-                  Create a structured "Our Process" section for the service "${service_name}" under the "${project.projectName}" project. 
-                  Include step-by-step instructions based on "${service_description}". 
-                  Add professional heading tags for headings and p tags for paragraphs. Do not add the title "Our Process" as it is already in my static HTML structure.
-                `,
-                scheduleService: `
-                  Generate a compelling "Schedule Service" section for "${service_name}" in the "${project.projectName}" project. 
-                  Focus on ease of booking and emphasize quick response times.
-                  Add professional heading tags for headings and p tags for paragraphs. Do not add the title "Schedule Service" as it is already in my static HTML structure.
-                  Make sure to dont create any form just type for more information visit contactus page.
-                `,
-                ourGuarantees: `
-                  Write an "Our Guarantees" section for "${service_name}" in the "${project.projectName}" project. 
-                  Emphasize trustworthiness and reliability. 
-                  Add professional heading tags for headings and p tags for paragraphs. Do not add the title "Our Guarantees" as it is already in my static HTML structure.
-                `,
-            };
-
-            const userId = req.user?.userId || project.userId?.toString() || 'admin';
-
-            const responses = await Promise.allSettled([
-                getResponseFromOpenAITracked(prompts.whyChooseUs, 'WhyChooseUs', {
-                    userId,
-                    projectId,
-                    pageId: projectId,
-                    promptFrom: 'admin_panel',
-                    promptFor: 'why_choose_us'
-                }),
-                getResponseFromOpenAITracked(prompts.ourProcess, 'OurProcess', {
-                    userId,
-                    projectId,
-                    pageId: projectId,
-                    promptFrom: 'admin_panel',
-                    promptFor: 'our_process'
-                }),
-                getResponseFromOpenAITracked(prompts.scheduleService, 'ScheduleService', {
-                    userId,
-                    projectId,
-                    pageId: projectId,
-                    promptFrom: 'admin_panel',
-                    promptFor: 'schedule_service'
-                }),
-                getResponseFromOpenAITracked(prompts.ourGuarantees, 'OurGuarantees', {
-                    userId,
-                    projectId,
-                    pageId: projectId,
-                    promptFrom: 'admin_panel',
-                    promptFor: 'our_guarantees'
-                }),
-            ]);
-
-            const [whyChooseUsContent, ourProcessContent, scheduleServiceContent, ourGuaranteesContent] = responses.map((response) =>
-                response.status === 'fulfilled' ? response.value.text : null
+            const service = await Service.findOneAndUpdate(
+                { projectId, name: normalizedName },
+                {
+                    $set: {
+                        projectId,
+                        name: normalizedName,
+                        slug: normalizedSlug,
+                    },
+                },
+                {
+                    new: true,
+                    upsert: true,
+                    setDefaultsOnInsert: true,
+                }
             );
 
-            if (!whyChooseUsContent || !ourProcessContent || !scheduleServiceContent || !ourGuaranteesContent) {
-                console.error(`Skipping service "${service_name}" due to failed OpenAI responses.`);
-                return res.status(500).json({ message: `Failed to generate content for service "${service_name}"` });
-            }
-
-            const query = `Image of ${service_name}`;
-            const apiKey = process.env.UNSPLASH_ACCESS_KEY;
-            const url = `https://api.unsplash.com/search/photos`;
-            const heroImageWidth = 1200;
-            const heroImageHeight = 800;
-
-            let images = [];
-            try {
-                const response = await axios.get(url, {
-                    params: { query, per_page: 1 },
-                    headers: { Authorization: `Client-ID ${apiKey}` },
-                });
-
-                images = response.data.results.map((image) => ({
-                    description: image.alt_description,
-                    url: `${image.urls.raw}?w=${heroImageWidth}&h=${heroImageHeight}&fit=crop`,
-                }));
-            } catch (error) {
-                console.error(`Error fetching images for service "${service_name}":`, error.response?.data || error.message);
-            }
-
-            const formatContentForHTML = (text) => text.replace(/\n/g, '<br>');
-
-            const serviceStepsPrompt = formatContentForHTML(ourProcessContent);
-
-            let formattedStepsIcons = [];
-            let attempts = 0;
-
-            while (attempts < 3) {
-                try {
-                    const newPrompt = `
-                      Based on the following dynamic steps describing a process, generate a valid JSON Array of objects. 
-                      Each object should have three keys: "stepName" (service step name), "iconClass" (Font Awesome icon class), and "serviceDescription" (detailed description of that particular step of the process).
-          
-                      Steps:
-                      ${serviceStepsPrompt}
-          
-                      Output Format:
-                      [
-                         { "stepName": "Initial Assessment", "iconClass": "fas fa-laptop-medical", "serviceDescription": "valid description according to the process step of the service" },
-                         { "stepName": "Quotation", "iconClass": "fas fa-file-invoice-dollar", "serviceDescription": "valid description according to the process step of the service" }
-                      ]
-          
-                      Ensure all icons are valid "fas fa" or "fa fa" classes.
-                    `;
-                    const userId = req.user?.userId || project?.userId?.toString() || 'admin';
-                    const openAIResponse = await getResponseFromOpenAITracked(
-                        newPrompt,
-                        'ServiceStepsIcons',
-                        {
-                            userId,
-                            projectId: projectId || 'system',
-                            pageId: projectId || 'system',
-                            promptFrom: 'admin_panel',
-                            promptFor: 'service_steps_icons'
-                        }
-                    );
-                    const cleanedResponse = openAIResponse.text.replace(/```json|```/g, '').trim();
-                    formattedStepsIcons = JSON.parse(cleanedResponse);
-
-                    if (Array.isArray(formattedStepsIcons)) break;
-                } catch (error) {
-                    console.error(`Error parsing OpenAI JSON response for service "${service_name}" (attempt ${attempts + 1}):`, error.message);
-                }
-                attempts++;
-            }
-
-            if (formattedStepsIcons.length === 0) {
-                console.error(`Skipping service "${service_name}" due to failed steps icons generation.`);
-                return res.status(500).json({ message: `Failed to generate steps for service "${service_name}"` });
-            }
-
-            // Update the newly created service with the generated content
-            await Service.findByIdAndUpdate(newService._id, {
-                $set: {
-                    ourGuarantees: formatContentForHTML(ourGuaranteesContent),
-                    ourProcess: formatContentForHTML(ourProcessContent),
-                    scheduleService: formatContentForHTML(scheduleServiceContent),
-                    whyChooseUs: formatContentForHTML(whyChooseUsContent),
-                    images,
-                    steps_process: formattedStepsIcons,
+            return res.status(201).json({
+                message: 'Service saved successfully!',
+                service: {
+                    ...service.toObject(),
+                    service_name: service.name,
                 },
             });
-
-            return res.status(201).json({
-                message: 'Service created and processed successfully!',
-                service: newService,
-            });
-
         } catch (error) {
             console.error('Error creating service:', error);
             return res.status(500).json({ message: 'Error creating service' });
@@ -7999,11 +9852,12 @@ Example format:
     update_service: async (req, res) => {
         try {
             const { serviceId } = req.params; // Get serviceId from URL parameter
-            const { service_name, service_description, fas_fa_icon, projectId } = req.body;
+            const { name, service_name, projectId } = req.body;
+            const incomingName = name || service_name;
 
             // Validate required fields
-            if (!service_name || !service_description || !fas_fa_icon || !projectId) {
-                return res.status(400).json({ message: 'All fields are required' });
+            if (!incomingName || !projectId) {
+                return res.status(400).json({ message: 'name and projectId are required' });
             }
 
             // Find the service by ID
@@ -8018,9 +9872,8 @@ Example format:
             }
 
             // Update the service with the new data
-            service.service_name = service_name;
-            service.service_description = service_description;
-            service.fas_fa_icon = fas_fa_icon;
+            service.name = String(incomingName).trim().toLowerCase();
+            service.slug = slugify(service.name);
 
             // Save the updated service
             await service.save();
@@ -8028,7 +9881,10 @@ Example format:
             // Respond with the updated service
             return res.status(200).json({
                 message: 'Service updated successfully!',
-                service,
+                service: {
+                    ...service.toObject(),
+                    service_name: service.name,
+                },
             });
         } catch (error) {
             console.error('Error updating service:', error);
@@ -8085,245 +9941,232 @@ Example format:
         }
     },
 
-    // 1) Create or update SEO data for a specific page
     updateSeoSettings: async (req, res) => {
         try {
-            const { pageUrl, metaTitle, metaDescription, metaKeywords, metaImage, canonicalUrl } = req.body;
-
-            // Validate required fields
-            if (!pageUrl || !metaTitle || !metaDescription || !metaKeywords) {
-                return res.status(400).json({
-                    message: 'Page URL, Title, Description, and Keywords are required!'
-                });
-            }
-
-            // Find existing SEO data for the page
-            let seoData = await SeoSettings.findOne({ page_url: pageUrl });
-
-            if (seoData) {
-                // If SEO data exists, update it
-                seoData.meta_title = metaTitle;
-                seoData.meta_description = metaDescription;
-                seoData.meta_keywords = metaKeywords;
-                seoData.meta_image = metaImage || '';
-                seoData.canonical_url = canonicalUrl || '';
-
-                await seoData.save();
-                return res.status(200).json({
-                    message: 'SEO data updated successfully!',
-                    data: seoData
-                });
-            }
-
-            // If no SEO data exists for the page, create new
-            seoData = new SeoSettings({
-                page_url: pageUrl,
-                meta_title: metaTitle,
-                meta_description: metaDescription,
-                meta_keywords: metaKeywords,
-                meta_image: metaImage || '',
-                canonical_url: canonicalUrl || '',
-            });
-
-            await seoData.save();
-            return res.status(201).json({
-                message: 'SEO data created successfully!',
-                data: seoData
-            });
-        } catch (error) {
-            console.error('Error in updateSeoSettings:', error);
-            return res.status(500).json({ message: 'An error occurred while updating SEO settings.' });
-        }
-    },
-
-    // Get SEO settings for builder page (by projectId and pageId)
-    getBuilderSeoSettings: async (req, res) => {
-        try {
-            const { projectId, pageId } = req.query;
-
-            // Validate inputs
+            const { projectId, pageUrl, pageId, metaTitle, metaDescription, metaKeywords, metaImage, canonicalUrl, ...rest } = req.body;
             if (!projectId) {
                 return res.status(400).json({ message: "Project ID is required!" });
             }
-
-            // Find SEO settings by projectId and pageId (if provided)
-            let query = { projectId: projectId };
-            if (pageId) {
-                query.builderPageId = pageId;
+            if (!metaTitle || !metaDescription || !metaKeywords) {
+                return res.status(400).json({ message: "Meta Title, Description, and Keywords are required!" });
             }
 
-            const seoSettings = await SeoSettings.findOne(query);
-
-            if (!seoSettings) {
-                return res.status(200).json({
-                    message: 'SEO settings not found',
-                    data: null
-                });
+            let pageDoc = null;
+            if (pageId && mongoose.Types.ObjectId.isValid(pageId)) {
+                pageDoc = await WebsitePage.findOne({ _id: pageId, projectId }).lean();
             }
+            if (!pageDoc && pageUrl) {
+                pageDoc = await findWebsitePageByPublicUrl(projectId, pageUrl);
+            }
+            if (!pageDoc) {
+                return res.status(404).json({ message: "Website page not found for SEO update" });
+            }
+
+            const entry = await upsertWebsitePageSeo({
+                projectId,
+                pageId: String(pageDoc._id),
+                patch: {
+                    meta_title: metaTitle,
+                    meta_description: metaDescription,
+                    meta_keywords: metaKeywords,
+                    meta_image: metaImage,
+                    canonical_url: canonicalUrl,
+                    ...rest,
+                },
+            });
 
             return res.status(200).json({
-                message: 'SEO settings retrieved successfully',
-                data: seoSettings
+                message: "SEO data updated successfully!",
+                data: seoEntryToLegacyApi(entry, pageDoc),
             });
         } catch (error) {
-            console.error('Error in getBuilderSeoSettings:', error);
-            return res.status(500).json({ message: 'An error occurred while fetching SEO settings.' });
+            console.error("Error in updateSeoSettings:", error);
+            return res.status(500).json({ message: "An error occurred while updating SEO settings." });
         }
     },
 
-    // Update or create SEO settings for builder page
-    updateBuilderSeoSettings: async (req, res) => {
+    getWebsitePageSeo: async (req, res) => {
         try {
-            const { projectId, pageId, metaTitle, metaDescription, metaKeywords, metaImage, canonicalUrl } = req.body;
-
-            // Validate required fields
-            if (!projectId) {
-                return res.status(400).json({
-                    message: 'Project ID is required!'
-                });
+            const { projectId, pageId } = req.params;
+            if (!projectId || !pageId) {
+                return res.status(400).json({ message: "projectId and pageId are required" });
             }
-
-            if (!metaTitle || !metaDescription || !metaKeywords) {
-                return res.status(400).json({
-                    message: 'Meta Title, Description, and Keywords are required!'
-                });
+            const pageDoc = await WebsitePage.findOne({ _id: pageId, projectId }).lean();
+            if (!pageDoc) {
+                return res.status(404).json({ message: "Page not found" });
             }
-
-            // Build query to find existing SEO data
-            let query = { projectId: projectId };
-            if (pageId) {
-                query.builderPageId = pageId;
-            }
-
-            // Find existing SEO data for the page
-            let seoData = await SeoSettings.findOne(query);
-
-            if (seoData) {
-                // If SEO data exists, update it
-                seoData.meta_title = metaTitle;
-                seoData.meta_description = metaDescription;
-                seoData.meta_keywords = metaKeywords;
-                seoData.meta_image = metaImage || '';
-                seoData.canonical_url = canonicalUrl || '';
-                if (pageId) {
-                    seoData.builderPageId = pageId;
-                }
-
-                await seoData.save();
-                return res.status(200).json({
-                    message: 'SEO settings updated successfully!',
-                    data: seoData
-                });
-            }
-
-            // If no SEO data exists for the page, create new
-            seoData = new SeoSettings({
-                projectId: projectId,
-                builderPageId: pageId || '',
-                page_url: pageId ? `builder-page-${pageId}` : `builder-project-${projectId}`, // Fallback URL
-                meta_title: metaTitle,
-                meta_description: metaDescription,
-                meta_keywords: metaKeywords,
-                meta_image: metaImage || '',
-                canonical_url: canonicalUrl || '',
-            });
-
-            await seoData.save();
-            return res.status(201).json({
-                message: 'SEO settings created successfully!',
-                data: seoData
+            const entry = await getSeoForWebsitePage(pageDoc);
+            return res.status(200).json({
+                message: "SEO settings fetched",
+                data: entry
+                    ? { ...seoEntryToLegacyApi(entry, pageDoc), seo: seoEntryToGeniebuild(entry, pageDoc) }
+                    : null,
             });
         } catch (error) {
-            console.error('Error in updateBuilderSeoSettings:', error);
-            return res.status(500).json({ message: 'An error occurred while updating SEO settings.' });
+            console.error("Error in getWebsitePageSeo:", error);
+            return res.status(500).json({ message: "Failed to fetch page SEO" });
         }
     },
 
-    // 2) Fetch SEO data for a specific page
+    updateWebsitePageSeo: async (req, res) => {
+        try {
+            const { projectId, pageId, seo, ...flat } = req.body;
+            if (!projectId || !pageId) {
+                return res.status(400).json({ message: "projectId and pageId are required" });
+            }
+            const patch =
+                seo && typeof seo === "object"
+                    ? geniebuildToSeoEntry(seo)
+                    : pickSeoFields(flat);
+            const pageDoc = await WebsitePage.findOne({ _id: pageId, projectId }).lean();
+            const entry = await upsertWebsitePageSeo({ projectId, pageId, patch });
+            return res.status(200).json({
+                message: "Page SEO updated",
+                data: {
+                    ...seoEntryToLegacyApi(entry, pageDoc),
+                    seo: seoEntryToGeniebuild(entry, pageDoc),
+                },
+            });
+        } catch (error) {
+            console.error("Error in updateWebsitePageSeo:", error);
+            return res.status(500).json({ message: error.message || "Failed to update page SEO" });
+        }
+    },
+
+    generateWebsitePageSeo: async (req, res) => {
+        try {
+            const { projectId, pageId, locationName, serviceName } = req.body;
+            if (!projectId || !pageId) {
+                return res.status(400).json({ message: "projectId and pageId are required" });
+            }
+            const [project, page] = await Promise.all([
+                UserProject.findById(projectId).lean(),
+                WebsitePage.findOne({ _id: pageId, projectId }).lean(),
+            ]);
+            if (!project || !page) {
+                return res.status(404).json({ message: "Project or page not found" });
+            }
+            const entry = await generatePageSeoWithAI({
+                project,
+                page,
+                locationName: locationName || "",
+                serviceName: serviceName || "",
+                userId: req.user?._id,
+                projectId,
+                pageId,
+            });
+            return res.status(200).json({
+                message: "SEO generated successfully",
+                data: {
+                    ...seoEntryToLegacyApi(entry, page),
+                    seo: seoEntryToGeniebuild(entry, page),
+                },
+            });
+        } catch (error) {
+            console.error("Error in generateWebsitePageSeo:", error);
+            return res.status(500).json({ message: error.message || "Failed to generate SEO" });
+        }
+    },
+
+    /**
+     * Regenerate SEO for all pages with missing/failed SEO in a project.
+     * Also ensures homepage is published.
+     */
+    regenerateAllMissingSeo: async (req, res) => {
+        try {
+            const { projectId } = req.body;
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+
+            const project = await UserProject.findById(projectId).lean();
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+
+            // First, ensure homepage and core pages are published
+            const corePageNames = ["home", "contact", "about", "services"];
+            const fixedPublishedResult = await WebsitePage.updateMany(
+                { projectId, name: { $in: corePageNames }, isPublished: false },
+                { $set: { isPublished: true } }
+            );
+            console.log(`[regenerateAllMissingSeo] Fixed ${fixedPublishedResult.modifiedCount} core page(s) isPublished status`);
+
+            // Then regenerate SEO for all pages with missing/incomplete SEO
+            const result = await generateMissingSeoForAllProjectPages({
+                projectId,
+                userId: req.user?._id,
+                project,
+            });
+
+            return res.status(200).json({
+                message: "SEO regeneration completed",
+                data: {
+                    corePagesFixes: fixedPublishedResult.modifiedCount,
+                    totalPages: result.total,
+                    created: result.created,
+                    alreadyComplete: result.alreadyComplete,
+                    failed: result.failed,
+                    stillMissing: result.stillMissing,
+                    errors: result.errors,
+                },
+            });
+        } catch (error) {
+            console.error("Error in regenerateAllMissingSeo:", error);
+            return res.status(500).json({ message: error.message || "Failed to regenerate SEO" });
+        }
+    },
+
     getSeoSettings: async (req, res) => {
         try {
             let { pageUrl, projectId } = req.body;
-
-            console.log(req.body, "req.body<<<<<<<<<>>>>>>>>>>>")
-
-
-            // 1) Validate inputs
             if (!projectId) {
                 return res.status(400).json({ message: "Project ID is required!" });
             }
-            console.log("project id found on seo")
             if (!pageUrl) {
                 return res.status(400).json({ message: "pageUrl is required!" });
             }
+            if (!String(pageUrl).startsWith("/")) pageUrl = "/" + pageUrl;
+            if (pageUrl === "/home") pageUrl = "/";
 
-            console.log("Page url found on seo")
+            const pageDoc = await findWebsitePageByPublicUrl(projectId, pageUrl);
 
-            // 2) Normalize the URL string
-            if (!pageUrl.startsWith('/')) {
-                pageUrl = '/' + pageUrl;
-            }
-            if (pageUrl === '/home') {
-                pageUrl = '/';
-            }
-            console.log(pageUrl, "pageUrl", projectId, "projectId")
-
-            // 3) Fetch the SEO settings matching both pageUrl AND projectId
-            const seoData = await SeoSettings.findOne({
-                page_url: pageUrl,
-                projectId: projectId
-            }).lean();
-
-            if (!seoData) {
-                return res
-                    .status(404)
-                    .json({ message: 'SEO data not found for this page & project!' });
+            if (!pageDoc) {
+                return res.status(404).json({ message: "Page not found for this URL" });
             }
 
-            console.log(seoData, "THIS is SEO DATA")
+            const entry = await getSeoForWebsitePage(pageDoc);
+            if (!entry) {
+                return res.status(404).json({ message: "SEO data not found for this page & project!" });
+            }
 
-            // 4) Return
-            return res.status(200).json({ data: seoData });
-
+            return res.status(200).json({ data: seoEntryToLegacyApi(entry, pageDoc) });
         } catch (error) {
-            console.error('Error in getSeoSettings:', error);
-            return res
-                .status(500)
-                .json({ message: 'An error occurred while fetching SEO settings.' });
+            console.error("Error in getSeoSettings:", error);
+            return res.status(500).json({ message: "An error occurred while fetching SEO settings." });
         }
     },
 
-    getPerPageSeo: async (req, res) => {
-
-        try {
-            return res.status(200).json({ message: 'SEO data deleted successfully!' });
-
-        }
-        catch (error) {
-            console.error('Error in deleteSeoSettings:', error);
-            return res.status(500).json({ message: 'An error occurred while deleting SEO settings.' });
-
-        }
-    },
-
-    // 3) Delete SEO data for a specific page
+    // Delete SEO data for a specific page
     deleteSeoSettings: async (req, res) => {
         try {
             const { pageUrl } = req.params;
-
-            // Find and delete the SEO data for the page
-            const seoData = await SeoSettings.findOneAndDelete({ page_url: pageUrl });
-
-            if (!seoData) {
-                return res.status(404).json({ message: 'SEO data not found!' });
+            const { projectId } = req.query;
+            if (!projectId) {
+                return res.status(400).json({ message: "Project ID is required!" });
             }
 
-            // Delete the slug entry for the page
-            await Slug.deleteMany({ locationId: seoData._id, slugType: 'city' });
+            const pageDoc = await findWebsitePageByPublicUrl(projectId, `/${pageUrl || ""}`);
+            if (!pageDoc) {
+                return res.status(404).json({ message: "SEO data not found!" });
+            }
 
-            return res.status(200).json({ message: 'SEO data deleted successfully!' });
+            await WebsitePage.updateOne({ _id: pageDoc._id }, { $set: { seoSettings: [] } });
+
+            return res.status(200).json({ message: "SEO data deleted successfully!" });
         } catch (error) {
-            console.error('Error in deleteSeoSettings:', error);
-            return res.status(500).json({ message: 'An error occurred while deleting SEO settings.' });
+            console.error("Error in deleteSeoSettings:", error);
+            return res.status(500).json({ message: "An error occurred while deleting SEO settings." });
         }
     },
 
@@ -8931,19 +10774,125 @@ Example format:
             });
         }
     },
+
+    /** Build SiteNextJS static export only (no hosting upload). Used from project Deploy page. */
+    buildStaticSite: async (req, res) => {
+        const io = req.app.get('io');
+        const { projectId, domainName } = req.body;
+
+        if (!projectId) {
+            return res.status(400).json({ message: 'projectId is required.' });
+        }
+        const domainForBuild = String(domainName || '').trim().replace(/^www\./i, '');
+        if (!domainForBuild) {
+            return res.status(400).json({ message: 'Select a domain before building.' });
+        }
+
+        const buildKey = buildKeyForProject(projectId);
+
+        await writeStaticBuildStatus(buildKey, {
+            status: 'building',
+            phase: 'queued',
+            projectId: String(projectId),
+            domainName: domainForBuild,
+            message: 'Build queued…',
+        });
+
+        res.status(200).json({
+            message: 'Static build started.',
+            projectId,
+            domainName: domainForBuild,
+            buildKey,
+        });
+
+        (async () => {
+            try {
+                if (io) {
+                    io.to(`project_${projectId}`).emit('projectStatusUpdate', {
+                        projectId,
+                        status: 'building',
+                    });
+                }
+
+                const artifactPath = await deployNextStaticApp(buildKey, projectId, domainForBuild);
+
+                try {
+                    await UserProject.findByIdAndUpdate(projectId, { domainName: domainForBuild });
+                } catch (e) {
+                    console.warn('[buildStaticSite] could not update project domain:', e.message);
+                }
+
+                if (io) {
+                    io.to(`project_${projectId}`).emit('projectStatusUpdate', {
+                        projectId,
+                        status: 'success',
+                        artifactPath,
+                        buildOnly: true,
+                    });
+                }
+                console.log('[buildStaticSite] Done:', artifactPath);
+            } catch (err) {
+                console.error('[buildStaticSite] Failed:', err);
+                try {
+                    await writeStaticBuildStatus(buildKey, {
+                        status: 'build_failed',
+                        phase: 'error',
+                        error: err?.message || String(err),
+                        message: err?.message || String(err),
+                    });
+                } catch (_) { /* ignore */ }
+                if (io) {
+                    io.to(`project_${projectId}`).emit('projectStatusUpdate', {
+                        projectId,
+                        status: 'build_failed',
+                        error: err?.message || String(err),
+                        buildOnly: true,
+                    });
+                }
+            }
+        })();
+    },
+
+    getStaticBuildStatus: async (req, res) => {
+        try {
+            const projectId = req.query.projectId || req.body?.projectId;
+            if (!projectId) {
+                return res.status(400).json({ message: 'projectId is required' });
+            }
+            const data = await readStaticBuildStatus(String(projectId).trim());
+            return res.status(200).json(data);
+        } catch (err) {
+            console.error('[getStaticBuildStatus]', err);
+            return res.status(500).json({ message: err.message || 'Failed to read build status' });
+        }
+    },
+
     // AdminController.js
     uploadToHostingFromBuild: async (req, res) => {
         const io = req.app.get('io');
 
-        const { projectDeploymentId, projectId } = req.body;
+        const { projectDeploymentId, projectId, domainName: bodyDomain } = req.body;
 
         if (!projectDeploymentId || !projectId) {
             console.log("[Error] Missing projectDeploymentId or projectId in request body.");
             return res.status(400).json({ message: 'Missing projectDeploymentId or projectId.' });
         }
 
+        let domainForBuild = String(bodyDomain || '').trim().replace(/^www\./i, '');
+        if (!domainForBuild) {
+            try {
+                const dep = await ProjectDeployment.findById(projectDeploymentId).select('domainName').lean();
+                domainForBuild = String(dep?.domainName || '').trim().replace(/^www\./i, '');
+            } catch (_) { /* ignore */ }
+        }
+        if (!domainForBuild) {
+            return res.status(400).json({
+                message: 'domainName is required. Choose a domain from your Domains list before deploying.',
+            });
+        }
+
         // ✅ Immediately respond to the client
-        res.status(200).json({ message: 'Deployment started.' });
+        res.status(200).json({ message: 'Deployment started.', domainName: domainForBuild });
 
         // 🚀 Continue deployment in the background
         (async () => {
@@ -8959,21 +10908,28 @@ Example format:
 
                 let distPath;
                 try {
-                    distPath = await deployReactApp(projectDeploymentId, projectId);
-                    console.log('Step 2: Deployment completed. dist folder generated at:', distPath);
+                    const deployDomain = domainForBuild;
+                    distPath = await deployNextStaticApp(projectDeploymentId, projectId, deployDomain);
+                    console.log('Step 2: SiteNextJS static build completed at:', distPath);
 
-                    await ProjectDeployment.findByIdAndUpdate(projectDeploymentId, { deploymentStatus: "uploading" });
+                    await ProjectDeployment.findByIdAndUpdate(projectDeploymentId, {
+                        deploymentStatus: "uploading",
+                        domainName: deployDomain,
+                    });
+
                     io.to(`project_${projectId}`).emit('projectStatusUpdate', {
                         projectId,
                         status: "uploading",
+                        artifactPath: distPath,
                     });
                 } catch (buildErr) {
                     await ProjectDeployment.findByIdAndUpdate(projectDeploymentId, { deploymentStatus: "build_failed" });
                     io.to(`project_${projectId}`).emit('projectStatusUpdate', {
                         projectId,
                         status: "build_failed",
+                        error: buildErr?.message || String(buildErr),
                     });
-                    console.error('[Error] During build/deployReactApp:', buildErr);
+                    console.error('[Error] During build/deployNextStaticApp:', buildErr);
                     return;
                 }
 
@@ -9117,6 +11073,7 @@ Example format:
                 io.to(`project_${projectId}`).emit('projectStatusUpdate', {
                     projectId,
                     status: "success",
+                    artifactPath: distPath,
                 });
                 console.log("Step 8: Build, upload, and deployment successful!");
 
@@ -9462,7 +11419,7 @@ Example format:
             // 3) Service slugs - with error handling
             let serviceSlugs = [];
             try {
-                const serviceNames = await Service.distinct('service_name', { projectId: new mongoose.Types.ObjectId(projectId) });
+                const serviceNames = await Service.distinct('name', { projectId: new mongoose.Types.ObjectId(projectId) });
                 serviceSlugs = serviceNames
                     .map(s => String(s).trim())
                     .filter(Boolean)
@@ -9936,7 +11893,10 @@ Example format:
             return res.status(200).json({ services: cleaned, countRequested: n, countReturned: cleaned.length });
         } catch (error) {
             console.error('Error in genrateAiProjectServices:', error);
-            return res.status(500).json({ message: 'Server error while generating AI services' });
+            const statusCode = Number(error?.statusCode) || 500;
+            return res.status(statusCode).json({
+                message: error?.message || 'Server error while generating AI services'
+            });
         }
     },
 
@@ -10151,14 +12111,14 @@ Example format:
             const projectName = (project.projectName || "Project").trim();
             const serviceType = (project.serviceType || "").trim();
 
-            const services = await Service.find({ projectId, is_main: true })
-                .select("service_name")
+            const services = await Service.find({ projectId })
+                .select("name")
                 .limit(50)
                 .lean();
 
             const serviceNames = unique(
                 services
-                    .map(s => String(s.service_name || "").trim())
+                    .map(s => String(s.name || "").trim())
                     .filter(Boolean)
             ).slice(0, 20);
 
@@ -10312,143 +12272,6 @@ Output format (IMPORTANT):
         } catch (err) {
             console.error("Error in generateBlogTitles:", err);
             return res.status(500).json({ message: "Failed to generate blog titles" });
-        }
-    },
-
-    // Save Business Location or Local Area
-    saveBusinessLocation: async (req, res) => {
-        try {
-            const { projectId, areaName, parentId, type, googlePlaceId, formattedAddress, lat, lng, bounds, country, state, city } = req.body;
-            const userId = req.user.userId;
-
-            if (!projectId || !areaName) {
-                return res.status(400).json({
-                    message: 'projectId and areaName are required'
-                });
-            }
-
-            if (![0, 1].includes(Number(type))) {
-                return res.status(400).json({
-                    message: 'type must be 0 (parent) or 1 (child/local area)'
-                });
-            }
-
-            // Validate: if type is 1 (child), parentId must be provided
-            if (Number(type) === 1 && !parentId) {
-                return res.status(400).json({
-                    message: 'parentId is required when type is 1 (child/local area)'
-                });
-            }
-
-            // Check if project exists and belongs to user
-            const project = await UserProject.findOne({
-                _id: projectId,
-                userId: userId
-            });
-
-            if (!project) {
-                return res.status(404).json({
-                    message: 'Project not found or you do not have permission'
-                });
-            }
-
-            // Check if project is business type
-            if (project.projectType !== 1) {
-                return res.status(400).json({
-                    message: 'This API is only for business websites (projectType = 1)'
-                });
-            }
-
-            // Create business location
-            const businessLocation = new BusinessLocation({
-                projectId,
-                areaName,
-                parentId: Number(type) === 0 ? null : parentId,
-                type: Number(type),
-                googlePlaceId: googlePlaceId || null,
-                formattedAddress: formattedAddress || null,
-                lat: lat || null,
-                lng: lng || null,
-                bounds: bounds || null,
-                country: country || null,
-                state: state || null,
-                city: city || null,
-                status: 1,
-                pageGenerated: false
-            });
-
-            await businessLocation.save();
-
-            // Update userProjects.locations with business location IDs
-            if (!project.locations) {
-                project.locations = {};
-            }
-            if (!project.locations.businessLocations) {
-                project.locations.businessLocations = [];
-            }
-
-            // Add location ID to project
-            project.locations.businessLocations.push({
-                locationId: businessLocation._id,
-                areaName: areaName,
-                type: Number(type),
-                parentId: parentId || null
-            });
-
-            await project.save();
-
-            return res.status(201).json({
-                message: 'Business location saved successfully',
-                data: businessLocation
-            });
-        } catch (error) {
-            console.error('Error in saveBusinessLocation:', error);
-            return res.status(500).json({
-                message: 'An error occurred while saving business location'
-            });
-        }
-    },
-
-    // Fetch Business Locations for a project
-    fetchBusinessLocations: async (req, res) => {
-        try {
-            const { projectId } = req.body;
-            const userId = req.user.userId;
-
-            if (!projectId) {
-                return res.status(400).json({
-                    message: 'projectId is required'
-                });
-            }
-
-            // Check if project exists and belongs to user
-            const project = await UserProject.findOne({
-                _id: projectId,
-                userId: userId
-            });
-
-            if (!project) {
-                return res.status(404).json({
-                    message: 'Project not found or you do not have permission'
-                });
-            }
-
-            // Fetch business locations (parent locations only, type = 0)
-            const businessLocations = await BusinessLocation.find({
-                projectId: projectId,
-                type: 0, // Only parent locations
-                status: 1 // Active
-            }).select('_id areaName').lean();
-
-            return res.status(200).json({
-                message: 'Business locations fetched successfully',
-                data: businessLocations
-            });
-        } catch (error) {
-            console.error('Error in fetchBusinessLocations:', error);
-            return res.status(500).json({
-                message: 'An error occurred while fetching business locations'
-            });
         }
     },
 
@@ -10875,202 +12698,30 @@ Output format (IMPORTANT):
         }
     },
 
-    // Refresh components from GenieBuild sections
+    // Refresh components from GenieBuild sections (file-driven, one doc per section)
     refreshComponentsFromRegistry: async (req, res) => {
         try {
-            const fs = require('fs');
             const path = require('path');
-
-            // Path to GenieBuild sections directory
+            const { mergeWebsiteComponentsFromScan } = require('../additional/mergeWebsiteComponentsFromScan');
             const genieBuildSectionsPath = path.join(__dirname, '../../apps/geniebuild/components/sections');
 
-            console.log('[refreshComponentsFromRegistry] Scanning GenieBuild sections:', genieBuildSectionsPath);
-
-            if (!fs.existsSync(genieBuildSectionsPath)) {
-                return res.status(400).json({
-                    message: 'GenieBuild sections directory not found',
-                    error: `Path does not exist: ${genieBuildSectionsPath}`
-                });
-            }
-
-            const componentEntries = [];
-
-            // AUTOMATIC SCANNING: Read all directories in sections folder
-            const allItems = fs.readdirSync(genieBuildSectionsPath, { withFileTypes: true });
-            const sectionDirs = allItems
-                .filter(dirent => dirent.isDirectory())
-                .map(dirent => dirent.name);
-            
-            const sectionRouterFiles = allItems
-                .filter(dirent => dirent.isFile() && dirent.name.endsWith('Section.tsx'))
-                .map(dirent => dirent.name);
-
-            console.log('[refreshComponentsFromRegistry] Auto-detected section directories:', sectionDirs);
-            console.log('[refreshComponentsFromRegistry] Auto-detected router files:', sectionRouterFiles);
-
-            // Map directory names to section types
-            const dirToSectionType = {
-                'hero': 'hero',
-                'features': 'features',
-                'navbar': 'navbar',
-                'cta': 'cta',
-                'footer': 'footer',
-                'pricing': 'pricing',
-                'image-banner': 'image-banner'
-            };
-
-            // AUTOMATIC SCAN: Scan each section directory for variant files
-            for (const dirName of sectionDirs) {
-                const sectionType = dirToSectionType[dirName] || dirName;
-                const dirPath = path.join(genieBuildSectionsPath, dirName);
-                
-                // Get all .tsx files in this directory (variants)
-                const variantFiles = fs.readdirSync(dirPath)
-                    .filter(file => file.endsWith('.tsx') && !file.includes('Section.tsx'))
-                    .map(file => file.replace('.tsx', '')); // Remove .tsx extension
-
-                console.log(`[refreshComponentsFromRegistry] Section: ${sectionType}, Auto-found variants:`, variantFiles);
-
-                // Add each variant to componentEntries
-                for (const variantName of variantFiles) {
-                    componentEntries.push({
-                        name: sectionType,
-                        variant: variantName, // Filename without .tsx
-                        uniqueId: variantName, // Same as variant
-                        componentName: variantName
-                    });
-                }
-            }
-
-            // Handle single-component sections (no subdirectory)
-            // These are sections like TestimonialsSection, ElementsSection
-            const singleComponentSections = {
-                'TestimonialsSection.tsx': 'testimonials',
-                'ElementsSection.tsx': 'elements'
-            };
-
-            for (const [routerFile, sectionType] of Object.entries(singleComponentSections)) {
-                if (sectionRouterFiles.includes(routerFile)) {
-                    const variantName = routerFile.replace('.tsx', '');
-                    componentEntries.push({
-                        name: sectionType,
-                        variant: variantName,
-                        uniqueId: variantName,
-                        componentName: variantName
-                    });
-                }
-            }
-
-            // Handle FAQ (inline in SectionRenderer, no file)
-            componentEntries.push({
-                name: 'faq',
-                variant: 'FAQSection',
-                uniqueId: 'FAQSection',
-                componentName: 'FAQSection'
-            });
-
-            console.log(`[refreshComponentsFromRegistry] Auto-scanned ${componentEntries.length} GenieBuild components`);
-
-            // Group by component name
-            const componentsByName = {};
-            componentEntries.forEach(entry => {
-                if (!componentsByName[entry.name]) {
-                    componentsByName[entry.name] = [];
-                }
-                componentsByName[entry.name].push({
-                    uniqueId: entry.uniqueId,
-                    status: 1 // Default enabled
-                });
-            });
-
-            const results = [];
-            const added = [];
-            const updated = [];
-            const deleted = [];
-
-            // Get all existing components
-            const existingComponents = await WebsiteComponent.find({});
-            const existingByName = {};
-            existingComponents.forEach(comp => {
-                if (!existingByName[comp.name]) {
-                    existingByName[comp.name] = comp;
-                }
-            });
-
-            // Process each component from registry
-            for (const [componentName, variants] of Object.entries(componentsByName)) {
-                const normalizedName = componentName.toLowerCase().trim();
-
-                // Check if component exists
-                let component = existingByName[normalizedName];
-
-                if (component) {
-                    // Update existing component with new variants
-                    const existingVariants = component.variants || [];
-                    const existingUniqueIds = existingVariants.map(v => v.uniqueId);
-
-                    // Add new variants
-                    const newVariants = variants.filter(v => !existingUniqueIds.includes(v.uniqueId));
-                    // Update existing variants (keep their status)
-                    const updatedVariants = variants.map(newV => {
-                        const existing = existingVariants.find(e => e.uniqueId === newV.uniqueId);
-                        return existing ? existing : newV;
-                    });
-
-                    // Remove variants that are no longer in registry
-                    const registryUniqueIds = variants.map(v => v.uniqueId);
-                    const removedVariants = existingVariants.filter(v => !registryUniqueIds.includes(v.uniqueId));
-
-                    component.variants = updatedVariants;
-                    await component.save();
-
-                    if (newVariants.length > 0 || removedVariants.length > 0) {
-                        updated.push({
-                            name: normalizedName,
-                            added: newVariants.length,
-                            removed: removedVariants.length
-                        });
-                    }
-                } else {
-                    // Create new component
-                    component = new WebsiteComponent({
-                        name: normalizedName,
-                        variants: variants
-                    });
-                    await component.save();
-                    added.push(normalizedName);
-                }
-
-                results.push({
-                    name: normalizedName,
-                    variants: component.variants.length,
-                    component: component
-                });
-            }
-
-            // Delete components that are no longer in registry
-            const registryNames = Object.keys(componentsByName).map(n => n.toLowerCase());
-            for (const existing of existingComponents) {
-                if (!registryNames.includes(existing.name.toLowerCase())) {
-                    await WebsiteComponent.deleteOne({ _id: existing._id });
-                    deleted.push(existing.name);
-                }
-            }
+            const { results, added, updated, summary, logLines } = await mergeWebsiteComponentsFromScan(
+                WebsiteComponent,
+                genieBuildSectionsPath
+            );
 
             return res.status(200).json({
                 message: 'Components refreshed successfully from GenieBuild sections',
                 summary: {
-                    total: results.length,
-                    added: added.length,
-                    updated: updated.length,
-                    deleted: deleted.length
+                    ...summary,
+                    deleted: 0,
                 },
-                added: added,
-                updated: updated,
-                deleted: deleted,
-                components: results
+                added,
+                updated,
+                deleted: [],
+                components: results,
+                logLines,
             });
-
         } catch (error) {
             console.error('[refreshComponentsFromRegistry] Error:', error);
             return res.status(500).json({
@@ -11080,352 +12731,180 @@ Output format (IMPORTANT):
         }
     },
 
-    // Get all available variants (auto-scanned from filesystem)
-    getGenieBuildVariants: async (req, res) => {
+    terminateAllRedisTasks: async (req, res) => {
         try {
-            const fs = require('fs');
-            const path = require('path');
+            const queues = [
+                { name: "projectBackgroundQueue", queue: projectBackgroundQueue },
+                { name: "redisQueue", queue: redisQueue },
+                { name: "addNewServicesQueue", queue: addNewServicesQueue },
+                { name: "generateServiceDescQueue", queue: generateServiceDescQueue },
+                { name: "sectionGenerationQueue", queue: sectionGenerationQueue },
+            ];
 
-            // Path to GenieBuild sections directory
-            const genieBuildSectionsPath = path.join(__dirname, '../../apps/geniebuild/components/sections');
-
-            if (!fs.existsSync(genieBuildSectionsPath)) {
-                return res.status(400).json({
-                    message: 'GenieBuild sections directory not found',
-                    error: `Path does not exist: ${genieBuildSectionsPath}`
-                });
+            const results = [];
+            for (const q of queues) {
+                const summary = await terminateQueueJobs(q.queue, q.name);
+                results.push(summary);
             }
 
-            const variantsBySection = {};
-
-            // AUTOMATIC SCANNING: Read all directories
-            const allItems = fs.readdirSync(genieBuildSectionsPath, { withFileTypes: true });
-            const sectionDirs = allItems
-                .filter(dirent => dirent.isDirectory())
-                .map(dirent => dirent.name);
-            
-            const sectionRouterFiles = allItems
-                .filter(dirent => dirent.isFile() && dirent.name.endsWith('Section.tsx'))
-                .map(dirent => dirent.name);
-
-            // Map directory names to section types
-            const dirToSectionType = {
-                'hero': 'hero',
-                'features': 'features',
-                'navbar': 'navbar',
-                'cta': 'cta',
-                'footer': 'footer',
-                'pricing': 'pricing',
-                'image-banner': 'image-banner'
-            };
-
-            // Scan each section directory for variant files
-            for (const dirName of sectionDirs) {
-                const sectionType = dirToSectionType[dirName] || dirName;
-                const dirPath = path.join(genieBuildSectionsPath, dirName);
-                
-                // Get all .tsx files in this directory (variants)
-                const variantFiles = fs.readdirSync(dirPath)
-                    .filter(file => file.endsWith('.tsx') && !file.includes('Section.tsx'))
-                    .map(file => file.replace('.tsx', '')); // Remove .tsx extension
-
-                variantsBySection[sectionType] = variantFiles;
-            }
-
-            // Handle single-component sections
-            const singleComponentSections = {
-                'TestimonialsSection.tsx': 'testimonials',
-                'ElementsSection.tsx': 'elements'
-            };
-
-            for (const [routerFile, sectionType] of Object.entries(singleComponentSections)) {
-                if (sectionRouterFiles.includes(routerFile)) {
-                    const variantName = routerFile.replace('.tsx', '');
-                    variantsBySection[sectionType] = [variantName];
-                }
-            }
-
-            // Handle FAQ
-            variantsBySection['faq'] = ['FAQSection'];
+            const totals = results.reduce(
+                (acc, row) => {
+                    acc.waitingRemoved += row.waitingRemoved || 0;
+                    acc.delayedRemoved += row.delayedRemoved || 0;
+                    acc.pausedRemoved += row.pausedRemoved || 0;
+                    acc.activeFailed += row.activeFailed || 0;
+                    acc.errors += (row.errors || []).length;
+                    return acc;
+                },
+                { waitingRemoved: 0, delayedRemoved: 0, pausedRemoved: 0, activeFailed: 0, errors: 0 }
+            );
 
             return res.status(200).json({
                 success: true,
-                data: variantsBySection,
-                message: 'GenieBuild variants fetched successfully (auto-scanned from filesystem)'
+                message: "All current Redis queue jobs were terminated safely. New tasks can still be queued normally.",
+                totals,
+                queues: results,
             });
-
         } catch (error) {
-            console.error('[getGenieBuildVariants] Error:', error);
+            console.error("[terminateAllRedisTasks] Error:", error);
             return res.status(500).json({
                 success: false,
-                message: 'Error fetching GenieBuild variants',
-                error: error.message
+                message: "Failed to terminate Redis queue jobs",
+                error: error.message,
             });
         }
     },
 
-    // Check if component has variants available
-    checkComponentVariants: async (req, res) => {
+    clearDangerZoneEntries: async (req, res) => {
         try {
-            const { uniqueId } = req.query; // e.g., "hero_a", "cta_b"
-
-            if (!uniqueId) {
-                return res.status(400).json({
-                    message: 'uniqueId is required',
-                    error: 'Missing uniqueId parameter'
-                });
+            const summary = {};
+            for (const cfg of DANGER_ZONE_COLLECTIONS) {
+                const result = await cfg.model.deleteMany({});
+                summary[cfg.key] = result?.deletedCount || 0;
             }
-
-            // Extract component name from uniqueId (e.g., "hero_a" -> "hero")
-            const parts = uniqueId.toLowerCase().split('_');
-            if (parts.length < 2) {
-                return res.status(400).json({
-                    message: 'Invalid uniqueId format',
-                    error: 'uniqueId must be in format: {name}_{variant}'
-                });
-            }
-
-            const componentName = parts[0];
-
-            // Find component by name
-            const component = await WebsiteComponent.findOne({ name: componentName });
-
-            if (!component) {
-                return res.status(200).json({
-                    hasVariants: false,
-                    variants: [],
-                    currentUniqueId: uniqueId
-                });
-            }
-
-            // Get enabled variants (status === 1)
-            const enabledVariants = (component.variants || []).filter(v => v.status === 1);
-
-            // Check if there are multiple variants (more than just the current one)
-            const hasMultipleVariants = enabledVariants.length > 1;
-            const currentVariantExists = enabledVariants.some(v => v.uniqueId === uniqueId.toLowerCase());
-
             return res.status(200).json({
-                hasVariants: hasMultipleVariants,
-                variants: enabledVariants.map(v => ({
-                    uniqueId: v.uniqueId,
-                    status: v.status
-                })),
-                currentUniqueId: uniqueId.toLowerCase(),
-                currentVariantExists: currentVariantExists,
-                componentName: componentName
+                success: true,
+                message: "Danger zone entries cleared successfully",
+                deleted: summary,
             });
-
         } catch (error) {
-            console.error('[checkComponentVariants] Error:', error);
+            console.error("[clearDangerZoneEntries] Error:", error);
             return res.status(500).json({
-                message: 'Error checking component variants',
-                error: error.message
+                success: false,
+                message: "Failed to clear danger zone entries",
+                error: error.message,
             });
         }
     },
 
-    // Change component variant
-    changeComponentVariant: async (req, res) => {
+    createProjectDataBackupZip: async (req, res) => {
         try {
-            const { projectId, pageId, sectionId, currentUniqueId, newUniqueId } = req.body;
+            const db = mongoose.connection.db;
+            const collectionsMeta = await db.listCollections({}, { nameOnly: true }).toArray();
+            const collectionNames = collectionsMeta
+                .map((c) => c.name)
+                .filter((name) => name && !String(name).startsWith("system."));
 
-            if (!projectId || !currentUniqueId) {
-                return res.status(400).json({
-                    message: 'projectId and currentUniqueId are required',
-                    received: { projectId, currentUniqueId, sectionId, pageId }
-                });
+            const payload = {
+                backupVersion: 1,
+                exportedAt: new Date().toISOString(),
+                scope: "full_database",
+                collections: {},
+            };
+
+            for (const collectionName of collectionNames) {
+                const docs = await db.collection(collectionName).find({}).toArray();
+                payload.collections[collectionName] = docs;
             }
 
-            console.log('[changeComponentVariant] Request received:', {
-                projectId,
-                pageId,
-                sectionId,
-                currentUniqueId,
-                newUniqueId
+            res.setHeader("Content-Type", "application/zip");
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="mongo-full-backup-${Date.now()}.zip"`
+            );
+
+            const archive = archiver("zip", { zlib: { level: 9 } });
+            archive.on("error", (err) => {
+                throw err;
             });
-
-            // If newUniqueId is provided, use it; otherwise pick random variant
-            let targetUniqueId = newUniqueId;
-
-            if (!targetUniqueId) {
-                // Extract component name from currentUniqueId
-                const parts = currentUniqueId.toLowerCase().split('_');
-                if (parts.length < 2) {
-                    return res.status(400).json({
-                        message: 'Invalid currentUniqueId format'
-                    });
-                }
-
-                const componentName = parts[0];
-
-                // Find component and get enabled variants
-                const component = await WebsiteComponent.findOne({ name: componentName });
-                if (!component) {
-                    return res.status(404).json({
-                        message: 'Component not found'
-                    });
-                }
-
-                const enabledVariants = (component.variants || []).filter(v => v.status === 1);
-                if (enabledVariants.length <= 1) {
-                    return res.status(400).json({
-                        message: 'No other variants available for this component'
-                    });
-                }
-
-                // Pick a random variant that's different from current
-                const otherVariants = enabledVariants.filter(v => v.uniqueId !== currentUniqueId.toLowerCase());
-                if (otherVariants.length === 0) {
-                    return res.status(400).json({
-                        message: 'No other variants available'
-                    });
-                }
-
-                const randomIndex = Math.floor(Math.random() * otherVariants.length);
-                targetUniqueId = otherVariants[randomIndex].uniqueId;
-            }
-
-            // Get the design data
-            const designData = await WebsiteDesignsData.findOne({ projectId });
-            if (!designData) {
-                return res.status(404).json({
-                    message: 'Design data not found for this project'
+            archive.pipe(res);
+            archive.append(EJSON.stringify(payload, null, 2), { name: "mongo-full-backup.ejson" });
+            await archive.finalize();
+        } catch (error) {
+            console.error("[createProjectDataBackupZip] Error:", error);
+            if (!res.headersSent) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Failed to create backup zip",
+                    error: error.message,
                 });
             }
+        }
+    },
 
-            // Find the section and update its component uniqueId
-            // We need to update the component in componentIds array that matches currentUniqueId
-            let updated = false;
-            const normalizedCurrentUniqueId = currentUniqueId.toLowerCase().trim();
-
-            // Extract component name from currentUniqueId (e.g., "hero_a" -> "hero")
-            const currentComponentName = normalizedCurrentUniqueId.split('_')[0];
-
-            // Debug: Log all components in the design data
-            console.log('[changeComponentVariant] Searching for uniqueId:', normalizedCurrentUniqueId);
-            console.log('[changeComponentVariant] Component name extracted:', currentComponentName);
-            console.log('[changeComponentVariant] All pages:', designData.pages.map(p => ({
-                pageId: p.pageId?.toString() || p.pageId,
-                componentIds: (p.componentIds || []).map(c => ({
-                    uniqueId: c.uniqueId,
-                    componentId: c.componentId
-                }))
-            })));
-
-            const updatedPages = designData.pages.map(page => {
-                // Check if this page contains the section
-                const pageIdStr = page.pageId?.toString() || page.pageId;
-                const requestedPageIdStr = pageId ? (pageId.toString ? pageId.toString() : String(pageId)) : null;
-
-                if (requestedPageIdStr && pageIdStr !== requestedPageIdStr) {
-                    return page;
-                }
-
-                const updatedComponentIds = (page.componentIds || []).map((comp, index) => {
-                    // Match by uniqueId (primary field)
-                    const compUniqueId = comp.uniqueId ? comp.uniqueId.toLowerCase().trim() : null;
-
-                    // Try to match by exact uniqueId first (new format)
-                    if (compUniqueId === normalizedCurrentUniqueId) {
-                        console.log('[changeComponentVariant] Found exact match by uniqueId:', {
-                            current: normalizedCurrentUniqueId,
-                            new: targetUniqueId.toLowerCase(),
-                            comp: comp
-                        });
-                        updated = true;
-                        return {
-                            ...comp,
-                            uniqueId: targetUniqueId.toLowerCase().trim(),
-                            // Keep componentId for backward compatibility, but uniqueId is primary
-                            componentId: comp.componentId // Keep existing componentId if present
-                        };
-                    }
-
-                    // Fallback: Try to match by component name (e.g., if uniqueId is "hero_a" and we have "hero_b", match by "hero")
-                    // This handles cases where the variant might have changed but we're looking for the same component type
-                    if (compUniqueId && compUniqueId.startsWith(currentComponentName + '_')) {
-                        console.log('[changeComponentVariant] Found match by component name:', {
-                            searchedFor: normalizedCurrentUniqueId,
-                            found: compUniqueId,
-                            componentName: currentComponentName,
-                            new: targetUniqueId.toLowerCase(),
-                            comp: comp
-                        });
-                        updated = true;
-                        return {
-                            ...comp,
-                            uniqueId: targetUniqueId.toLowerCase().trim(),
-                            // Keep componentId for backward compatibility, but uniqueId is primary
-                            componentId: comp.componentId // Keep existing componentId if present
-                        };
-                    }
-
-                    return comp;
-                });
-
-                return {
-                    ...page,
-                    componentIds: updatedComponentIds
-                };
-            });
-
-            if (!updated) {
-                // Get all available uniqueIds for debugging
-                const allUniqueIds = designData.pages
-                    .filter(p => {
-                        const pageIdStr = p.pageId?.toString() || p.pageId;
-                        const requestedPageIdStr = pageId ? (pageId.toString ? pageId.toString() : String(pageId)) : null;
-                        return !requestedPageIdStr || pageIdStr === requestedPageIdStr;
-                    })
-                    .flatMap(p => (p.componentIds || []).map(c => ({
-                        uniqueId: c.uniqueId || 'N/A',
-                        componentId: c.componentId || 'N/A'
-                    })));
-
-                console.error('[changeComponentVariant] Component not found:', {
-                    searchedFor: normalizedCurrentUniqueId,
-                    componentName: currentComponentName,
-                    availableUniqueIds: allUniqueIds,
-                    pageId: pageId,
-                    sectionId: sectionId,
-                    allPages: designData.pages.map(p => ({
-                        pageId: p.pageId?.toString() || p.pageId,
-                        componentCount: (p.componentIds || []).length
-                    }))
-                });
-
-                return res.status(404).json({
-                    message: 'Component with currentUniqueId not found in design data',
-                    details: {
-                        currentUniqueId: normalizedCurrentUniqueId,
-                        componentName: currentComponentName,
-                        pageId: pageId,
-                        sectionId: sectionId,
-                        availableUniqueIds: allUniqueIds,
-                        suggestion: `Try refreshing the page or ensure the component exists in the database. Available components: ${allUniqueIds.map(c => c.uniqueId).join(', ')}`
-                    }
-                });
+    restoreProjectDataBackupZip: async (req, res) => {
+        try {
+            const { backupBase64 } = req.body || {};
+            if (!backupBase64 || typeof backupBase64 !== "string") {
+                return res.status(400).json({ success: false, message: "backupBase64 is required" });
             }
 
-            // Update the design data
-            designData.pages = updatedPages;
-            await designData.save();
+            const zipBuffer = Buffer.from(backupBase64, "base64");
+            const zipDirectory = await unzipper.Open.buffer(zipBuffer);
+            const entry = zipDirectory.files.find((f) => f.path === "mongo-full-backup.ejson");
+            if (!entry) {
+                return res.status(400).json({ success: false, message: "Invalid backup zip: mongo-full-backup.ejson missing" });
+            }
 
-            // Also update the section's componentType in the sections array (if stored separately)
-            // This might be needed for the builder to reflect changes immediately
+            const rawJson = (await entry.buffer()).toString("utf8");
+            const parsed = EJSON.parse(rawJson || "{}");
+            const collections = parsed?.collections || {};
+            const restoreSummary = {};
+
+            const db = mongoose.connection.db;
+            for (const [collectionName, collectionDocs] of Object.entries(collections)) {
+                if (!collectionName || String(collectionName).startsWith("system.")) continue;
+                const docs = Array.isArray(collectionDocs) ? collectionDocs : [];
+                if (!docs.length) {
+                    restoreSummary[collectionName] = { inserted: 0, skipped: 0 };
+                    continue;
+                }
+
+                let inserted = 0;
+                let skipped = 0;
+                const collection = db.collection(collectionName);
+                for (const doc of docs) {
+                    if (!doc?._id) {
+                        await collection.insertOne(doc);
+                        inserted++;
+                        continue;
+                    }
+                    const existing = await collection.findOne({ _id: doc._id }, { projection: { _id: 1 } });
+                    if (existing) {
+                        skipped++;
+                        continue;
+                    }
+                    await collection.updateOne(
+                        { _id: doc._id },
+                        { $setOnInsert: doc },
+                        { upsert: true }
+                    );
+                    inserted++;
+                }
+                restoreSummary[collectionName] = { inserted, skipped };
+            }
 
             return res.status(200).json({
-                message: 'Component variant changed successfully',
-                newUniqueId: targetUniqueId,
-                oldUniqueId: currentUniqueId
+                success: true,
+                message: "Backup restored successfully (missing entries upserted)",
+                summary: restoreSummary,
             });
-
         } catch (error) {
-            console.error('[changeComponentVariant] Error:', error);
+            console.error("[restoreProjectDataBackupZip] Error:", error);
             return res.status(500).json({
-                message: 'Error changing component variant',
-                error: error.message
+                success: false,
+                message: "Failed to restore backup zip",
+                error: error.message,
             });
         }
     },
@@ -11457,13 +12936,11 @@ Output format (IMPORTANT):
 
             for (const pageData of designData.pages) {
                 const pageId = pageData.pageId?._id?.toString() || pageData.pageId?.toString() || pageData._id?.toString();
-                console.log(`[generateWebsiteSectionsData] Processing page: ${pageId}, has componentIds: ${!!pageData.componentIds}`);
+                const sections = getPageSections(pageData);
+                console.log(`[generateWebsiteSectionsData] Processing page: ${pageId}, has sections: ${sections.length}`);
 
-                // GenieBuild sections - read from componentIds[].sectionData (single source of truth)
-                const componentIds = pageData.componentIds || [];
-                console.log(`[generateWebsiteSectionsData] Page ${pageId} has ${componentIds.length} components`);
-
-                for (const compData of componentIds) {
+                // GenieBuild sections - read from pages[].sections[].sectionData (single source of truth)
+                for (const compData of sections) {
                     const section = compData.sectionData;
                     if (!section) {
                         console.warn(`[generateWebsiteSectionsData] Component ${compData.variant_uniqueId} has no sectionData, skipping`);
@@ -11472,14 +12949,14 @@ Output format (IMPORTANT):
                     const sectionId = section.type; // type is same as filename/uniqueId
                     console.log(`[generateWebsiteSectionsData] Processing section: ${sectionId} (variant: ${compData.variant_uniqueId}) for page: ${pageId}`);
 
-                    // GLOBAL PAGE
-                    if (!locations.length) {
+                    // GLOBAL PAGE (for non-business flow only)
+                    if (!generationLocations.length) {
                         await generateSection(project, projectId, pageId, sectionId, null);
                         continue;
                     }
 
                     // LOCATION BASED
-                    for (const loc of locations) {
+                    for (const loc of generationLocations) {
                         await generateSection(project, projectId, pageId, sectionId, loc);
                     }
                 }
@@ -11490,20 +12967,23 @@ Output format (IMPORTANT):
                 const locationId = location?.id || location?._id || null;
 
                 try {
+                    const pageDoc =
+                        mongoose.isValidObjectId(String(pageId || ""))
+                            ? await WebsitePage.findOne({ _id: pageId, projectId })
+                                .select("pageType name serviceId")
+                                .lean()
+                            : null;
+                    const pageType = String(pageDoc?.pageType || "").toLowerCase();
+                    const pageName = String(pageDoc?.name || "").toLowerCase();
 
-                    const sectionFile = path.join(
-                        process.cwd(),
-                        "sections",
-                        sectionId,
-                        `${sectionId}Section.js`
-                    );
+                    const sectionFile = resolveSectionFile(sectionId, { pageType, pageFolder: pageName });
 
-                    if (!fs.existsSync(sectionFile)) {
+                    if (!sectionFile) {
                         throw new Error(`Section file missing: ${sectionId}`);
                     }
 
                     delete require.cache[require.resolve(sectionFile)];
-const sectionModule = require(sectionFile);
+                    const sectionModule = require(sectionFile);
 
                     const prompt = sectionModule.prompt({
                         project,
@@ -11516,30 +12996,58 @@ const sectionModule = require(sectionFile);
                         promptFrom: "generateWebsiteSectionsData"
                     });
 
-                    // For hero section: save prompts to UserProject and remove from result
-                    let resultToSave = result;
-                    if (sectionId === 'hero' && result) {
-                        const { coverImagePrompt, otherImagesPrompt, ...restResult } = result;
-                        
-                        // Save prompts to UserProject table
-                        if (coverImagePrompt || otherImagesPrompt) {
-                            await UserProject.findByIdAndUpdate(
-                                projectId,
-                                {
-                                    $set: {
-                                        ...(coverImagePrompt && { coverImagePrompt }),
-                                        ...(otherImagesPrompt && { otherImagesPrompt })
-                                    }
-                                }
+                    let resultToSave =
+                        result && typeof result === "object" && !Array.isArray(result)
+                            ? stripLegacyImagePromptFields({ ...result })
+                            : result;
+
+                    if (
+                        typeof sectionModule.imageCount === "number" &&
+                        resultToSave &&
+                        typeof resultToSave === "object" &&
+                        !Array.isArray(resultToSave)
+                    ) {
+                        resultToSave.image_count = sectionModule.imageCount;
+                    }
+
+                    if (sectionId === "hero" && resultToSave && typeof resultToSave === "object") {
+                        const { ai_image_prompt, non_ai_image_prompt } = resultToSave;
+                        if (ai_image_prompt || non_ai_image_prompt) {
+                            await UserProject.findByIdAndUpdate(projectId, {
+                                $set: {
+                                    ...(ai_image_prompt && { ai_image_prompt }),
+                                    ...(non_ai_image_prompt && { non_ai_image_prompt }),
+                                    ...(typeof sectionModule.imageCount === "number"
+                                        ? { image_count: sectionModule.imageCount }
+                                        : {}),
+                                },
+                                $unset: { coverImagePrompt: "", otherImagesPrompt: "" },
+                            });
+                            console.log(
+                                `[generateSection] Saved ai_image_prompt / non_ai_image_prompt / image_count to UserProject: ${projectId}`
                             );
-                            console.log(`[generateSection] Saved coverImagePrompt and otherImagesPrompt to UserProject: ${projectId}`);
                         }
-                        
-                        // Remove prompts from result before saving to SectionContent and WebsiteDesignsData
-                        resultToSave = restResult;
+                    }
+
+                    if (resultToSave && typeof resultToSave === "object" && !Array.isArray(resultToSave)) {
+                        resultToSave = await attachGeneratedImagesToSectionData({
+                            project,
+                            projectId,
+                            sectionId,
+                            sectionModule,
+                            data: resultToSave,
+                        });
+                    }
+
+                    if (sectionId === "faq" && resultToSave && typeof resultToSave === "object") {
+                        resultToSave = coerceFaqSectionPayload(resultToSave);
                     }
 
                     // Save to SectionContent (without prompts for hero section)
+                    if (!isMeaningfulSectionData(resultToSave)) {
+                        logSectionContentWrite("skipped-empty", { projectId, pageId, sectionId, locationId, source: "generateWebsiteSectionsData" });
+                        return;
+                    }
                     await SectionContent.findOneAndUpdate(
                         {
                             projectId,
@@ -11556,46 +13064,10 @@ const sectionModule = require(sectionFile);
                         },
                         { upsert: true }
                     );
+                    logSectionContentWrite("saved", { projectId, pageId, sectionId, locationId, source: "generateWebsiteSectionsData" });
 
-                    // Also merge into WebsiteDesignsData componentIds[].sectionData
-                    const designDataToUpdate = await WebsiteDesignsData.findOne({ projectId });
-                    if (designDataToUpdate && designDataToUpdate.pages) {
-                        let foundAndUpdated = false;
-                        for (let pageIndex = 0; pageIndex < designDataToUpdate.pages.length; pageIndex++) {
-                            const pageData = designDataToUpdate.pages[pageIndex];
-                            const currentPageId = pageData.pageId?._id?.toString() || pageData.pageId?.toString();
-                            if (String(currentPageId) === String(pageId) && pageData.componentIds) {
-                                // Find the component by sectionId and update its sectionData.content
-                                const compIndex = pageData.componentIds.findIndex((comp) => {
-                                    return comp.sectionData && comp.sectionData.type === sectionId;
-                                });
-                                if (compIndex !== -1 && pageData.componentIds[compIndex].sectionData) {
-                                    // Merge AI-generated content into sectionData.content (without prompts for hero)
-                                    pageData.componentIds[compIndex].sectionData.content = {
-                                        ...pageData.componentIds[compIndex].sectionData.content,
-                                        ...resultToSave
-                                    };
-                                    
-                                    // Mark the nested path as modified so Mongoose saves it
-                                    designDataToUpdate.markModified(`pages.${pageIndex}.componentIds.${compIndex}.sectionData.content`);
-                                    
-                                    foundAndUpdated = true;
-                                    console.log(`[generateSection] Merged into WebsiteDesignsData componentIds[${compIndex}].sectionData.content: ${sectionId}`);
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        // Save only once after all updates
-                        if (foundAndUpdated) {
-                            await designDataToUpdate.save();
-                            console.log(`[generateSection] Saved WebsiteDesignsData update for section: ${sectionId}`);
-                        } else {
-                            console.warn(`[generateSection] Could not find component with type "${sectionId}" in page ${pageId} to update`);
-                        }
-                    } else {
-                        console.warn(`[generateSection] WebsiteDesignsData not found for projectId: ${projectId}`);
-                    }
+                    // Do not write content back into WebsiteDesignsData.
+                    // WebsiteDesignsData stores structure/styles only; content lives in SectionContent.
 
                     successCount++;
 
@@ -11616,6 +13088,7 @@ const sectionModule = require(sectionFile);
                         },
                         { upsert: true }
                     );
+                    logSectionContentWrite("error", { projectId, pageId, sectionId, locationId, source: "generateWebsiteSectionsData", error: err.message || "Generation failed" });
 
                     failedCount++;
 
@@ -11635,181 +13108,438 @@ const sectionModule = require(sectionFile);
         }
     },
 
-  regenerateFailedSections: async (req, res) => {
-  try {
-    const { projectId, locations = [] } = req.body;
+    regenerateFailedSections: async (req, res) => {
+        try {
+            const { projectId, locations = [] } = req.body;
 
-    if (!projectId) {
-      return res.status(400).json({ message: "projectId is required" });
-    }
-
-    const project = await UserProject.findById(projectId);
-    if (!project) {
-      return res.status(404).json({ message: "Project not found" });
-    }
-
-    const pages = await WebsitePage.find({ projectId });
-
-    if (!pages.length) {
-      return res.status(404).json({ message: "No pages found" });
-    }
-
-    let successCount = 0;
-    let failedCount = 0;
-    let skipped = 0;
-
-    for (const page of pages) {
-
-      const pageId = page.slug || page._id.toString();
-
-      for (const comp of page.componentIds || []) {
-
-        if (!comp.componentVariant) continue;
-
-        const sectionId = comp.componentVariant.split("_")[0];
-
-        // GLOBAL
-        if (!locations.length) {
-          await regenSection(project, projectId, pageId, sectionId, null);
-          continue;
-        }
-
-        // LOCATION BASED
-        for (const loc of locations) {
-          await regenSection(project, projectId, pageId, sectionId, loc);
-        }
-      }
-    }
-
-    async function regenSection(project, projectId, pageId, sectionId, location) {
-
-      const locationId = location?.id || location?._id || null;
-
-      const existing = await SectionContent.findOne({
-        projectId,
-        locationId,
-        pageId,
-        sectionId,
-        isDeleted: false
-      });
-
-      // Already generated → skip
-      if (existing && existing.status === "generated") {
-        skipped++;
-        return;
-      }
-
-      try {
-
-        const sectionFile = path.join(
-          process.cwd(),
-          "sections",
-          sectionId,
-          `${sectionId}Section.js`
-        );
-
-        if (!fs.existsSync(sectionFile)) {
-          throw new Error(`Section file missing: ${sectionId}`);
-        }
-
-        delete require.cache[require.resolve(sectionFile)];
-        const sectionModule = require(sectionFile);
-
-        const prompt = sectionModule.prompt({
-          project,
-          location
-        });
-
-        const result = await fetchJSONFromOpenAI(prompt, sectionId, {
-          projectId,
-          pageId,
-          promptFrom: "regenerateFailedSections"
-        });
-
-        await SectionContent.findOneAndUpdate(
-          {
-            projectId,
-            locationId,
-            pageId,
-            sectionId
-          },
-          {
-            $set: {
-              data: result,
-              status: "generated",
-              error: null
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
             }
-          },
-          { upsert: true }
-        );
 
-        successCount++;
-
-      } catch (err) {
-
-        await SectionContent.findOneAndUpdate(
-          {
-            projectId,
-            locationId,
-            pageId,
-            sectionId
-          },
-          {
-            $set: {
-              status: "failed",
-              error: err.message || "Generation failed"
+            const project = await UserProject.findById(projectId);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
             }
-          },
-          { upsert: true }
-        );
+            const isBusinessProject = Number(project?.projectType || 0) === 1;
+            const primaryBusinessLocation = isBusinessProject
+                ? await BusinessLocation.findOne({ projectId, type: 0, status: 1 }).sort({ createdAt: 1 }).lean()
+                : null;
+            const generationLocations = Array.isArray(locations) && locations.length
+                ? locations
+                : (isBusinessProject && primaryBusinessLocation ? [primaryBusinessLocation] : []);
 
-        failedCount++;
-      }
+            const pages = await WebsitePage.find({ projectId });
+
+            if (!pages.length) {
+                return res.status(404).json({ message: "No pages found" });
+            }
+
+            let successCount = 0;
+            let failedCount = 0;
+            let skipped = 0;
+
+            for (const page of pages) {
+
+                const pageId = page.slug || page._id.toString();
+
+                for (const comp of page.componentIds || []) {
+
+                    if (!comp.componentVariant) continue;
+
+                    const sectionId = comp.componentVariant.split("_")[0];
+
+                    // GLOBAL (for non-business flow only)
+                    if (!generationLocations.length) {
+                        await regenSection(project, projectId, pageId, sectionId, null);
+                        continue;
+                    }
+
+                    // LOCATION BASED
+                    for (const loc of generationLocations) {
+                        await regenSection(project, projectId, pageId, sectionId, loc);
+                    }
+                }
+            }
+
+            async function regenSection(project, projectId, pageId, sectionId, location) {
+
+                const locationId = location?.id || location?._id || null;
+
+                const existing = await SectionContent.findOne({
+                    projectId,
+                    locationId,
+                    pageId,
+                    sectionId,
+                    isDeleted: false
+                });
+
+                // Already generated → skip
+                if (existing && existing.status === "generated") {
+                    skipped++;
+                    return;
+                }
+
+                try {
+                    const regenPageDoc =
+                        mongoose.isValidObjectId(String(pageId || ""))
+                            ? await WebsitePage.findOne({ _id: pageId, projectId })
+                                .select("pageType name serviceId")
+                                .lean()
+                            : null;
+                    const regenPageType = String(regenPageDoc?.pageType || "").toLowerCase();
+                    const regenPageName = String(regenPageDoc?.name || "").toLowerCase();
+
+                    const sectionFile = resolveSectionFile(sectionId, {
+                        pageType: regenPageType,
+                        pageFolder: regenPageName,
+                    });
+
+                    if (!sectionFile) {
+                        throw new Error(`Section file missing: ${sectionId}`);
+                    }
+
+                    delete require.cache[require.resolve(sectionFile)];
+                    const sectionModule = require(sectionFile);
+
+                    const prompt = sectionModule.prompt({
+                        project,
+                        location
+                    });
+
+                    let result = await fetchJSONFromOpenAI(prompt, sectionId, {
+                        projectId,
+                        pageId,
+                        promptFrom: "regenerateFailedSections"
+                    });
+
+                    if (sectionId === "faq" && result && typeof result === "object" && !Array.isArray(result)) {
+                        result = coerceFaqSectionPayload({ ...result });
+                    }
+
+                    if (!isMeaningfulSectionData(result)) {
+                        logSectionContentWrite("skipped-empty", { projectId, pageId, sectionId, locationId, source: "regenerateFailedSections" });
+                        return;
+                    }
+                    await SectionContent.findOneAndUpdate(
+                        {
+                            projectId,
+                            locationId,
+                            pageId,
+                            sectionId
+                        },
+                        {
+                            $set: {
+                                data: result,
+                                status: "generated",
+                                error: null
+                            }
+                        },
+                        { upsert: true }
+                    );
+                    logSectionContentWrite("saved", { projectId, pageId, sectionId, locationId, source: "regenerateFailedSections" });
+
+                    successCount++;
+
+                } catch (err) {
+
+                    await SectionContent.findOneAndUpdate(
+                        {
+                            projectId,
+                            locationId,
+                            pageId,
+                            sectionId
+                        },
+                        {
+                            $set: {
+                                status: "failed",
+                                error: err.message || "Generation failed"
+                            }
+                        },
+                        { upsert: true }
+                    );
+                    logSectionContentWrite("error", { projectId, pageId, sectionId, locationId, source: "regenerateFailedSections", error: err.message || "Generation failed" });
+
+                    failedCount++;
+                }
+            }
+
+            return res.status(200).json({
+                message: "Regeneration completed",
+                success: successCount,
+                failed: failedCount,
+                skipped
+            });
+
+        } catch (error) {
+            console.error("regenerateFailedSections error:", error);
+            return res.status(500).json({ message: "Regeneration failed" });
+        }
+    },
+
+    // Upsert section content from GenieBuild editor save.
+    // This makes "reset/default" actions use the latest user-saved content.
+    upsertSectionContentFromBuilder: async (req, res) => {
+        try {
+            const { projectId, pageId, locationId = null, sections = [] } = req.body || {};
+
+            if (!projectId || !pageId) {
+                return res.status(400).json({ message: 'projectId and pageId are required' });
+            }
+
+            if (!Array.isArray(sections) || sections.length === 0) {
+                return res.status(400).json({ message: 'sections array is required' });
+            }
+
+            const normalizedPageId = normalizeMixedIdForStorage(pageId);
+            const pageIdCandidates = buildMixedIdCandidates(pageId);
+            const normalizedSections = sections
+                .map((s) => {
+                    const sectionId = s?.sectionId
+                        ? normalizeSectionIdForStorage(String(s.sectionId).trim().toLowerCase())
+                        : '';
+                    if (!sectionId) return null;
+                    return { sectionId, content: s?.content ?? {} };
+                })
+                .filter(Boolean);
+
+            if (!normalizedSections.length) {
+                return res.status(400).json({ message: 'No valid sectionId found' });
+            }
+
+            let updatedCount = 0;
+            let skippedUnchanged = 0;
+            let pageContext = null;
+            const projectDoc = await userProjects.findById(projectId).select("projectType").lean();
+            const projectType = Number(projectDoc?.projectType ?? 0);
+            if (mongoose.isValidObjectId(String(pageId))) {
+                pageContext = await WebsitePage.findOne({ _id: pageId, projectId })
+                    .select("pageType name slug serviceId locationId")
+                    .lean();
+            }
+            const scopedLocationId = resolveLocationPreferenceForPage({
+                preferredLocationId: locationId ? String(locationId) : null,
+                projectType,
+                pageMeta: pageContext || {}
+            });
+            const effectiveLocationId = scopedLocationId || pageContext?.locationId || null;
+            let sectionEntriesForPage = [];
+            try {
+                const designData = await WebsiteDesignsData.findOne({ projectId }).select("pages").lean();
+                const selectedPage = (designData?.pages || []).find((p) => String(p?.pageId?._id || p?.pageId) === String(pageId));
+                sectionEntriesForPage = getSectionEntriesFromPage(selectedPage || {});
+            } catch (_e) { }
+
+            // Global dedupe guard for this page+location scope (covers old mixed pageId writes).
+            try {
+                const existingRows = await SectionContent.find({
+                    projectId,
+                    ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+                    locationId: effectiveLocationId,
+                    isDeleted: { $ne: true }
+                })
+                    .select("_id sectionId serviceId updatedAt")
+                    .sort({ updatedAt: -1, _id: -1 })
+                    .lean();
+                const seen = new Set();
+                const staleIds = [];
+                for (const row of existingRows) {
+                    const key = `${String(row?.sectionId || "")}::${String(row?.serviceId || "null")}`;
+                    if (seen.has(key)) staleIds.push(row._id);
+                    else seen.add(key);
+                }
+                if (staleIds.length) {
+                    await SectionContent.deleteMany({ _id: { $in: staleIds } });
+                }
+            } catch (_e) { }
+
+            for (const s of normalizedSections) {
+                const canonicalContent = canonicalizeSectionContent(s.content || {});
+                if (!isMeaningfulSectionData(canonicalContent)) {
+                    logSectionContentWrite("skipped-empty", {
+                        projectId,
+                        pageId,
+                        sectionId: s.sectionId,
+                        locationId: effectiveLocationId,
+                        source: "upsertSectionContentFromBuilder"
+                    });
+                    continue;
+                }
+                const isBundleWrite = shouldUseServiceBundleForPage(s.sectionId, pageContext || {});
+                if (isBundleWrite) {
+                    const bundleLocationId = pageContext?.locationId || effectiveLocationId;
+                    const serviceDoc = await Service.findOne({
+                        _id: pageContext.serviceId,
+                        projectId
+                    }).select("name slug").lean();
+                    const locationDoc = bundleLocationId
+                        ? await BusinessLocation.findOne({ _id: bundleLocationId, projectId }).select("areaName").lean()
+                        : null;
+
+                    await SectionContent.findOneAndUpdate(
+                        {
+                            projectId,
+                            pageId: pageContext.serviceId,
+                            serviceId: pageContext.serviceId,
+                            sectionId: "service_sections",
+                            locationId: bundleLocationId,
+                            isDeleted: { $ne: true }
+                        },
+                        {
+                            $set: {
+                                [`data.sections.${s.sectionId}`]: canonicalContent,
+                                "data.serviceId": pageContext.serviceId,
+                                "data.serviceName": serviceDoc?.name || "",
+                                "data.serviceSlug": serviceDoc?.slug || "",
+                                "data.locationId": bundleLocationId,
+                                "data.locationName": locationDoc?.areaName || "",
+                                status: "generated",
+                                error: null,
+                                isDeleted: false
+                            }
+                        },
+                        { upsert: true }
+                    );
+                    logSectionContentWrite("saved", {
+                        projectId,
+                        pageId: pageContext.serviceId,
+                        sectionId: `service_sections.${s.sectionId}`,
+                        locationId: bundleLocationId,
+                        source: "upsertSectionContentFromBuilder"
+                    });
+
+                    // Reverse-propagate: push edits from service page back into the
+                    // homepage services grid SectionContent data.items[] entry.
+                    if (s.sectionId === "aboutservice" || s.sectionId === "servicehero") {
+                        try {
+                            await propagateServicePageEditsToServicesGrid({
+                                projectId,
+                                serviceId: String(pageContext.serviceId),
+                                sectionType: s.sectionId,
+                                content: canonicalContent,
+                                locationId: bundleLocationId,
+                            });
+                        } catch (revPropErr) {
+                            console.warn(
+                                "[upsertSectionContentFromBuilder] reverse service→grid propagation:",
+                                revPropErr.message
+                            );
+                        }
+                    }
+
+                    updatedCount++;
+                    continue;
+                }
+
+                // Shared reference propagation: if this page section references explicit
+                // SectionContent IDs, update those rows so other linked pages stay in sync.
+                try {
+                    const matchingEntry = sectionEntriesForPage.find((e) => e.sectionType === s.sectionId);
+                    const referencedIds = matchingEntry
+                        ? collectSectionContentIdsFromRef(matchingEntry?.sectionData?.contentRef || {})
+                        : [];
+                    if (referencedIds.length) {
+                        await SectionContent.updateMany(
+                            { _id: { $in: referencedIds }, projectId, isDeleted: { $ne: true } },
+                            { $set: { data: canonicalContent, status: "generated", error: null, isDeleted: false } }
+                        );
+                    }
+                } catch (sharedWriteErr) {
+                    console.warn("[upsertSectionContentFromBuilder] shared reference propagation skipped:", sharedWriteErr.message);
+                }
+
+                // Deduplicate legacy mixed-id duplicates for the same scope, keep latest row.
+                const duplicateRows = await SectionContent.find({
+                    projectId,
+                    ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+                    locationId: effectiveLocationId,
+                    sectionId: s.sectionId,
+                    isDeleted: { $ne: true }
+                })
+                    .select("_id updatedAt")
+                    .sort({ updatedAt: -1, _id: -1 })
+                    .lean();
+                if (duplicateRows.length > 1) {
+                    const staleIds = duplicateRows.slice(1).map((r) => r._id);
+                    if (staleIds.length) {
+                        await SectionContent.deleteMany({ _id: { $in: staleIds } });
+                    }
+                }
+                if (effectiveLocationId) {
+                    await SectionContent.deleteMany({
+                        projectId,
+                        ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+                        sectionId: s.sectionId,
+                        locationId: null,
+                        isDeleted: { $ne: true }
+                    });
+                }
+
+                const existingDoc = await SectionContent.findOne(
+                    {
+                        projectId,
+                        ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+                        locationId: effectiveLocationId,
+                        sectionId: s.sectionId,
+                        isDeleted: { $ne: true }
+                    }
+                ).select("data").lean();
+                if (existingDoc?.data && JSON.stringify(existingDoc.data) === JSON.stringify(canonicalContent)) {
+                    skippedUnchanged++;
+                    continue;
+                }
+                await SectionContent.findOneAndUpdate(
+                    {
+                        projectId,
+                        ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+                        locationId: effectiveLocationId,
+                        sectionId: s.sectionId,
+                        isDeleted: { $ne: true }
+                    },
+                    {
+                        $set: {
+                            pageId: normalizedPageId,
+                            data: canonicalContent,
+                            status: 'generated',
+                            error: null,
+                            isDeleted: false
+                        }
+                    },
+                    { upsert: true }
+                );
+                logSectionContentWrite("saved", {
+                    projectId,
+                    pageId,
+                    sectionId: s.sectionId,
+                    locationId: effectiveLocationId,
+                    source: "upsertSectionContentFromBuilder"
+                });
+                updatedCount++;
+                if (normalizeSectionIdForStorage(s.sectionId) === "services") {
+                    try {
+                        await propagateServicesGridItemsToServiceBundles({
+                            projectId,
+                            canonicalContent,
+                            effectiveLocationId,
+                            pageMeta: pageContext || {},
+                        });
+                    } catch (propErr) {
+                        console.warn(
+                            "[upsertSectionContentFromBuilder] services grid → bundle propagation:",
+                            propErr.message
+                        );
+                    }
+                }
+            }
+
+            return res.status(200).json({
+                message: 'SectionContent upserted successfully',
+                updatedCount,
+                skippedUnchanged
+            });
+        } catch (error) {
+            console.error('upsertSectionContentFromBuilder error:', error);
+            return res.status(500).json({ message: 'Failed to upsert section content', error: error.message });
+        }
     }
-
-    return res.status(200).json({
-      message: "Regeneration completed",
-      success: successCount,
-      failed: failedCount,
-      skipped
-    });
-
-  } catch (error) {
-    console.error("regenerateFailedSections error:", error);
-    return res.status(500).json({ message: "Regeneration failed" });
-  }
-},
-
-// Get original section content from SectionContent table
-getSectionContent: async (req, res) => {
-  try {
-    const { projectId, pageId, sectionId } = req.params;
-
-    if (!projectId || !pageId || !sectionId) {
-      return res.status(400).json({ message: 'projectId, pageId, and sectionId are required' });
-    }
-    
-    // Find the original content
-    const sectionContent = await SectionContent.findOne({
-      projectId,
-      pageId,
-      sectionId,
-      isDeleted: { $ne: true }
-    });
-
-    if (!sectionContent || !sectionContent.data) {
-      return res.status(404).json({ message: 'Original section content not found' });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: sectionContent.data
-    });
-
-  } catch (error) {
-    console.error("getSectionContent error:", error);
-    return res.status(500).json({ message: "Failed to fetch section content", error: error.message });
-  }
-}
 
 };

@@ -12,6 +12,9 @@ const CategoriesController = require('../controller/CategoriesController');
 const DynamicFormController = require("../controller/DynamicFormController");
 const NotificationController = require("../controller/NotificationController");
 const PinterestController = require("../controller/PinterestController");
+const ProjectControoler = require("../controller/projectcontrooler");
+const projectcontrooler = require('../controller/projectcontrooler');
+const WalletSystemController = require("../controller/WalletSystemController");
 
 // Dashboard Stats
 router.get("/getDashboardStats", authentication, AdminController.getDashboardStats);
@@ -92,6 +95,7 @@ router.get("/fetch_cities", AdminController.fetch_cities);
 router.post("/my_site", AdminController.my_site);
 router.post("/getAboutUs", AdminController.getAboutUs);
 router.post("/fetch_services", AdminController.fetch_services);
+router.post("/fetch_service_location_pages_status", authentication, AdminController.fetch_service_location_pages_status);
 router.post("/fetch_ordered_services", AdminController.fetch_ordered_services);
 router.post("/create_service", AdminController.create_service);
 router.put("/update_service/:serviceId", AdminController.update_service);
@@ -99,9 +103,10 @@ router.delete("/delete_service/:serviceId", AdminController.delete_service);
 router.get("/clear_redis", AdminController.clear_redis)
 router.get("/services/:projectId", AdminController.fetchServicesByProjectId);
 router.put("/updateAboutUs", AdminController.updateAboutUs);
+router.put("/updateBusinessAboutUs", ProjectControoler.updateBusinessAboutUs);
+
 router.get("/getAboutUs/:projectId", AdminController.getAboutUs);
 router.post("/updateProjectTheme", authentication, AdminController.updateProjectTheme);
-router.get("/getThemeSettings", AdminController.getThemeSettings); // Public for custom sites
 
 // Website Design APIs
 router.post("/upsertWebsitePage", authentication, AdminController.upsertWebsitePage);
@@ -109,20 +114,18 @@ router.post("/bulkUpsertWebsitePages", authentication, AdminController.bulkUpser
 router.post("/upsertWebsiteComponent", authentication, AdminController.upsertWebsiteComponent);
 router.get("/getComponentVariants", authentication, AdminController.getComponentVariants);
 router.post("/refreshComponentsFromRegistry", authentication, AdminController.refreshComponentsFromRegistry);
-router.get("/getGenieBuildVariants", authentication, AdminController.getGenieBuildVariants); // Auto-scanned variants
-router.get("/checkComponentVariants", authentication, AdminController.checkComponentVariants);
-router.post("/changeComponentVariant", authentication, AdminController.changeComponentVariant);
+router.post("/terminateAllRedisTasks", authentication, AdminController.terminateAllRedisTasks);
+router.post("/clearDangerZoneEntries", authentication, AdminController.clearDangerZoneEntries);
+router.post("/createProjectDataBackupZip", authentication, AdminController.createProjectDataBackupZip);
+router.post("/restoreProjectDataBackupZip", authentication, AdminController.restoreProjectDataBackupZip);
 router.post("/generateTheme", authentication, AdminController.generateTheme);
 router.post("/saveWebsiteDesignData", authentication, AdminController.saveWebsiteDesignData);
 router.post("/updateWebsiteDesignData", authentication, AdminController.updateWebsiteDesignData);
 router.post("/updateComponentElements", AdminController.updateComponentElements);
-router.get("/getWebsiteDesignData/:projectId", AdminController.getWebsiteDesignData);
-router.get("/getSectionContent/:projectId/:pageId/:sectionId", authentication, AdminController.getSectionContent);
+router.get("/getGenieBuildPageData/:projectId/:pageId", AdminController.getWebsiteDesignData);
 router.get("/getWebsitePages/:projectId", authentication, AdminController.getWebsitePages);
+router.get("/getPageSlugHistory/:projectId/:pageId", authentication, AdminController.getPageSlugHistory);
 router.get("/isBusinessWebsite/:projectId", authentication, AdminController.isBusinessWebsite);
-router.post("/saveWebsiteElement", authentication, AdminController.saveWebsiteElement);
-router.get("/getWebsiteElements", authentication, AdminController.getWebsiteElements);
-router.delete("/deleteWebsiteElement/:elementId", authentication, AdminController.deleteWebsiteElement);
 router.post("/upsertBuilderElements", authentication, AdminController.upsertBuilderElements);
 router.get("/getBuilderElements", AdminController.getBuilderElements);
 
@@ -228,6 +231,27 @@ router.delete('/clearAllData', AdminController.clearAllData);
 
 // final project routes
 router.post("/getOpenAIUsageByProject", AdminController.getOpenAIUsageByProject);
+router.post("/getCreditsUsageReport", authentication, AdminController.getCreditsUsageReport);
+// Old subscription endpoints removed in favor of wallet/v2 APIs
+
+// ===== New Wallet/Credits/Plans system (v2) =====
+router.post("/wallet/v2/dashboard", authentication, WalletSystemController.walletDashboard);
+router.post("/wallet/v2/config/get", authentication, WalletSystemController.getSystemConfig);
+router.post("/wallet/v2/config/update", authentication, WalletSystemController.updateSystemConfig);
+router.post("/wallet/v2/admin/plan/create", authentication, WalletSystemController.adminCreatePlan);
+router.post("/wallet/v2/admin/plan/list", authentication, WalletSystemController.adminListPlans);
+router.post("/wallet/v2/admin/package/create", authentication, WalletSystemController.adminCreatePackage);
+router.post("/wallet/v2/admin/package/list", authentication, WalletSystemController.adminListPackages);
+router.post("/wallet/v2/admin/service/create", authentication, WalletSystemController.adminCreateService);
+router.post("/wallet/v2/admin/service/list", authentication, WalletSystemController.adminListServices);
+router.post("/wallet/v2/admin/offer/create", authentication, WalletSystemController.adminCreateOffer);
+router.post("/wallet/v2/admin/coupon/create", authentication, WalletSystemController.adminCreateCoupon);
+router.post("/wallet/v2/checkout/data", authentication, WalletSystemController.listCheckoutData);
+router.post("/wallet/v2/purchase/plan", authentication, WalletSystemController.purchasePlan);
+router.post("/wallet/v2/purchase/package", authentication, WalletSystemController.purchasePackage);
+router.post("/wallet/v2/purchase/credits", authentication, WalletSystemController.purchaseCreditsByAmount);
+router.post("/wallet/v2/purchase/service", authentication, WalletSystemController.purchaseService);
+router.post("/wallet/v2/subscription/renewal", authentication, WalletSystemController.runSubscriptionRenewal);
 
 router.post("/login", AdminController.login);
 router.post("/logout", authentication, AdminController.logout);
@@ -239,9 +263,20 @@ router.post("/regenerate-failed-sections", AdminController.regenerateFailedSecti
 
 // 1. Create Project Route
 router.post("/createProject", AdminController.createProject);
-router.post("/createBusinessWebsite", AdminController.createBusinessWebsite);
-router.post("/saveBusinessLocation", authentication, AdminController.saveBusinessLocation);
-router.post("/fetchBusinessLocations", authentication, AdminController.fetchBusinessLocations);
+router.post("/createBusinessWebsite", authentication, ProjectControoler.createBusinessWebsite);
+// Business website wizard steps 1–5 (sequential; design/preview later)
+router.get("/businessWebsite/:projectId/basicInfo", authentication, ProjectControoler.getBusinessWebsiteBasicInfo);
+router.put("/businessWebsite/:projectId/basicInfo", authentication, ProjectControoler.updateBusinessWebsiteBasicInfo);
+router.get("/businessWebsite/:projectId/locations", authentication, ProjectControoler.getBusinessWebsiteLocations);
+router.post("/businessWebsite/:projectId/locations", authentication, ProjectControoler.syncBusinessWebsiteLocations);
+router.get("/businessWebsite/:projectId/localAreas", authentication, ProjectControoler.getBusinessWebsiteLocalAreas);
+router.post("/businessWebsite/:projectId/localAreas", authentication, ProjectControoler.syncBusinessWebsiteLocalAreas);
+router.get("/businessWebsite/:projectId/services", authentication, ProjectControoler.getBusinessWebsiteServices);
+router.get("/businessWebsite/:projectId/contact", authentication, ProjectControoler.getBusinessWebsiteContact);
+router.put("/businessWebsite/:projectId/contact", authentication, ProjectControoler.updateBusinessAboutUs);
+router.get("/businessWebsite/:projectId/design", authentication, ProjectControoler.getBusinessWebsiteDesign);
+router.post("/saveBusinessLocation", authentication, ProjectControoler.saveBusinessLocation);
+router.post("/fetchBusinessLocations", authentication, ProjectControoler.fetchBusinessLocations);
 router.post("/updateGoogleSiteVerification", authentication, AdminController.updateGoogleSiteVerification);
 router.post("/uploadGoogleSiteVerificationHtml", authentication, AdminController.uploadGoogleSiteVerificationHtml);
 router.post("/deleteProject/:id", AdminController.deleteProject);
@@ -251,16 +286,16 @@ router.post("/fetchThemeById", AdminController.fetchThemeById);
 router.post("/getUserProjects", authentication, AdminController.getUserProjects);
 
 // 2. Update Country Route
-router.post("/updateCountryInProject", AdminController.updateCountryInProject);
+router.post("/updateCountryInProject", ProjectControoler.updateCountryInProject);
 
 // 3. Update State Route
-router.post("/updateStateInProject", AdminController.updateStateInProject);
+router.post("/updateStateInProject", ProjectControoler.updateStateInProject);
 
 // 4. Update City Route
-router.post("/updateCityInProject", AdminController.updateCityInProject);
+router.post("/updateCityInProject", ProjectControoler.updateCityInProject);
 
 // 5. Update Local Area Route
-router.post("/updateLocalAreaInProject", AdminController.updateLocalAreaInProject);
+router.post("/updateLocalAreaInProject", ProjectControoler.updateLocalAreaInProject);
 
 router.post("/makeEachLocaionPage", AdminController.makeEachLocaionPage);
 router.post("/makeEachLocationServicePage", AdminController.makeEachLocationServicePage);
@@ -268,14 +303,22 @@ router.post("/makeEachLocationServicePage", AdminController.makeEachLocationServ
 router.post("/generateServices", AdminController.generateServices);
 
 // 6. Fetch the selected locations by project id
-router.post("/getProjectLocations", authentication, AdminController.getProjectLocationsHierarchy)
+router.post("/getProjectLocations", authentication, ProjectControoler.getProjectLocationsHierarchy)
 router.post("/generateBlogTitles", authentication, AdminController.generateBlogTitles)
 
-router.post("/addServicesToLocation", authentication, AdminController.addServicesToLocation)
+router.post("/addBusinessServicesToLocation", authentication, projectcontrooler.addBusinessServicesToLocation)
+router.post("/generateBusinessServicePageContent", authentication, projectcontrooler.generateBusinessServicePageContent)
+router.post("/regenerateServiceLocationPageContent", authentication, projectcontrooler.regenerateServiceLocationPageContent)
+router.post("/enqueueSectionsContentGeneration", authentication, projectcontrooler.enqueueSectionsContnetGeneration);
+router.post("/getBusinessLocationHierarchy", authentication, projectcontrooler.getBusinessLocationHierarchy);
+router.post("/toggleBusinessLocationStatus", authentication, projectcontrooler.toggleBusinessLocationStatus);
+router.post("/generateBusinessLocationPages", authentication, projectcontrooler.generateBusinessLocationPages);
+router.put("/toggleWebsitePagePublished/:projectId", authentication, projectcontrooler.toggleWebsitePagePublished);
+router.post("/createProjectServicesWizard", authentication, projectcontrooler.createProjectServicesWizard);
+router.post("/upsertSectionContentFromBuilder", authentication, AdminController.upsertSectionContentFromBuilder);
 router.post("/addNewServices", AdminController.addNewServices)
 
 router.post("/generateTnC_Au_Pp", AdminController.generateTnC_Au_Pp)
-router.post("/generateServiceDesc", AdminController.generateServiceDesc)
 router.post("/generateUnsplashImages", AdminController.generateUnsplashImages);
 
 router.post("/openAi", AdminController.openai);
@@ -289,11 +332,10 @@ router.post('/update', AdminController.updateSeoSettings);
 // Route to get SEO settings for a page
 router.post('/seo', AdminController.getSeoSettings);
 
-// Route to get SEO settings for builder page (by projectId and pageId)
-router.get('/builderSeoSettings',  AdminController.getBuilderSeoSettings);
-
-// Route to update or create SEO settings for builder page
-router.post('/builderSeoSettings', authentication, AdminController.updateBuilderSeoSettings);
+router.get('/getWebsitePageSeo/:projectId/:pageId', authentication, AdminController.getWebsitePageSeo);
+router.post('/updateWebsitePageSeo', authentication, AdminController.updateWebsitePageSeo);
+router.post('/generateWebsitePageSeo', authentication, AdminController.generateWebsitePageSeo);
+router.post('/regenerateAllMissingSeo', authentication, AdminController.regenerateAllMissingSeo);
 
 // Route to delete SEO settings for a page
 router.delete('/:pageUrl', AdminController.deleteSeoSettings);
@@ -318,6 +360,8 @@ router.delete('/deleteLinkedHosting/:id', authentication, AdminController.delete
 router.post('/uploadToHosting', authentication, AdminController.uploadToHosting);
 router.post('/updateHostingSitemap', AdminController.updateHostingSitemap);
 
+router.post('/buildStaticSite', authentication, AdminController.buildStaticSite);
+router.get('/getStaticBuildStatus', authentication, AdminController.getStaticBuildStatus);
 router.post('/uploadToHostingFromBuild', AdminController.uploadToHostingFromBuild);
 router.post('/generateSitemap', AdminController.generateSitemap);
 router.post('/updateProjectDomain', AdminController.updateProjectDomain);

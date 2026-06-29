@@ -1,0 +1,14 @@
+{
+  "name": "smartlybuild",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "install:all": "pnpm install && cd backend && npm install"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

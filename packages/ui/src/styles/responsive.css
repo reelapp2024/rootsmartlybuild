@@ -1,0 +1,176 @@
+/* Responsive CSS for all components and elements */
+
+/* Base responsive utilities */
+* {
+  box-sizing: border-box;
+}
+
+/* Container responsive behavior */
+[data-el-type="container"],
+[data-el-type="row"],
+[data-el-type="column"] {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Grid containers: stack on mobile */
+[data-el-type="container"][data-display="grid"],
+[data-el-type="row"][data-display="grid"],
+[data-el-type="column"][data-display="grid"] {
+  display: grid;
+}
+
+/* Flex containers: wrap on mobile */
+[data-el-type="container"][data-display="flex"],
+[data-el-type="row"][data-display="flex"],
+[data-el-type="column"][data-display="flex"] {
+  display: flex;
+}
+
+/* Text elements: responsive font sizes and word wrapping */
+[data-el-type="heading"],
+[data-el-type="text"],
+[data-el-type="label"],
+[data-el-type="badge"],
+[data-el-type="link"] {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+  max-width: 100%;
+}
+
+/* Images: responsive sizing */
+[data-el-type="image"] {
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+/* Buttons: responsive padding and font size */
+[data-el-type="button"] {
+  max-width: 100%;
+  white-space: normal;
+  word-wrap: break-word;
+}
+
+/* Mobile breakpoint: < 768px */
+/* NOTE: Inline styles have higher specificity than CSS rules, so they will naturally override this */
+/* Only apply responsive grid changes on actual mobile devices */
+@media (max-width: 767px) {
+  /* Grid containers: always 1 column on mobile */
+  /* Only apply if grid columns are not explicitly set via data attribute */
+  /* Inline styles set via React will override this CSS rule */
+  [data-el-type="container"][data-display="grid"]:not([data-grid-cols-set]),
+  [data-el-type="row"][data-display="grid"]:not([data-grid-cols-set]),
+  [data-el-type="column"][data-display="grid"]:not([data-grid-cols-set]) {
+    /* This will be overridden by inline styles on desktop/builder */
+    grid-template-columns: 1fr;
+  }
+  
+  /* Flex containers: stack vertically on mobile */
+  [data-el-type="container"][data-display="flex"][data-flex-direction="row"],
+  [data-el-type="row"][data-display="flex"][data-flex-direction="row"],
+  [data-el-type="column"][data-display="flex"][data-flex-direction="row"] {
+    flex-direction: column;
+  }
+  
+  /* CRITICAL: Do NOT force horizontal padding on containers
+   * Containers should have NO default padding to allow edge-to-edge backgrounds
+   * Padding should only be applied if explicitly set by user on content containers
+   */
+  
+  /* Reduce gap on mobile */
+  [data-el-type="container"][data-display="flex"],
+  [data-el-type="container"][data-display="grid"],
+  [data-el-type="row"][data-display="flex"],
+  [data-el-type="row"][data-display="grid"],
+  [data-el-type="column"][data-display="flex"],
+  [data-el-type="column"][data-display="grid"] {
+    gap: clamp(8px, 2vw, 16px) !important;
+  }
+  
+  /* Responsive font sizes - removed for headings to let browser defaults handle it based on h1-h6 tags */
+  /* Headings will use browser default sizes based on their HTML tag (h1, h2, etc.) */
+  
+  [data-el-type="text"] {
+    font-size: clamp(0.875rem, 2.5vw, 1.125rem) !important;
+    line-height: 1.6 !important;
+  }
+  
+  /* Buttons: full width on mobile if needed */
+  [data-el-type="button"] {
+    width: 100%;
+    padding: clamp(10px, 3vw, 16px) clamp(16px, 4vw, 24px) !important;
+    font-size: clamp(0.875rem, 2.5vw, 1rem) !important;
+  }
+  
+  /* Images: full width on mobile */
+  [data-el-type="image"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Reduce min-height on mobile */
+  [data-el-type="container"],
+  [data-el-type="row"],
+  [data-el-type="column"] {
+    min-height: auto !important;
+  }
+}
+
+/* Tablet breakpoint: 768px - 1023px */
+@media (min-width: 768px) and (max-width: 1023px) {
+  /* Grid containers: max 2 columns on tablet */
+  /* Only apply if grid columns are not explicitly set - inline styles have higher specificity */
+  [data-el-type="container"][data-display="grid"]:not([data-grid-cols-set]):not([data-grid-columns="1"]),
+  [data-el-type="row"][data-display="grid"]:not([data-grid-cols-set]):not([data-grid-columns="1"]),
+  [data-el-type="column"][data-display="grid"]:not([data-grid-cols-set]):not([data-grid-columns="1"]) {
+    /* Inline styles will override this */
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  }
+  
+  /* Responsive font sizes for tablet - removed for headings to let browser defaults handle it based on h1-h6 tags */
+  
+  [data-el-type="text"] {
+    font-size: clamp(1rem, 2vw, 1.125rem) !important;
+  }
+}
+
+/* Desktop breakpoint: >= 1024px */
+@media (min-width: 1024px) {
+  /* Containers: max width constraint */
+  [data-el-type="container"],
+  [data-el-type="row"],
+  [data-el-type="column"] {
+    max-width: 100%;
+  }
+}
+
+/* Ensure all elements respect container width */
+[data-el-type] {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Prevent horizontal overflow */
+body,
+html {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* Responsive video elements */
+[data-el-type="video"] {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Responsive iframe elements */
+[data-el-type="html"] iframe {
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+}
+

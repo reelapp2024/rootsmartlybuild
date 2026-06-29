@@ -1,73 +1,38 @@
 /**
- * SectionRouter.tsx
- * 
- * COMMON ROUTER for ALL sections - Uses SectionsAndVariantRegistry.tsx
- * 
- * This replaces all individual router files (HeroSection.tsx, NavbarSection.tsx, etc.)
- * 
- * How it works:
- * 1. Reads section type and variant from section prop
- * 2. Uses registry to find available variants
- * 3. Routes to the correct variant component based on registry
+ * SectionRouter — file-driven lazy loading (import.meta.glob).
+ * Variants: sections/{sectionType}/{VariantFile}.tsx (+ root ElementsSection.tsx).
  */
 
-import React, { useState } from 'react';
-import { Section } from '../../types';
-import { getDefaultVariant, isValidVariant } from '../SectionsAndVariantRegistry';
-import { getHeadingSizeClass } from '../../utils/headingSizeUtils';
+import React, { Suspense, lazy, useMemo, useEffect } from 'react';
+import { Section, WebsiteElement } from '../../types';
+import { getDefaultVariant } from '../SectionsAndVariantRegistry';
+import { resolveVariantGlobPath, getVariantModuleLoader, isDiscoveredVariant } from './sectionDiscovery';
+import { ElementsSection } from './homepage/ElementsSection';
 
-// Import all variant components
-// Hero variants
-import { HeroCenter } from './hero/HeroCenter';
-import { HeroSplitLeft } from './hero/HeroSplitLeft';
-import { HeroSplitRight } from './hero/HeroSplitRight';
-import { HeroGradient } from './hero/HeroGradient';
-import { HeroGeometric } from './hero/HeroGeometric';
-import { HeroMulticolor } from './hero/HeroMulticolor';
-import { HeroMulticolorV1 } from './hero/HeroMulticolorV1';
-// Navbar variants
-import { NavbarSimple } from './navbar/NavbarSimple';
-import { NavbarCentered } from './navbar/NavbarCentered';
-import { NavbarMinimal } from './navbar/NavbarMinimal';
-import { NavbarApi } from './navbar/NavbarApi';
+// Module-level cache: resolved lazy components survive re-renders.
+// Key: "<sectionType>::<variant>" (lowercased).
+const lazyCache = new Map<string, React.LazyExoticComponent<React.ComponentType<unknown>>>();
 
-// Features variants
-import { FeaturesGrid } from './features/FeaturesGrid';
-import { FeaturesList } from './features/FeaturesList';
-import { FeaturesCards } from './features/FeaturesCards';
+// Module-level cache of in-flight / settled module loads — so preloading
+// the same variant twice is free, and component-mount never re-fetches.
+const modulePromiseCache = new Map<string, Promise<unknown>>();
 
-// CTA variants
-import { CTACenter } from './cta/CTACenter';
-import { CTASplit } from './cta/CTASplit';
-import { CTAMulticolor } from './cta/CTAMulticolor';
+/**
+ * Kick off a module load for a section variant without rendering it.
+ * Safe to call repeatedly; identical requests share one promise.
+ */
+export function preloadVariant(sectionType: string, variant: string): Promise<unknown> | null {
+  const key = `${sectionType}::${(variant || '').toLowerCase()}`;
+  const cached = modulePromiseCache.get(key);
+  if (cached) return cached;
+  const p = resolveVariantGlobPath(sectionType, variant);
+  const loader = getVariantModuleLoader(p);
+  if (!loader) return null;
+  const promise = loader();
+  modulePromiseCache.set(key, promise);
+  return promise;
+}
 
-// Footer variants
-import { FooterColumns } from './footer/FooterColumns';
-import { FooterCentered } from './footer/FooterCentered';
-import { FooterMinimal } from './footer/FooterMinimal';
-import { FooterApi } from './footer/FooterApi';
-
-// Pricing variants
-import { PricingCards } from './pricing/PricingCards';
-import { PricingMinimal } from './pricing/PricingMinimal';
-
-// Image Banner variants
-import { BannerCenter } from './image-banner/BannerCenter';
-import { BannerSplit } from './image-banner/BannerSplit';
-import { BannerBottomLeft } from './image-banner/BannerBottomLeft';
-
-// Single-component sections
-import { TestimonialsGrid } from './testimonials/TestimonialsGrid';
-import { TestimonialsCentered } from './testimonials/TestimonialsCentered';
-import { TestimonialsColumns } from './testimonials/TestimonialsColumns';
-import { TestimonialsMulticolor } from './testimonials/TestimonialsMulticolor';
-// FAQ variants
-import { FAQCentered } from './faq/FAQCentered';
-import { FAQSplit } from './faq/FAQSplit';
-import { FAQMulticolor } from './faq/FAQMulticolor';
-
-import { ElementsSection } from './ElementsSection';
-import { AllElementsTest } from './allelementsTest/AllElementsTest';
 interface SectionRouterProps {
   section: Section;
   onTextEdit: (key: any, value: string) => void;
@@ -77,6 +42,8 @@ interface SectionRouterProps {
   onItemEdit?: (itemId: string, updates: any) => void;
   onAddItem?: () => void;
   onRemoveItem?: (id: string) => void;
+  /** Full section patch — used by sections that need to materialize defaults (e.g. content.items) before add/remove */
+  onSectionUpdate?: (sectionId: string, updates: any) => void;
   onUpload?: (sectionId: string, field: string) => void;
   onElementUpdate?: (elementId: string, updates: any) => void;
   onElementSelect?: (elementId: string, element?: WebsiteElement) => void;
@@ -85,270 +52,180 @@ interface SectionRouterProps {
   isSelected?: boolean;
   titleClass?: string;
   titleStyle?: React.CSSProperties;
+  subtitleStyle?: React.CSSProperties;
+  descriptionStyle?: React.CSSProperties;
+  buttonStyle?: React.CSSProperties;
   readOnly?: boolean;
+  themeColors?: any;
+  sitePathname?: string;
+  sitePageType?: string;
 }
 
 /**
- * Common Section Router - Routes to correct variant based on registry
+ * Section modules use named exports (e.g. `export const HeroCenter`).
+ * React.lazy() requires a default export — wrap the dynamic import.
  */
+function exportNameFromGlobPath(globPath: string): string {
+  const tail = globPath.split('/').pop() || '';
+  return tail.replace(/\.tsx$/i, '');
+}
+
+function loadVariant(sectionType: string, variant: string) {
+  const cacheKey = `${sectionType}::${(variant || '').toLowerCase()}`;
+  const cached = lazyCache.get(cacheKey);
+  if (cached) return cached;
+
+  const p = resolveVariantGlobPath(sectionType, variant);
+  const loader = getVariantModuleLoader(p);
+  if (!loader || !p) return null;
+
+  const exportName = exportNameFromGlobPath(p);
+
+  const LazyComp = lazy(async () => {
+    // Reuse an in-flight/settled promise from preload if one exists —
+    // otherwise start (and cache) a fresh load here.
+    let promise = modulePromiseCache.get(cacheKey);
+    if (!promise) {
+      promise = loader();
+      modulePromiseCache.set(cacheKey, promise);
+    }
+    const mod = (await promise) as Record<string, unknown>;
+    const Comp =
+      (mod[exportName] as React.ComponentType<unknown>) ||
+      (mod.default as React.ComponentType<unknown>);
+    if (!Comp || typeof Comp !== 'function') {
+      const keys = Object.keys(mod).filter((k) => k !== '__esModule');
+      throw new Error(
+        `No component export "${exportName}" in ${p} (found: ${keys.join(', ') || 'none'})`
+      );
+    }
+    return { default: Comp };
+  });
+  lazyCache.set(cacheKey, LazyComp);
+  return LazyComp;
+}
+
 export const SectionRouter: React.FC<SectionRouterProps> = (props) => {
   const { section } = props;
-  const sectionType = section.type as string; // Cast to string to handle 'faq' type
-  const variant = section.styles?.variant || getDefaultVariant(sectionType);
 
- 
-  // Route to correct variant component based on section type and variant
-  const baseProps = {
-    section: props.section,
+  const safeSection: Section = {
+    ...(section as any),
+    content: (section as any)?.content || {},
+    styles: (section as any)?.styles || {},
+  };
+  const normalizeSectionType = (value: string) => {
+    const raw = String(value || '').toLowerCase().trim();
+    const aliases: Record<string, string> = {
+      whychooseus: 'why-choose-us',
+      servicesgrid: 'services',
+      navbar: 'header',
+    };
+    return aliases[raw] || raw;
+  };
+
+  const sectionType = normalizeSectionType(safeSection.type as string);
+  const rawVariant = (safeSection.styles as any)?.variant;
+  // If the saved variant is hidden (old generic replaced by plumbing variant),
+  // fall through to the discovered default instead of rendering a hidden file.
+  const variant = (rawVariant && isDiscoveredVariant(sectionType, rawVariant))
+    ? rawVariant
+    : getDefaultVariant(sectionType);
+
+  const forceCommonVariants = new Set([
+    // Legacy navbar variants
+    'navbarsimple',
+    'navbarminimal',
+    'navbarcentered',
+    'navbarapi',
+    // Legacy footer variants
+    'footerminimal',
+    'footercolumns',
+    'footercentered',
+    'footerapi',
+    // Legacy pricing variants
+    'pricingcards',
+    'pricingminimal',
+    // Legacy image-banner variants
+    'bannercenter',
+    'bannersplit',
+    'bannerbottomleft',
+  ]);
+  const variantKey = String(rawVariant || variant || '').toLowerCase().replace(/[\s_-]+/g, '');
+  const shouldForceCommonRenderer =
+    forceCommonVariants.has(variantKey) &&
+    Array.isArray((safeSection as any)?.elements) &&
+    (safeSection as any).elements.length > 0;
+
+  const LazyComp = useMemo(
+    () => loadVariant(sectionType, variant),
+    [sectionType, variant]
+  );
+
+  // Ensure this variant's module is requested as soon as the router mounts,
+  // even if React hasn't committed the <LazyComp> tree yet — avoids the
+  // Suspense fallback on fast refreshes.
+  useEffect(() => {
+    preloadVariant(sectionType, variant);
+  }, [sectionType, variant]);
+
+  const baseProps: Record<string, any> = {
+    section: { ...safeSection, type: sectionType },
     onTextEdit: props.onTextEdit,
     buttonClass: props.buttonClass,
     readOnly: props.readOnly,
     isSelected: props.isSelected,
     titleClass: props.titleClass,
     titleStyle: props.titleStyle,
+    subtitleStyle: props.subtitleStyle,
+    descriptionStyle: props.descriptionStyle,
+    buttonStyle: props.buttonStyle,
     onElementSelect: props.onElementSelect,
     selectedElementId: props.selectedElementId,
+    onElementUpdate: props.onElementUpdate,
+    themeColors: props.themeColors,
+    fontThemeColors: props.themeColors,
+    onImageClick: props.onImageClick,
+    onLinkEdit: props.onLinkEdit,
+    onLogoClick: props.onLogoClick,
+    onItemEdit: props.onItemEdit,
+    onAddItem: props.onAddItem,
+    onRemoveItem: props.onRemoveItem,
+    onSectionUpdate: props.onSectionUpdate,
+    onUpload: props.onUpload,
+    sitePathname: props.sitePathname,
+    sitePageType: props.sitePageType,
   };
 
-  // Route based on section type and variant
-  switch (sectionType) {
-    case 'hero':
-      switch (variant) {
-        case 'HeroCenter':
-          return <HeroCenter {...baseProps} onImageClick={props.onImageClick} onElementSelect={props.onElementSelect} selectedElementId={props.selectedElementId} />;
-        case 'HeroSplitLeft':
-          return <HeroSplitLeft {...baseProps} onImageClick={props.onImageClick} onElementSelect={props.onElementSelect} selectedElementId={props.selectedElementId} />;
-        case 'HeroSplitRight':
-          return <HeroSplitRight {...baseProps} onImageClick={props.onImageClick} onElementSelect={props.onElementSelect} onElementUpdate={props.onElementUpdate} selectedElementId={props.selectedElementId} />;
-        case 'HeroGradient':
-          return <HeroGradient {...baseProps} onElementSelect={props.onElementSelect} selectedElementId={props.selectedElementId} />;
-        case 'HeroGeometric':
-          return <HeroGeometric {...baseProps} onElementSelect={props.onElementSelect} onElementUpdate={props.onElementUpdate} selectedElementId={props.selectedElementId} />;
-        case 'HeroMulticolor':
-          return <HeroMulticolor {...baseProps} onImageClick={props.onImageClick} onElementSelect={props.onElementSelect} onElementUpdate={props.onElementUpdate} selectedElementId={props.selectedElementId} />;
-        case 'HeroMulticolorV1':
-          return <HeroMulticolorV1 {...baseProps} onImageClick={props.onImageClick} onElementSelect={props.onElementSelect} onElementUpdate={props.onElementUpdate} selectedElementId={props.selectedElementId} />;
-        default:
-          return <HeroCenter {...baseProps} onImageClick={props.onImageClick} onElementSelect={props.onElementSelect} selectedElementId={props.selectedElementId} />;
-      }
-
-    case 'navbar':
-      switch (variant) {
-        case 'NavbarApi':
-          return <NavbarApi section={props.section} readOnly={props.readOnly} />;
-        case 'NavbarCentered':
-          return <NavbarCentered {...baseProps} onLinkEdit={props.onLinkEdit} onLogoClick={props.onLogoClick} />;
-        case 'NavbarMinimal':
-          return <NavbarMinimal {...baseProps} onLinkEdit={props.onLinkEdit} onLogoClick={props.onLogoClick} />;
-        case 'NavbarSimple':
-        default:
-          return <NavbarSimple {...baseProps} onLinkEdit={props.onLinkEdit} onLogoClick={props.onLogoClick} />;
-      }
-
-    case 'features':
-      switch (variant) {
-        case 'FeaturesList':
-          return (
-            <FeaturesList
-              {...baseProps}
-              onItemEdit={props.onItemEdit}
-              onAddItem={props.onAddItem}
-              onRemoveItem={props.onRemoveItem}
-            />
-          );
-        case 'FeaturesCards':
-          return (
-            <FeaturesCards
-              {...baseProps}
-              onItemEdit={props.onItemEdit}
-              onAddItem={props.onAddItem}
-              onRemoveItem={props.onRemoveItem}
-            />
-          );
-        case 'FeaturesGrid':
-        default:
-          return (
-            <FeaturesGrid
-              {...baseProps}
-              onItemEdit={props.onItemEdit}
-              onAddItem={props.onAddItem}
-              onRemoveItem={props.onRemoveItem}
-            />
-          );
-      }
-
-    case 'cta':
-      switch (variant) {
-        case 'CTASplit':
-          return <CTASplit {...baseProps} onElementUpdate={props.onElementUpdate} />;
-        case 'CTAMulticolor':
-          return <CTAMulticolor {...baseProps} onElementSelect={props.onElementSelect} onElementUpdate={props.onElementUpdate} selectedElementId={props.selectedElementId} />;
-        case 'CTACenter':
-        default:
-          return <CTACenter {...baseProps} onElementUpdate={props.onElementUpdate} />;
-      }
-
-    case 'footer':
-      switch (variant) {
-        case 'FooterApi':
-          return <FooterApi section={props.section} readOnly={props.readOnly} />;
-        case 'FooterCentered':
-          return <FooterCentered {...baseProps} onLinkEdit={props.onLinkEdit} onLogoClick={props.onLogoClick} />;
-        case 'FooterMinimal':
-          return <FooterMinimal {...baseProps} onLinkEdit={props.onLinkEdit} onLogoClick={props.onLogoClick} />;
-        case 'FooterColumns':
-        default:
-          return <FooterColumns {...baseProps} onLinkEdit={props.onLinkEdit} onLogoClick={props.onLogoClick} />;
-      }
-
-    case 'pricing':
-      switch (variant) {
-        case 'PricingMinimal':
-          return (
-            <PricingMinimal
-              {...baseProps}
-              onItemEdit={props.onItemEdit}
-              onRemoveItem={props.onRemoveItem}
-              onAddItem={props.onAddItem}
-            />
-          );
-        case 'PricingCards':
-        default:
-          return (
-            <PricingCards
-              {...baseProps}
-              onItemEdit={props.onItemEdit}
-              onRemoveItem={props.onRemoveItem}
-              onAddItem={props.onAddItem}
-            />
-          );
-      }
-
-    case 'testimonials':
-      switch (variant) {
-        case 'TestimonialsCentered':
-          return (
-            <TestimonialsCentered
-              {...baseProps}
-              onItemEdit={props.onItemEdit}
-              onRemoveItem={props.onRemoveItem}
-              onAddItem={props.onAddItem}
-              onElementUpdate={props.onElementUpdate}
-              onElementSelect={props.onElementSelect}
-              selectedElementId={props.selectedElementId}
-            />
-          );
-        case 'TestimonialsColumns':
-          return (
-            <TestimonialsColumns
-              {...baseProps}
-              onItemEdit={props.onItemEdit}
-              onRemoveItem={props.onRemoveItem}
-              onAddItem={props.onAddItem}
-              onElementUpdate={props.onElementUpdate}
-              onElementSelect={props.onElementSelect}
-              selectedElementId={props.selectedElementId}
-            />
-          );
-        case 'TestimonialsMulticolor':
-          return (
-            <TestimonialsMulticolor
-              {...baseProps}
-              onItemEdit={props.onItemEdit}
-              onRemoveItem={props.onRemoveItem}
-              onAddItem={props.onAddItem}
-              onElementUpdate={props.onElementUpdate}
-              onElementSelect={props.onElementSelect}
-              selectedElementId={props.selectedElementId}
-            />
-          );
-        case 'TestimonialsGrid':
-        default:
-          return (
-            <TestimonialsGrid
-              {...baseProps}
-              onItemEdit={props.onItemEdit}
-              onRemoveItem={props.onRemoveItem}
-              onAddItem={props.onAddItem}
-              onElementUpdate={props.onElementUpdate}
-              onElementSelect={props.onElementSelect}
-              selectedElementId={props.selectedElementId}
-            />
-          );
-      }
-   case 'faq':
-      switch (variant) {
-        case 'FAQMulticolor':
-          return (
-            <FAQMulticolor
-              {...baseProps}
-              onElementUpdate={props.onElementUpdate}
-              onElementSelect={props.onElementSelect}
-              selectedElementId={props.selectedElementId}
-            />
-          );
-        case 'FAQSplit':
-          return (
-            <FAQSplit
-              {...baseProps}
-              onElementUpdate={props.onElementUpdate}
-              onElementSelect={props.onElementSelect}
-              selectedElementId={props.selectedElementId}
-            />
-          );
-        case 'FAQCentered':
-        default:
-          return (
-            <FAQCentered
-              {...baseProps}
-              onElementUpdate={props.onElementUpdate}
-              onElementSelect={props.onElementSelect}
-              selectedElementId={props.selectedElementId}
-            />
-          );
-      }
-
-    case 'elements':
-      return (
-        <ElementsSection
-          {...baseProps}
-          onUpload={props.onUpload}
-          onElementUpdate={props.onElementUpdate}
-          onElementSelect={props.onElementSelect}
-          selectedElementId={props.selectedElementId}
-          themeColors={{
-            titleColor: props.section.styles?.titleColor,
-            textColor: props.section.styles?.textColor,
-            accentColor: props.section.styles?.accentColor,
-            buttonBackgroundColor: props.section.styles?.buttonBackgroundColor,
-            buttonTextColor: props.section.styles?.buttonTextColor,
-            backgroundColor: props.section.styles?.backgroundColor,
-          }}
-        />
-      );
-
-    case 'image-banner':
-      switch (variant) {
-        case 'BannerBottomLeft':
-          return <BannerBottomLeft {...baseProps} />;
-        case 'BannerSplit':
-          return <BannerSplit {...baseProps} />;
-        case 'BannerCenter':
-        default:
-          return <BannerCenter {...baseProps} />;
-      }
-
-    case 'allelementsTest':
-      return (
-        <AllElementsTest
-          {...baseProps}
-          onElementUpdate={props.onElementUpdate}
-          onElementSelect={props.onElementSelect}
-          selectedElementId={props.selectedElementId}
-          onTextEdit={props.onTextEdit}
-        />
-      );
-    default:
-      return <div className="p-10 text-center">Unsupported Section Type: {sectionType}</div>;
+  if (!LazyComp) {
+    return (
+      <div className="p-10 text-center text-slate-500">
+        Unsupported section or variant: {sectionType} / {String(variant)}
+      </div>
+    );
   }
+
+  if (shouldForceCommonRenderer) {
+    return (
+      <ElementsSection
+        section={safeSection}
+        onTextEdit={props.onTextEdit}
+        onElementUpdate={props.onElementUpdate}
+        onElementSelect={props.onElementSelect}
+        selectedElementId={props.selectedElementId}
+        buttonClass={props.buttonClass}
+        readOnly={props.readOnly}
+        isWrapped={true}
+        themeColors={props.themeColors}
+      />
+    );
+  }
+
+  // Silent skeleton: reserves a little vertical space so the page doesn't
+  // collapse while the chunk loads, but shows no text — the chunks resolve
+  // in milliseconds once cached.
+  return (
+    <Suspense fallback={<div aria-hidden className="min-h-[120px]" />}>
+      <LazyComp {...baseProps} />
+    </Suspense>
+  );
 };

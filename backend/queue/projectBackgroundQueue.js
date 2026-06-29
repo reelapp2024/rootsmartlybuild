@@ -1,7 +1,6 @@
 const Bull = require('bull');
 const axios = require('axios');
 const UserProject = require('../models/userProjects');
-const SeoSettings = require("../models/seoSettings");
 const Slug = require("../models/slug")
 const https = require("https");
 const sharp = require("sharp");
@@ -606,16 +605,16 @@ projectBackgroundQueue.process(5, async (job) => {
           }
         );
 
-        const seoData = new SeoSettings({
-          page_url: page,
+        const { upsertSeoByPageUrl } = require("../services/pageSeoService");
+        await upsertSeoByPageUrl(projectId, page, {
           meta_title: seoContent.meta_title,
           meta_description: seoContent.meta_description,
           meta_keywords: seoContent.meta_keywords,
-          meta_image: '',
-          canonical_url: '',
-          projectId: projectId,
-        });
-        await seoData.save();
+          meta_image: "",
+          canonical_url: page,
+          og_title: seoContent.meta_title,
+          og_description: seoContent.meta_description,
+        }, "ai");
 
       }
 
@@ -676,6 +675,14 @@ projectBackgroundQueue.process(5, async (job) => {
       });
 
       console.log(`✅ Background processing complete for project ${projectId}`);
+
+      try {
+        const { syncHeaderFooterSectionsForProject } = require("../services/headerFooterSectionSync");
+        await syncHeaderFooterSectionsForProject(projectId);
+        console.log(`[BackgroundQueue] header/footer synced for project ${projectId}`);
+      } catch (hfErr) {
+        console.warn(`[BackgroundQueue] header/footer sync failed for ${projectId}:`, hfErr.message);
+      }
     }
 
     if (worktype === "areapages" && Array.isArray(job.data.locations)) {
@@ -991,16 +998,16 @@ projectBackgroundQueue.process(5, async (job) => {
                 .join(", ")
               : "");
 
-          const seoData = new SeoSettings({
-            page_url: page_url,
+          const { upsertSeoByPageUrl } = require("../services/pageSeoService");
+          await upsertSeoByPageUrl(projectId, page_url, {
             meta_title: areaSeoContent.meta_title,
             meta_description: areaSeoContent.meta_description,
-            meta_keywords: metaKeywordsStr,   // <-- now a String
-            meta_image: '',
-            canonical_url: '',
-            projectId: projectId,
-          });
-          await seoData.save();
+            meta_keywords: metaKeywordsStr,
+            meta_image: "",
+            canonical_url: page_url,
+            og_title: areaSeoContent.meta_title,
+            og_description: areaSeoContent.meta_description,
+          }, "ai");
 
 
 
@@ -1011,6 +1018,18 @@ projectBackgroundQueue.process(5, async (job) => {
         }
 
       }
+    }
+
+    try {
+      const { generateMissingSeoForAllProjectPages } = require("../services/pageSeoService");
+      const seoSweep = await generateMissingSeoForAllProjectPages({
+        projectId,
+        userId: project.userId,
+        project,
+      });
+      console.log("[projectBackgroundQueue] All-pages AI SEO sweep:", seoSweep);
+    } catch (seoSweepErr) {
+      console.error("[projectBackgroundQueue] All-pages SEO sweep failed:", seoSweepErr.message);
     }
   } catch (err) {
     console.error(`❌ Job error for project ${projectId}:`, err);

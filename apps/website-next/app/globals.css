@@ -1,0 +1,358 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Font Display Optimization - Performance Optimization Step 2 */
+/* Note: FontAwesome is loaded via CDN, so we preload fonts in layout.tsx */
+/* This CSS ensures proper font rendering once loaded */
+
+/* Critical CSS for above-the-fold content */
+@layer base {
+  /* Global font family - applied to all elements */
+  * {
+    font-family: var(--font-poppins), 'Poppins', sans-serif;
+  }
+  
+  body {
+    font-family: var(--font-poppins), 'Poppins', sans-serif;
+  }
+  /* Critical font loading - moved to HTML preload for better performance */
+  
+  /* Critical layout styles */
+  .min-h-screen {
+    min-height: 100vh;
+  }
+  
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  
+  @media (min-width: 640px) {
+    .container {
+      max-width: 640px;
+    }
+  }
+  
+  @media (min-width: 768px) {
+    .container {
+      max-width: 768px;
+    }
+  }
+  
+  @media (min-width: 1024px) {
+    .container {
+      max-width: 1024px;
+    }
+  }
+  
+  @media (min-width: 1280px) {
+    .container {
+      max-width: 1280px;
+    }
+  }
+}
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Default Blue Theme */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+    
+    /* Enhanced Blue theme gradients */
+    --hero-gradient-from: 217 91% 60%;
+    --hero-gradient-via: 224 76% 48%;
+    --hero-gradient-to: 230 85% 55%;
+    --cta-gradient-from: 24 95% 53%;
+    --cta-gradient-via: 15 90% 58%;
+    --cta-gradient-to: 0 84% 60%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Ocean theme colors for blue */
+    --ocean-light: 210 85% 92%;
+    --ocean-medium: 220 75% 75%;
+    --ocean-deep: 230 90% 35%;
+    --wave-blue: 210 100% 70%;
+    --splash-blue: 200 95% 85%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 217 91% 60%;
+    --cta-primary-via: 224 76% 48%;
+    --cta-primary-to: 230 85% 55%;
+    --cta-hover-from: 224 85% 55%;
+    --cta-hover-via: 230 80% 45%;
+    --cta-hover-to: 235 90% 50%;
+  }
+
+  /* Removed all unused theme CSS for better performance - only default theme kept */
+
+  /* Base typography styles - SEO optimized and consistent */
+  /* Progressive heading sizes: h1 (largest) to h6 (smallest) */
+  h1, h1[class], h1[style] {
+    @apply font-poppins text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black leading-tight tracking-tight;
+    font-weight: 900 !important;
+    line-height: 1.1 !important;
+  }
+  
+  h2, h2[class], h2[style] {
+    @apply font-poppins text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold leading-tight tracking-tight;
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
+  }
+  
+  /* Default color only if no color class is applied */
+  h2:not([class*="text-"]):not([style*="color"]) {
+    @apply text-foreground;
+  }
+  
+  h3, h3[class], h3[style] {
+    @apply font-poppins text-xs sm:text-sm md:text-base lg:text-lg font-bold leading-tight;
+    font-weight: 700 !important;
+    line-height: 1.3 !important;
+  }
+  
+  h4, h4[class], h4[style] {
+    @apply font-poppins text-xs sm:text-sm md:text-base lg:text-lg font-bold leading-tight;
+    font-weight: 700 !important;
+    line-height: 1.4 !important;
+  }
+  
+  h5, h5[class], h5[style] {
+    @apply font-poppins text-xs sm:text-xs md:text-sm lg:text-base font-bold leading-tight;
+    font-weight: 700 !important;
+    line-height: 1.4 !important;
+  }
+  
+  h6, h6[class], h6[style] {
+    @apply font-poppins text-xs sm:text-xs md:text-xs lg:text-sm font-bold leading-tight;
+    font-weight: 700 !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* Default color only if no color class is applied */
+  h1:not([class*="text-"]):not([style*="color"]),
+  h3:not([class*="text-"]):not([style*="color"]),
+  h4:not([class*="text-"]):not([style*="color"]),
+  h5:not([class*="text-"]):not([style*="color"]),
+  h6:not([class*="text-"]):not([style*="color"]) {
+    @apply text-foreground;
+  }
+  
+  p {
+    @apply font-poppins text-xs sm:text-sm md:text-sm lg:text-base text-muted-foreground leading-relaxed;
+    font-weight: 400;
+    line-height: 1.6;
+  }
+  
+  /* Force consistent font size for all p tags - override any conflicting classes */
+  section p,
+  div p,
+  .container p,
+  p[class*="max-w"],
+  p[style] {
+    @apply text-xs sm:text-sm md:text-sm lg:text-base;
+  }
+  
+  span, span[class], span[style] {
+    @apply font-poppins text-xs sm:text-sm;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  
+  /* Spans inside paragraphs inherit paragraph size */
+  p span, p > span {
+    @apply text-xs sm:text-sm md:text-sm lg:text-base;
+    font-weight: inherit;
+    line-height: inherit;
+  }
+  
+  /* Spans inside headings inherit heading size - force with !important */
+  h1 span, h1 > span, h1 span[class], h1 span[style] {
+    @apply text-xl sm:text-2xl md:text-3xl lg:text-4xl;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+  }
+  
+  /* Force h1 span to match h1 size exactly */
+  h1 span, h1 > span {
+    font-size: inherit !important;
+  }
+  
+  h2 span, h2 > span, h2 span[class], h2 span[style] {
+    @apply text-lg sm:text-xl md:text-2xl lg:text-3xl;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+  }
+  
+  h3 span, h3 > span, h3 span[class], h3 span[style] {
+    @apply text-xs sm:text-sm md:text-base lg:text-lg;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+  }
+  
+  h4 span, h4 > span, h4 span[class], h4 span[style] {
+    @apply text-xs sm:text-sm md:text-base lg:text-lg;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+  }
+  
+  h5 span, h5 > span, h5 span[class], h5 span[style] {
+    @apply text-xs sm:text-xs md:text-sm lg:text-base;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+  }
+  
+  h6 span, h6 > span, h6 span[class], h6 span[style] {
+    @apply text-xs sm:text-xs md:text-xs lg:text-sm;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+  }
+  
+  ul, ol {
+    @apply font-poppins text-sm sm:text-base md:text-base lg:text-lg text-muted-foreground leading-relaxed;
+    font-weight: 400;
+    line-height: 1.6;
+  }
+  
+  li {
+    @apply font-poppins text-sm sm:text-base md:text-base lg:text-lg text-muted-foreground leading-relaxed;
+    font-weight: 400;
+    line-height: 1.6;
+    margin-bottom: 0.5rem;
+  }
+  
+  /* Breadcrumb spacing - equal top and bottom */
+  /* Override default li spacing for breadcrumbs - remove bottom margin */
+  nav ul li,
+  nav ol li {
+    line-height: 1 !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  
+  /* Breadcrumb specific - remove extra bottom spacing from all child elements */
+  nav ul li *,
+  nav ol li * {
+    line-height: 1 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+  
+  /* Ensure flex items are aligned */
+  nav ul li a,
+  nav ul li span,
+  nav ol li a,
+  nav ol li span,
+  nav ul li button,
+  nav ol li button {
+    display: inline-flex !important;
+    align-items: center !important;
+  }
+  
+  .theme-default {
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .theme-default * {
+    transition: color 0.3s ease-in-out, background-color 0.3s ease-in-out, border-color 0.3s ease-in-out, transform 0.2s ease-in-out;
+  }
+}
+
+/* Enhanced Theme-responsive plumbing text utility classes */
+.text-plumbing-light {
+  color: hsl(var(--plumbing-text-light));
+}
+
+.text-plumbing-dark {
+  color: hsl(var(--plumbing-text-dark));
+}
+
+.text-plumbing-responsive {
+  color: hsl(var(--plumbing-text-light));
+  transition: color 0.3s ease-in-out;
+}
+
+.dark .text-plumbing-responsive {
+  color: hsl(var(--plumbing-text-dark));
+}
+
+/* Theme-Responsive CTA Button Classes */
+.btn-cta-primary {
+  background: linear-gradient(135deg, hsl(var(--cta-primary-from)), hsl(var(--cta-primary-via)), hsl(var(--cta-primary-to)));
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-cta-primary:hover {
+  background: linear-gradient(135deg, hsl(var(--cta-hover-from)), hsl(var(--cta-hover-via)), hsl(var(--cta-hover-to)));
+  transform: scale(1.05);
+}
+
+.btn-cta-border {
+  border: 2px solid hsl(var(--primary) / 0.5);
+  box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+}
+
+.btn-cta-glow {
+  box-shadow: 0 0 30px hsl(var(--primary) / 0.4);
+}
+
+.btn-cta-glow:hover {
+  box-shadow: 0 0 40px hsl(var(--primary) / 0.6);
+}
+
+/* Hero Section Animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.8s ease-out forwards;
+}
+
+.animate-fade-in-delay {
+  animation: fade-in 1s ease-out 0.3s forwards;
+  opacity: 0;
+}
+

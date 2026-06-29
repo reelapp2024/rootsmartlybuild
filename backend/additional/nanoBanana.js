@@ -4,6 +4,7 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const helper = require('./addon');
+const { ensureSufficientCredits } = require('./openaiHelpers');
 
 /**
  * Generate AI images using Nano Banana API
@@ -15,7 +16,12 @@ const helper = require('./addon');
  */
 async function generateNanoBananaImages(prompt, projectId, count = 1, options = {}) {
   const NANO_BANANA_API_KEY = process.env.NANO_BANANA_API_KEY;
-  const QUALITY = 85;
+  const WEBP_OPTS = {
+    quality: 93,
+    alphaQuality: 100,
+    effort: 6,
+    smartSubsample: true,
+  };
   const folderPath = `public/images/${projectId}`;
   const BASE_URL = process.env.BASE_URL || 'https://apis.smartlybuild.dev';
 
@@ -39,6 +45,16 @@ async function generateNanoBananaImages(prompt, projectId, count = 1, options = 
   console.log(`[Nano Banana] Generating ${generationOptions.num_images} image(s) with prompt: "${prompt}"`);
 
   try {
+    if (options?.userId) {
+      await ensureSufficientCredits({
+        userId: options.userId,
+        usageType: 2,
+        imagesCount: Math.max(1, Number(count) || 1),
+        minCredits: 1,
+        reason: 'NanoBanana image generation'
+      });
+    }
+
     // Nano Banana API endpoint (adjust based on actual API documentation)
     // The API requires an application ID in the URL path
     // Format: https://api.nanobanana.ai/v1/applications/{app_id}/generate
@@ -246,10 +262,17 @@ async function generateNanoBananaImages(prompt, projectId, count = 1, options = 
 
           const origBuf = Buffer.from(imageResponse.data);
 
-          // Convert to WebP using sharp for optimization
+          // WebP: premium quality; cap very large API images for sane file sizes (no upscaling).
           const webpBuf = await sharp(origBuf, { failOnError: false })
             .rotate()
-            .webp({ quality: QUALITY, effort: 5 })
+            .resize({
+              width: 2560,
+              height: 2560,
+              fit: "inside",
+              withoutEnlargement: true,
+              kernel: sharp.kernel.lanczos3,
+            })
+            .webp(WEBP_OPTS)
             .toBuffer();
 
           if (!webpBuf || webpBuf.length === 0) {

@@ -6,7 +6,7 @@ const axios = require('axios');
 
 const UserProject = require('../models/userProjects');
 const Service = require('../models/service');
-const SeoSettings = require('../models/seoSettings');
+const { upsertSeoByPageUrl } = require('../services/pageSeoService');
 const slugify = require('../additional/slugify');
 
 const { getSubcategoriesFromOpenAI } = require('../openAi/openAi');
@@ -70,7 +70,7 @@ addNewServicesQueue.process(7, async (job) => {
   const categorieslist = (categories || []).join(', ');
 
   // 2) Exclude existing service names
-  const existingNames = await Service.find({ projectId }).distinct('service_name');
+  const existingNames = await Service.find({ projectId }).distinct('name');
   console.log(`[addNewServicesQueue] Existing names count: ${existingNames.length}`);
 
   // 3) Build prompt
@@ -166,14 +166,8 @@ Output only the JSON array.`;
     // Prepare for Service insert
     toInsert.push({
       projectId,
-      service_name: name,
-      fas_fa_icon: icon,
-      service_description: obj.subcategory_description,
-      contact_phone: obj.contact_phone,
-      pageType: 'homepage',
-      referenceId: 'homepage',
-      is_main: true,
-      serviceProcessed: false
+      name: name.toLowerCase(),
+      slug: slugify(name)
     });
 
     // 🔹 SEO: use SAME function as projectBackgroundQueue
@@ -201,23 +195,19 @@ Output only the JSON array.`;
         const meta_description = (seoContent.meta_description || '').toString().trim();
         const meta_keywords = normalizeKeywordsToString(seoContent.meta_keywords) || meta_title;
 
-        console.log('[SEO] Upserting SeoSettings with:', { page_url, meta_title, meta_description, meta_keywords });
+        console.log('[SEO] Upserting WebsitePage.seoSettings:', { page_url, meta_title, meta_description, meta_keywords });
 
-        const savedSeo = await SeoSettings.findOneAndUpdate(
-          { projectId, page_url },
-          {
-            $set: {
-              meta_title,
-              meta_description,
-              meta_keywords,
-              meta_image: '',
-              canonical_url: ''
-            }
-          },
-          { upsert: true, new: true }
-        );
+        const savedSeo = await upsertSeoByPageUrl(projectId, page_url, {
+          meta_title,
+          meta_description,
+          meta_keywords,
+          meta_image: '',
+          canonical_url: page_url,
+          og_title: meta_title,
+          og_description: meta_description,
+        }, 'ai');
 
-        console.log(`[SEO] ✅ Saved SeoSettings for "${name}" (id=${savedSeo?._id})`);
+        console.log(`[SEO] ✅ Saved page SEO for "${name}"`, savedSeo ? '(ok)' : '(no matching WebsitePage)');
       }
     } catch (err) {
       console.error(`[SEO] ❌ Failed saving SEO for "${name}":`, err);

@@ -1,4 +1,3 @@
-node_modules
 .env
 /uploads/cover_photos
 /uploads/posts
@@ -9,3 +8,6 @@ node_modules
 /uploads/files
 /public/images
 /public/sitemaps
+/public/files/
+/public/files/generated-images/
+/deploy-temp/

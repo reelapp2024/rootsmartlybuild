@@ -159,6 +159,7 @@ const AreaDetail = () => {
   const [projectCategory, setProjectCategory] = useState("");
   const [pageType, setPageType] = useState('');
   const [projectLocations, setProjectLocations] = useState([]);
+  const [locationsType, setLocationsType] = useState("");
   const [projectServices, setprojectServices] = useState([]);
   const [projectReviews, setProjectReviews] = useState<Testimonial[]>([]);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
@@ -594,6 +595,7 @@ const AreaDetail = () => {
 
         if (data && data.locations) {
           setProjectLocations(data.locations || []);
+          setLocationsType(data.locationsType || "");
         }
       } catch (error) {
         console.error("Error fetching areas we serve:", error);
@@ -656,6 +658,8 @@ const AreaDetail = () => {
       try {
         const { data } = await httpFile.post("/webapp/v1/fetch_services", {
           projectId,
+          areaId: refId,
+          areaType: pageType,
         });
 
         if (data) {
@@ -1131,7 +1135,7 @@ const AreaDetail = () => {
                             color: 'inherit'
                           } as React.CSSProperties & { '--hover-color': string }}
                         >
-                          {service.service_name} {cityName}
+                          {service.service_name}
                         </h4>
                         <p className="text-gray-600 leading-relaxed text-sm">
                           {getTruncatedDescription(service.service_description)}
@@ -1369,7 +1373,8 @@ const AreaDetail = () => {
 
 
 
-          {/* Areas Section */}
+          {/* Areas Section (show only when child areas exist) */}
+          {locationsType === "children" && projectLocations.length > 0 && (
           <section id="areas" className="py-16 bg-white">
             <div className="container mx-auto px-4 sm:px-8 lg:px-16">
               
@@ -1520,6 +1525,7 @@ const AreaDetail = () => {
               </div>
             </div>
           </section>
+          )}
 
           {/* Guarantee Section */}
           <section className="py-16 bg-white">

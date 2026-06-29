@@ -318,7 +318,7 @@ async function getSiteLinksForProject(projectId, domain) {
     )].sort();
 
     const staticSlugs = ['/', '/privacy-policy', '/about', '/contact', '/terms-conditions', '/services', '/areas'];
-    const rawServiceNames = await Service.distinct('service_name', { projectId });
+    const rawServiceNames = await Service.distinct('name', { projectId });
     const serviceSlugs = rawServiceNames.map(clean).filter(Boolean).map(normDash).filter(Boolean);
     const servicePageSlugs = serviceSlugs.map(s => `/services/${s}`);
     const locationServiceSlugs = locationSlugs.flatMap(loc => serviceSlugs.map(s => `${loc.replace(/\/$/, '')}/services/${s}`));
@@ -1817,11 +1817,11 @@ aiblogsQueue.process(3, async (job) => {
 
         // Services main
         await step(15, 'Fetching services');
-        const servicesMain = await Service.find({ projectId, is_main: true }).select('service_name').limit(30).lean();
-        let topServicesList = servicesMain.map((s, i) => `  ${i + 1}. ${clean(s.service_name)}`).join('\n');
+        const servicesMain = await Service.find({ projectId }).select('name').limit(30).lean();
+        let topServicesList = servicesMain.map((s, i) => `  ${i + 1}. ${clean(s.name)}`).join('\n');
         if (servicesMain.length < 5) {
-            const additionalServices = await Service.find({ projectId, is_main: false }).select('service_name').limit(5 - servicesMain.length).lean();
-            topServicesList += '\n' + additionalServices.map((s, i) => `  ${servicesMain.length + i + 1}. ${clean(s.service_name)}`).join('\n');
+            const additionalServices = await Service.find({ projectId }).select('name').limit(5 - servicesMain.length).lean();
+            topServicesList += '\n' + additionalServices.map((s, i) => `  ${servicesMain.length + i + 1}. ${clean(s.name)}`).join('\n');
         }
 
         // Fetch images
@@ -1852,7 +1852,7 @@ aiblogsQueue.process(3, async (job) => {
 
         // Relevance signals
         const titleTokens = new Set(tokensFrom(title));
-        const serviceSeedsText = [...new Set([serviceType, ...servicesMain.map(s => clean(s.service_name))].filter(Boolean))];
+        const serviceSeedsText = [...new Set([serviceType, ...servicesMain.map(s => clean(s.name))].filter(Boolean))];
         const serviceVariants = new Set();
         for (const s of serviceSeedsText) {
             const spaced = slugifyText(s);

@@ -148,7 +148,6 @@ module.exports = {
       const fileName = file.name === 'sitemap.xml' ? 'sitemap.xml' : `${Date.now()}_${file.name}`;
       const filePath = path.join(dir, fileName);
       
-      console.log(`[uploadFile] Attempting to save file: ${filePath}`);
 
       // Check if the file is an image or video
       if (!file.mimetype.startsWith('image') && !file.mimetype.startsWith('video') && file.mimetype !== 'application/xml' && file.mimetype !== 'text/xml') {
@@ -203,9 +202,6 @@ module.exports = {
         throw new Error('File was written but is empty');
       }
 
-      console.log(`[uploadFile] ✅ File saved successfully: ${filePath} (${stats.size} bytes)`);
-      console.log(`[uploadFile] 📁 File location verified: ${fs.existsSync(filePath) ? 'EXISTS' : 'MISSING'}`);
-      
       // Final verification - file must exist before returning
       if (!fs.existsSync(filePath)) {
         throw new Error('File verification failed - file does not exist after write');
@@ -214,7 +210,7 @@ module.exports = {
       return fileName;
 
     } catch (err) {
-      console.error(`[uploadFile] ❌ Error saving file:`, err);
+      console.error(`[uploadFile] Error saving file`, err?.message || err);
       throw new Error(`Failed to upload file: ${err.message}`);
     }
   },

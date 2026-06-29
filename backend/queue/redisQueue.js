@@ -3,7 +3,7 @@ require('dotenv').config();
 const UserProject = require('../models/userProjects');
 const Service = require('../models/service');
 const WebsiteSection = require('../models/websiteSections');
-const SeoSettings = require('../models/seoSettings'); // needed to save SEO
+const { upsertSeoByPageUrl } = require('../services/pageSeoService');
 const slugify = require('../additional/slugify');      // used for /services/:slug
 
 const axios = require('axios');
@@ -152,7 +152,7 @@ redisQueue.process(5, async (job) => {
           const existingService = await retry(
             () => Service.findOne({
               projectId,
-              service_name: subcategory.service_title
+              name: String(subcategory.service_title || '').trim().toLowerCase()
             }),
             [],
             3,
@@ -198,19 +198,18 @@ redisQueue.process(5, async (job) => {
             const page = `/services/${slugify(subcategory.service_title)}`;
 
             try {
-              const seoDoc = new SeoSettings({
-                page_url: page,
+              await upsertSeoByPageUrl(projectId, page, {
                 meta_title: (seoContent.meta_title || '').toString().trim(),
                 meta_description: (seoContent.meta_description || '').toString().trim(),
                 meta_keywords: Array.isArray(seoContent.meta_keywords)
                   ? seoContent.meta_keywords.map(x => String(x).trim()).filter(Boolean).join(', ')
                   : (typeof seoContent.meta_keywords === 'string' ? seoContent.meta_keywords : ''),
                 meta_image: '',
-                canonical_url: '',
-                projectId
-              });
-              await seoDoc.save();
-              console.log('[SEO] saved for', page, 'id=', seoDoc._id?.toString());
+                canonical_url: page,
+                og_title: (seoContent.meta_title || '').toString().trim(),
+                og_description: (seoContent.meta_description || '').toString().trim(),
+              }, 'ai');
+              console.log('[SEO] saved for', page);
             } catch (e) {
               console.error('[SEO] save failed for', page, e);
             }
@@ -225,13 +224,8 @@ redisQueue.process(5, async (job) => {
 
             servicesToSave.push({
               projectId,
-              service_name: subcategory.service_title,
-              fas_fa_icon: icon,
-              service_description: subcategory.subcategory_description,
-              contact_phone: subcategory.contact_phone,
-              pageType: type,
-              referenceId: ReferencePageId,
-              is_main: true
+              name: String(subcategory.service_title || '').trim().toLowerCase(),
+              slug: slugify(subcategory.service_title || '')
             });
           } else {
             console.log(`Service '${subcategory.service_title}' already exists. Skipping.`);
@@ -277,7 +271,7 @@ redisQueue.process(5, async (job) => {
           const existingService = await retry(
             () => Service.findOne({
               projectId,
-              service_name: subcategory.service_title
+              name: String(subcategory.service_title || '').trim().toLowerCase()
             }),
             [],
             3,
@@ -321,32 +315,26 @@ redisQueue.process(5, async (job) => {
             const page = `/services/${slugify(subcategory.service_title)}`;
 
             try {
-              const seoDoc = new SeoSettings({
-                page_url: page,
+              await upsertSeoByPageUrl(projectId, page, {
                 meta_title: (seoContent.meta_title || '').toString().trim(),
                 meta_description: (seoContent.meta_description || '').toString().trim(),
                 meta_keywords: Array.isArray(seoContent.meta_keywords)
                   ? seoContent.meta_keywords.map(x => String(x).trim()).filter(Boolean).join(', ')
                   : (typeof seoContent.meta_keywords === 'string' ? seoContent.meta_keywords : ''),
                 meta_image: '',
-                canonical_url: '',
-                projectId
-              });
-              await seoDoc.save();
-              console.log('[SEO] saved for', page, 'id=', seoDoc._id?.toString());
+                canonical_url: page,
+                og_title: (seoContent.meta_title || '').toString().trim(),
+                og_description: (seoContent.meta_description || '').toString().trim(),
+              }, 'ai');
+              console.log('[SEO] saved for', page);
             } catch (e) {
               console.error('[SEO] save failed for', page, e);
             }
 
             servicesToSave.push({
               projectId,
-              service_name: subcategory.service_title,
-              fas_fa_icon: icon,
-              service_description: subcategory.subcategory_description,
-              contact_phone: subcategory.contact_phone,
-              pageType: type,
-              referenceId: ReferencePageId,
-              is_main: true
+              name: String(subcategory.service_title || '').trim().toLowerCase(),
+              slug: slugify(subcategory.service_title || '')
             });
           } else {
             console.log(`Service '${subcategory.service_title}' already exists. Skipping.`);

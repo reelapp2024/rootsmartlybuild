@@ -10,13 +10,6 @@ const SectionContentSchema = new Schema(
       index: true
     },
 
-    // NULL = non-location pages
-    locationId: {
-      type: Schema.Types.Mixed,
-      default: null,
-      index: true
-    },
-
     // "home" | ObjectId
     pageId: {
       type: Schema.Types.Mixed,
@@ -24,10 +17,25 @@ const SectionContentSchema = new Schema(
       index: true
     },
 
+    // For service bundle rows (sectionId === "service_sections"), explicit linkage.
+    serviceId: {
+      type: Schema.Types.ObjectId,
+      ref: "service",
+      default: null,
+      index: true
+    },
+
     // "hero" | "cta" | ObjectId
     sectionId: {
       type: Schema.Types.Mixed,
       required: true,
+      index: true
+    },
+
+     // ✅ NEW FIELD
+    locationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
       index: true
     },
 
@@ -68,10 +76,30 @@ const SectionContentSchema = new Schema(
   { timestamps: true }
 );
 
-// Unique section per project + page + location
+// Unique service bundle row per project+service+location.
 SectionContentSchema.index(
-  { projectId: 1, locationId: 1, pageId: 1, sectionId: 1 },
-  { unique: true, name: "unique_section_instance" }
+  { projectId: 1, sectionId: 1, serviceId: 1, locationId: 1 },
+  {
+    unique: true,
+    name: "unique_service_bundle_instance",
+    partialFilterExpression: {
+      sectionId: "service_sections",
+      isDeleted: false
+    }
+  }
+);
+
+// Unique page-scoped row per project+page+section+location.
+SectionContentSchema.index(
+  { projectId: 1, pageId: 1, sectionId: 1, locationId: 1 },
+  {
+    unique: true,
+    name: "unique_page_section_instance",
+    partialFilterExpression: {
+      sectionId: { $ne: "service_sections" },
+      isDeleted: false
+    }
+  }
 );
 
 // Fast page fetch

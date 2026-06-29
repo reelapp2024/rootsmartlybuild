@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Critical CSS for above-the-fold content */
+@layer base {
+  /* Critical font loading - moved to HTML preload for better performance */
+  
+  /* Critical layout styles */
+  .min-h-screen {
+    min-height: 100vh;
+  }
+  
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  @media (min-width: 640px) {
+    .container {
+      max-width: 640px;
+    }
+  }
+  
+  @media (min-width: 768px) {
+    .container {
+      max-width: 768px;
+    }
+  }
+  
+  @media (min-width: 1024px) {
+    .container {
+      max-width: 1024px;
+    }
+  }
+  
+  @media (min-width: 1280px) {
+    .container {
+      max-width: 1280px;
+    }
+  }
+}
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Default Blue Theme */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+    
+    /* Enhanced Blue theme gradients */
+    --hero-gradient-from: 217 91% 60%;
+    --hero-gradient-via: 224 76% 48%;
+    --hero-gradient-to: 230 85% 55%;
+    --cta-gradient-from: 24 95% 53%;
+    --cta-gradient-via: 15 90% 58%;
+    --cta-gradient-to: 0 84% 60%;
+    --success-color: 142 71% 45%;
+    --warning-color: 45 93% 47%;
+    
+    /* Ocean theme colors for blue */
+    --ocean-light: 210 85% 92%;
+    --ocean-medium: 220 75% 75%;
+    --ocean-deep: 230 90% 35%;
+    --wave-blue: 210 100% 70%;
+    --splash-blue: 200 95% 85%;
+    
+    /* Theme-responsive plumbing text colors */
+    --plumbing-text-light: 222.2 84% 4.9%;
+    --plumbing-text-dark: 210 40% 98%;
+    
+    /* Theme-responsive CTA button colors */
+    --cta-primary-from: 217 91% 60%;
+    --cta-primary-via: 224 76% 48%;
+    --cta-primary-to: 230 85% 55%;
+    --cta-hover-from: 224 85% 55%;
+    --cta-hover-via: 230 80% 45%;
+    --cta-hover-to: 235 90% 50%;
+  }
+
+  /* Removed all unused theme CSS for better performance - only default theme kept */
+
+  /* Base typography styles */
+  h1 {
+    @apply font-poppins text-3xl md:text-4xl lg:text-5xl font-bold text-foreground leading-tight;
+  }
+  
+  h2 {
+    @apply font-poppins text-2xl md:text-3xl lg:text-4xl font-bold text-foreground leading-tight;
+  }
+  
+  h3 {
+    @apply font-poppins text-xl md:text-2xl lg:text-3xl font-semibold text-foreground leading-tight;
+  }
+  
+  h4 {
+    @apply font-poppins text-lg md:text-xl lg:text-2xl font-semibold text-foreground leading-tight;
+  }
+  
+  h5 {
+    @apply font-poppins text-base md:text-lg lg:text-xl font-semibold text-foreground leading-tight;
+  }
+  
+  h6 {
+    @apply font-poppins text-sm md:text-base lg:text-lg font-semibold text-foreground leading-tight;
+  }
+  
+  p {
+    @apply font-poppins text-base md:text-lg text-muted-foreground leading-relaxed;
+  }
+  
+  .theme-default {
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .theme-default * {
+    transition: color 0.3s ease-in-out, background-color 0.3s ease-in-out, border-color 0.3s ease-in-out, transform 0.2s ease-in-out;
+  }
+}
+
+/* Enhanced Theme-responsive plumbing text utility classes */
+.text-plumbing-light {
+  color: hsl(var(--plumbing-text-light));
+}
+
+.text-plumbing-dark {
+  color: hsl(var(--plumbing-text-dark));
+}
+
+.text-plumbing-responsive {
+  color: hsl(var(--plumbing-text-light));
+  transition: color 0.3s ease-in-out;
+}
+
+.dark .text-plumbing-responsive {
+  color: hsl(var(--plumbing-text-dark));
+}
+
+/* Theme-Responsive CTA Button Classes */
+.btn-cta-primary {
+  background: linear-gradient(135deg, hsl(var(--cta-primary-from)), hsl(var(--cta-primary-via)), hsl(var(--cta-primary-to)));
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-cta-primary:hover {
+  background: linear-gradient(135deg, hsl(var(--cta-hover-from)), hsl(var(--cta-hover-via)), hsl(var(--cta-hover-to)));
+  transform: scale(1.05);
+}
+
+.btn-cta-border {
+  border: 2px solid hsl(var(--primary) / 0.5);
+  box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+}
+
+.btn-cta-glow {
+  box-shadow: 0 0 30px hsl(var(--primary) / 0.4);
+}
+
+.btn-cta-glow:hover {
+  box-shadow: 0 0 40px hsl(var(--primary) / 0.6);
+}

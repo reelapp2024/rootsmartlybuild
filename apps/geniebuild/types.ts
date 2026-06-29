@@ -1,8 +1,9 @@
 
-export type SectionType = 'navbar' | 'hero' | 'features' | 'cta' | 'footer' | 'testimonials' | 'pricing' | 'image-banner' | 'elements' | 'allelementsTest' | 'faq';
+export type SectionType = 'navbar' | 'header' | 'hero' | 'about' | 'features' | 'services' | 'cta' | 'process' | 'footer' | 'testimonials' | 'pricing' | 'image-banner' | 'elements' | 'allelementsTest' | 'faq' | 'why-choose-us' | 'guarantee' | 'areas' | 'aboutservice' | 'servicehero';
 
 export type ElementType = 
   // Basic
+  | 'card'
   | 'heading' 
   | 'text' 
   | 'button' 
@@ -28,7 +29,18 @@ export type ElementType =
   | 'pricing-table'
   | 'flip-box'
   | 'call-to-action'
-  | 'countdown-timer';
+  | 'countdown-timer'
+  | 'logo-cloud'
+  | 'stat-card'
+  | 'user-avatars'
+  | 'feature-box'
+  | 'testimonial-card'
+  | 'pricing-item'
+  | 'trust-strip'
+  | 'nav-menu'
+  // Layout helpers
+  | 'divider'
+  | 'spacer';
 
 // Comprehensive Style Interface based on "Common Properties" request
 export interface ElementStyle {
@@ -161,9 +173,50 @@ export interface ElementStyle {
     
     // Accent Color support for form elements/custom elements
     accentColor?: string;
+    secondaryButtonBorderColor?: string;
+    iconColor?: string;
+    iconBackgroundColor?: string;
+    subheadingColor?: string;
+    iconBgColor?: string;
+    secondaryHeadingColor?: string;
 
-    // Allow generic string keys for extensibility
-    [key: string]: any; 
+    // Icon / FeatureBox / IconBox / StatCard element-specific keys.
+    // Kept strongly typed instead of smuggled via the index signature so the
+    // sidebar style editors and renderers can autocomplete them.
+    iconSize?: string;
+    iconContainerSize?: string;
+    iconBorderRadius?: string;
+    iconBorderColor?: string;
+    iconBorderStyle?: 'solid' | 'dashed' | 'dotted' | 'double' | 'none';
+    iconBorderWidth?: string;
+    iconBorderTopLeftRadius?: string;
+    iconBorderTopRightRadius?: string;
+    iconBorderBottomLeftRadius?: string;
+    iconBorderBottomRightRadius?: string;
+    iconShadow?: string;
+
+    // Button element-specific
+    buttonVariant?: 'primary' | 'secondary' | 'ghost' | 'outline';
+
+    // Image element-specific
+    objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
+    boxShadow?: string;
+
+    // Border radius per-corner overrides (for card/image/feature-box)
+    borderTopLeftRadius?: string;
+    borderTopRightRadius?: string;
+    borderBottomLeftRadius?: string;
+    borderBottomRightRadius?: string;
+
+    // Legacy flat border fields (deprecated but still written by some editors)
+    borderColor?: string;
+    borderWidth?: string;
+    borderStyle?: 'solid' | 'dashed' | 'dotted' | 'double' | 'groove' | 'none';
+    border?: string;
+    borderRadius?: string;
+
+    // Allow generic string keys for extensibility (to be phased out)
+    [key: string]: any;
 }
 
 export interface WebsiteElement {
@@ -177,8 +230,12 @@ export interface WebsiteElement {
   content: {
     text?: string; // Main Title / Heading / Button Text
     subText?: string; // Description / Subtitle
+    // Text marquee support (used by HeroMarquee and any text element)
+    enableMarquee?: boolean;
+    marqueeSpeed?: '1x' | '2x' | '3x' | '4x' | '5x' | '6x' | '7x' | '8x' | '9x' | '10x';
+    marqueeDirection?: 'left' | 'right';
     htmlTag?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'div' | 'span';
-    textSize?: 'base' | 'small' | 'large' | 'xl'; // Text size variant for p tags
+    textSize?: 'base' | 'small' | 'large' | 'xl' | 'subheading'; // Text size variant for p tags
     link?: string;
     src?: string; 
     alt?: string;
@@ -195,6 +252,8 @@ export interface WebsiteElement {
         avatar?: string; // Testimonial
         rating?: number; // Review
         price?: string; // Pricing Table
+        src?: string;   // Logo Cloud / User Avatars
+        alt?: string;   // Logo Cloud
     }[]; 
     
     rating?: number; 
@@ -238,6 +297,13 @@ export interface WebsiteElement {
   
   // Use the new comprehensive ElementStyle interface
   style: ElementStyle;
+
+  /**
+   * Per-breakpoint style overrides. Only the diff from `style` is stored.
+   * Rendered via CSS media queries, so section components stay breakpoint-unaware.
+   */
+  tabletStyle?: Partial<ElementStyle>;
+  mobileStyle?: Partial<ElementStyle>;
   
   settings?: {
     animation?: 'fade' | 'slide' | 'zoom' | 'none';
@@ -275,26 +341,30 @@ export interface Section {
   content: {
     title?: string;
     subtitle?: string;
-    subtitleTextSize?: 'base' | 'small' | 'large' | 'xl'; // Store textSize directly for Hero subtitle
+    subtitleTextSize?: 'base' | 'small' | 'large' | 'xl' | 'subheading'; // Store textSize directly for Hero subtitle
     description?: string;
     ctaText?: string;
     ctaHref?: string;
     secondaryCtaText?: string;
     secondaryCtaHref?: string;
     links?: { label: string; href: string }[];
-    items?: { 
-      id: string;
-      title: string; 
-      description: string; 
-      icon?: string; 
-      price?: string; 
+    items?: {
+      id?: string;
+      title?: string;
+      description?: string;
+      icon?: string;
+      price?: string;
       features?: string[];
       author?: string;
       role?: string;
       avatar?: string;
+      style?: Record<string, unknown>;
+      [key: string]: unknown;
     }[];
     logo?: string;
-    logoImageUrl?: string; 
+    logoImageUrl?: string;
+    /** Section-level gallery from API (single or multiple); preferred over `imageUrl` in the renderer */
+    images?: Array<string | { url: string; id?: string }>;
     imageUrl?: string;
     videoUrl?: string;
     badgeText?: string;
@@ -305,6 +375,11 @@ export interface Section {
     listItems?: string[]; 
     projectId?: string; // For API-based navbar/footer
     brand?: string; // For footer brand name
+    badge?: string; // For process/features sections
+    // FAQ sections may receive data under various keys from the API
+    faq?: unknown[];
+    faqs?: unknown[];
+    [key: string]: unknown;
   };
   // The new flexible structure for custom/elements sections
   elements?: WebsiteElement[]; 
@@ -334,13 +409,16 @@ export interface Section {
     titleSize?: string;
     titleAlign?: 'left' | 'center' | 'right' | 'justify';
     titleFontWeight?: string;
+    titleTextTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
     titleHeadingTag?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
     subtitleColor?: string;
     subtitleSize?: string;
     subtitleAlign?: 'left' | 'center' | 'right' | 'justify';
     subtitleFontWeight?: string;
+    subtitleTextTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
     descriptionColor?: string;
     descriptionSize?: string;
+    descriptionTextTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
     fontSize?: string;
     fontWeight?: string;
     accentColor: string;
@@ -356,14 +434,22 @@ export interface Section {
   
   // Default styles applied when a specific variant is selected
   variantOverrides?: Record<string, any>;
-  
+
+  /**
+   * Per-breakpoint style overrides for the section itself (not its elements).
+   * Only the diff from `styles` is stored; resolved via CSS media queries
+   * targeting `[data-section-id="..."]` on the section renderer's root.
+   */
+  tabletStyles?: Partial<Section['styles']>;
+  mobileStyles?: Partial<Section['styles']>;
+
   styles: {
     // Container
-    backgroundColor: string; // Deprecated - use background.type instead
+    backgroundColor?: string; // Deprecated - use background.type instead
     
     // Spacing
-    paddingTop: string;
-    paddingBottom: string;
+    paddingTop?: string;
+    paddingBottom?: string;
     paddingLeft?: string;
     paddingRight?: string;
     paddingX?: string; // Deprecated but kept for backward compatibility if needed
@@ -373,12 +459,19 @@ export interface Section {
     marginLeft?: string;
     marginRight?: string;
 
-    textAlign: 'left' | 'center' | 'right';
+    textAlign?: 'left' | 'center' | 'right';
     maxWidth?: 'max-w-4xl' | 'max-w-5xl' | 'max-w-6xl' | 'max-w-7xl' | 'max-w-full';
     
     // New comprehensive background system
     background?: {
       type: 'color' | 'gradient' | 'image';
+      // Top-level overlay (written by migrator/reducers; mirrored onto image.overlay when bg is an image)
+      overlay?: {
+        enabled: boolean;
+        color?: string;
+        opacity?: number;
+        blendMode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion';
+      };
       // For color
       color?: string;
       // For gradient
@@ -390,6 +483,18 @@ export interface Section {
       // For image
       image?: {
         url: string;
+        mode?: 'single' | 'multiple';
+        images?: Array<{ url: string; id: string }>;
+        carouselSettings?: {
+          enabled: boolean;
+          autoplay: boolean;
+          duration: number; // Time between slides in ms
+          transitionType: 'slide' | 'fade';
+          transitionSpeed: number; // Transition duration in ms
+          loop: boolean;
+          pauseOnHover: boolean;
+          buttonVariant?: 'minimal' | 'rounded' | 'square' | 'outline' | 'hidden';
+        };
         position?: 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top left' | 'top right' | 'bottom left' | 'bottom right';
         size?: 'cover' | 'contain' | 'auto' | string; // Can be custom like "50% 50%"
         repeat?: 'no-repeat' | 'repeat' | 'repeat-x' | 'repeat-y';
@@ -403,61 +508,342 @@ export interface Section {
       };
     };
     
-    // Legacy fields (deprecated, kept for backward compatibility)
+    // Legacy flat background fields (deprecated, kept for backward compatibility)
     backgroundImage?: string;
-    overlayOpacity?: string; 
-    overlayColor?: string; 
-    overlayOpacityValue?: string; 
-    overlayBlendMode?: string; 
+    backgroundPosition?: string;
+    backgroundSize?: string;
+    backgroundRepeat?: string;
+    backgroundAttachment?: string;
+    overlayOpacity?: string;
+    overlayColor?: string;
+    overlayOpacityValue?: string;
+    overlayBlendMode?: string;
+
+    // Border
+    border?: string;
+    borderColor?: string;
+    borderWidth?: string;
+    borderStyle?: string;
+    borderTop?: string;
+    borderBottom?: string;
+    borderLeft?: string;
+    borderRight?: string;
     
     // Geometry settings
     enableGeometry?: boolean;
     
     variant?: string;
+    backgroundPattern?: 'none' | 'dots-grid' | 'diagonal-lines' | 'plus-signs' | 'circuit' | 'topography' | 'blueprint' | 'honeycomb' | 'polka-dots' | 'zig-zag' | 'sparkles' | 'water-ripple';
+    enableBackgroundShapes?: boolean;
+    backgroundShapeType?: string;
+    enableBackgroundAnimation?: boolean;
+    backgroundAnimationSpeed?: string | number;
+    topDividerShape?: string;
+    bottomDividerShape?: string;
+    topDividerHeight?: string | number;
+    bottomDividerHeight?: string | number;
+    topDividerColor?: string;
+    bottomDividerColor?: string;
+    buttonClass?: string;
+    themeMode?: 'light' | 'dark';
 
     // Typography & Colors
-    textColor: string; 
+    textColor?: string; 
     
     titleColor?: string;
     titleSize?: string;
     titleAlign?: 'left' | 'center' | 'right' | 'justify';
     titleFontWeight?: string;
+    titleTextTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
     titleHeadingTag?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'; // Heading level for section titles
     
     subtitleColor?: string;
     subtitleSize?: string;
     subtitleAlign?: 'left' | 'center' | 'right' | 'justify';
     subtitleFontWeight?: string;
+    subtitleTextTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
     
     descriptionColor?: string;
     descriptionSize?: string;
+    descriptionTextTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
     
     fontSize?: string;
     fontWeight?: string;
     
-    accentColor: string; 
+    accentColor?: string; 
 
     // Buttons
-    buttonBackgroundColor: string;
-    buttonTextColor: string;
+    buttonBackgroundColor?: string;
+    buttonTextColor?: string;
     buttonStyle?: 'rounded' | 'pill' | 'square';
     
     borderRadius?: string; 
 
     secondaryButtonBackgroundColor?: string;
     secondaryButtonTextColor?: string;
+    secondaryButtonBorderColor?: string;
+    iconColor?: string;
+    iconBackgroundColor?: string;
+    subheadingColor?: string;
+    iconBgColor?: string;
+    secondaryHeadingColor?: string;
 
-    linkColor?: string; 
+    linkColor?: string;
 
+    cardBackgroundColor?: string;
+    cardBorderColor?: string;
+
+    // Typography size/weight/spacing aliases used by some components
+    titleFontSize?: string;
+    titleLetterSpacing?: string;
+    subtitleFontSize?: string;
+    subtitleLetterSpacing?: string;
+    descriptionFontSize?: string;
+    descriptionFontWeight?: string;
+    descriptionLetterSpacing?: string;
+
+    titleFontFamily?: string;
+    subtitleFontFamily?: string;
+    descriptionFontFamily?: string;
+    buttonFontFamily?: string;
+    // Legacy: used as a fallback for all categories
     fontFamily?: string;
+
+    // Section-level icon-box style controls (also mirrored on element style)
+    iconSize?: string;
+    iconContainerSize?: string;
+    iconBorderRadius?: string;
+    iconBorderColor?: string;
+    iconBorderStyle?: 'solid' | 'dashed' | 'dotted' | 'double' | 'none';
+    iconBorderWidth?: string;
+    iconBorderTopLeftRadius?: string;
+    iconBorderTopRightRadius?: string;
+    iconBorderBottomLeftRadius?: string;
+    iconBorderBottomRightRadius?: string;
+    iconShadow?: string;
+
+    // Title/subtitle/description style extras
+    titleFontStyle?: 'normal' | 'italic';
+    subtitleFontStyle?: 'normal' | 'italic';
+    descriptionFontStyle?: 'normal' | 'italic';
+    subheadingFontSize?: string;
+    subheadingFontWeight?: string;
+    subheadingTextTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
+
+    // Button typography
+    buttonFontWeight?: string;
+    buttonFontSize?: string;
+    buttonAlign?: 'left' | 'center' | 'right';
+    buttonSize?: string;
+    buttonTextTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
+    buttonLetterSpacing?: string;
+    buttonBorderRadius?: string;
+    buttonBorderColor?: string;
+    buttonBorderWidth?: string;
+    buttonBorderStyle?: 'solid' | 'dashed' | 'dotted' | 'double' | 'none';
+    buttonPadding?: string;
+    buttonShadow?: string;
+
+    // Secondary button extras
+    secondaryButtonText?: string;
+    secondaryButtonBorder?: string;
+    secondaryButtonBg?: string;
+
+    // Filter/opacity effects on section
+    filter?: string;
+    opacity?: number;
+    objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
+    aspectRatio?: string;
+    boxShadow?: string;
+
+    // Color/text extras for section-level editors
+    color?: string;
+    textTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none';
+    lineHeight?: string;
+
+    // Accordion color overrides (written by applyVariantRefresh + AccordionStylesBlock)
+    accordionQuestionColor?: string;
+    accordionAnswerColor?: string;
+    accordionBackgroundColor?: string;
+    accordionBorderColor?: string;
+  };
+}
+
+/** Page-level SEO metadata. All fields optional; renderer falls back to defaults. */
+export interface SEOMetadata {
+  /** <title> tag. Max ~60 chars recommended. */
+  title?: string;
+  /** <meta name="description">. Max ~160 chars recommended. */
+  description?: string;
+  /** Comma-separated keywords. Modern search engines mostly ignore these,
+   *  included for completeness and legacy indexers. */
+  keywords?: string;
+  /** <link rel="canonical"> — absolute URL of the authoritative page. */
+  canonicalUrl?: string;
+  /** OpenGraph title (falls back to title). */
+  ogTitle?: string;
+  /** OpenGraph description (falls back to description). */
+  ogDescription?: string;
+  /** OpenGraph image URL (also used for Twitter card). 1200×630 recommended. */
+  ogImage?: string;
+  /** OpenGraph type — 'website' (default), 'article', 'product', 'business.business' etc. */
+  ogType?: string;
+  /** OpenGraph site_name — the brand/site name shown above the preview card. */
+  ogSiteName?: string;
+  /** Twitter card type. */
+  twitterCard?: 'summary' | 'summary_large_image';
+  /** Twitter @site handle (e.g. "@brandhandle") — shown next to the card. */
+  twitterSite?: string;
+  /** robots directive — e.g., "index,follow" or "noindex,nofollow". */
+  robots?: 'index,follow' | 'noindex,nofollow' | 'index,nofollow' | 'noindex,follow';
+  /** Favicon URL override (absolute or /relative). */
+  favicon?: string;
+  /** Additional JSON-LD structured data string (raw JSON). */
+  structuredData?: string;
+  /**
+   * ISO 639-1 language code (e.g. "en", "es", "fr") applied to <html lang>.
+   * Drives screen-reader pronunciation + Google's language signal.
+   */
+  language?: string;
+}
+
+/**
+ * A single editable page in the site. Sections here render between the
+ * site-wide `globalSections` (navbar + footer) on the canvas.
+ */
+export interface WebsitePage {
+  id: string;
+  /** Human-readable name used in the Pages list ("Home", "Services"). */
+  name: string;
+  /** URL slug for the page ("/" for home, "/services", etc.). */
+  slug: string;
+  /** Page-specific sections (hero, features, about, cta, etc.). */
+  sections: Section[];
+  /** Per-page SEO metadata (falls back to site-level defaults at publish). */
+  seo?: SEOMetadata;
+}
+
+/**
+ * Site-wide default styles applied to every element of a given type. These
+ * sit *between* the active theme tokens and per-element overrides:
+ *   element.style → bulk section style → globalElementStyles → theme tokens → defaults
+ *
+ * Persists across theme switches — picking a different palette doesn't blow
+ * away the user's brand-driven heading color or button styling.
+ *
+ * Every field is optional so partial overrides are fine.
+ */
+/**
+ * Per-heading-level style overrides. Every level (h1–h6) supports independent
+ * font + size controls plus separate dark / light color slots, so the same
+ * h2 can render as one color over a dark hero and a different color over a
+ * white services grid without per-section overrides.
+ */
+export interface HeadingLevelStyle {
+  /** Color when the section is dark (default theme mode). */
+  color?: string;
+  /** Color when the section is light (themeMode='light'). */
+  colorLight?: string;
+  fontSize?: string;
+  fontFamily?: string;
+  fontWeight?: string;
+  lineHeight?: string;
+  letterSpacing?: string;
+  /** Color of the highlighted last word in split-shape headings (dark sections). */
+  highlightColor?: string;
+  /** Highlight color for light sections. */
+  highlightColorLight?: string;
+}
+
+export interface GlobalElementStyles {
+  /**
+   * Heading defaults — `all` applies to every heading regardless of level,
+   * then h1..h6 layer on top per level. Resolution at render time:
+   *   element.style → bulk → globalElementStyles.headings[hN] → globalElementStyles.headings.all → theme → defaults
+   */
+  headings?: {
+    all?: HeadingLevelStyle;
+    h1?: HeadingLevelStyle;
+    h2?: HeadingLevelStyle;
+    h3?: HeadingLevelStyle;
+    h4?: HeadingLevelStyle;
+    h5?: HeadingLevelStyle;
+    h6?: HeadingLevelStyle;
+  };
+  /** @deprecated Replaced by `headings` (per-level + dark/light). Kept so old saves load. */
+  heading?: {
+    color?: string;
+    fontFamily?: string;
+    fontWeight?: string;
+    lineHeight?: string;
+    letterSpacing?: string;
+    highlightColor?: string;
+  };
+  text?: {
+    color?: string;
+    /** Color when the section is light. */
+    colorLight?: string;
+    fontFamily?: string;
+    fontSize?: string;
+    lineHeight?: string;
+  };
+  button?: {
+    backgroundColor?: string;
+    color?: string;
+    hoverBackgroundColor?: string;
+    hoverColor?: string;
+    borderRadius?: string;
+    padding?: string;
+    fontWeight?: string;
+  };
+  link?: {
+    color?: string;
+    hoverColor?: string;
+    underline?: 'always' | 'hover' | 'none';
+  };
+  icon?: {
+    color?: string;
+    backgroundColor?: string;
+    size?: string;
+  };
+  list?: {
+    color?: string;
+    markerColor?: string;
+    itemGap?: string;
+  };
+  badge?: {
+    backgroundColor?: string;
+    color?: string;
+    borderRadius?: string;
   };
 }
 
 export interface WebsiteData {
   name: string;
+  /**
+   * Sections of the currently-active page, kept at top level so the 60+
+   * existing references continue to work unchanged. The editor keeps this
+   * in sync with `pages[currentPageId].sections` on every edit.
+   */
   sections: Section[];
+  /** Shared sections rendered on every page (typically [navbar, ..., footer]). */
+  globalSections?: Section[];
+  /** All editable pages in the site. Undefined on older data (single-page mode). */
+  pages?: WebsitePage[];
+  /** Which page is currently active in the editor. */
+  currentPageId?: string;
+  /**
+   * @deprecated Page-level SEO now lives on WebsitePage.seo. Kept so old
+   * saved data with top-level `seo` still loads correctly.
+   */
+  seo?: SEOMetadata;
+  /**
+   * Site-wide default styles per element type. Optional — when absent or a
+   * field is empty, elements fall back to the active theme tokens.
+   */
+  globalElementStyles?: GlobalElementStyles;
   globalStyles: {
-    primaryFont: string; 
+    primaryFont: string;
     themeMode: 'light' | 'dark';
     borderRadius: string;
     colors: {
@@ -471,6 +857,10 @@ export interface WebsiteData {
         linkColor: string;
         borderColor: string;
         overlayColor?: string; 
+        subheadingColor?: string;
+        iconColor?: string;
+        iconBgColor?: string;
+        secondaryHeadingColor?: string;
     };
     typography: {
         h1: TypographyStyle;

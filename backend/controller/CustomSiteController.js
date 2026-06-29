@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const WebsiteDesignsData = require('../models/WebsiteDesignsData');
 const UserProject = require('../models/userProjects');
+const Service = require('../models/service');
 
 const CustomSiteController = {
     getHeroComponentData: async (req, res) => {
@@ -59,15 +60,16 @@ const CustomSiteController = {
                 });
             }
 
-            const services = project.services || [];
+            const services = await Service.find({ projectId })
+                .select('_id name slug')
+                .lean();
             
             return res.status(200).json({
                 success: true,
                 services: services.map(service => ({
-                    service_name: service.service_name || '',
-                    service_description: service.service_description || '',
-                    fas_fa_icon: service.fas_fa_icon || 'fas fa-check',
-                    images: service.images || []
+                    _id: service._id,
+                    service_name: service.name || '',
+                    slug: service.slug || ''
                 }))
             });
         } catch (error) {

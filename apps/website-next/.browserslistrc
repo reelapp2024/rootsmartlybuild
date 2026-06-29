@@ -1,0 +1,16 @@
+# Modern browsers only - Performance Step 5: Remove legacy polyfills
+# Removes legacy JavaScript polyfills (~13 KiB savings)
+# Targets browsers that natively support ES2020+ features
+# Chrome 92+, Firefox 90+, Safari 15.4+, Edge 92+
+# If you need to support older browsers, modify this list
+
+> 0.5%
+last 2 versions
+Chrome >= 92
+Firefox >= 90
+Safari >= 15.4
+Edge >= 92
+not dead
+not IE 11
+not op_mini all
+

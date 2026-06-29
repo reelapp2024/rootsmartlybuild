@@ -3,17 +3,17 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { WebsiteData } from "../types";
 
 export class GeminiService {
-  /**
-   * Modifies the website data based on user input.
-   * Following the latest guidelines: instantiating GoogleGenAI inside the method 
-   * to ensure the most up-to-date API key is used.
-   */
   async modifyWebsite(currentData: WebsiteData, prompt: string): Promise<WebsiteData> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      throw new Error('Gemini API key is not configured. Set GEMINI_API_KEY in your .env file.');
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
 
     const systemInstruction = `
-      You are an expert web designer and frontend developer. 
-      Your task is to take a JSON representation of a website and a user's natural language request, 
+      You are an expert web designer and frontend developer.
+      Your task is to take a JSON representation of a website and a user's natural language request,
       then return a modified version of that JSON that fulfills the request.
 
       CRITICAL RULES:
@@ -25,7 +25,6 @@ export class GeminiService {
       6. For placeholder images, use 'https://picsum.photos/...' with appropriate dimensions.
     `;
 
-    // Recommended JSON response schema for robustness
     const responseSchema = {
       type: Type.OBJECT,
       properties: {
@@ -100,30 +99,42 @@ export class GeminiService {
       required: ['name', 'sections', 'globalStyles'],
     };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [
-        {
-          parts: [
-            { text: `Current Site Data: ${JSON.stringify(currentData)}` },
-            { text: `User Request: ${prompt}` }
-          ]
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: [
+          {
+            parts: [
+              { text: `Current Site Data: ${JSON.stringify(currentData)}` },
+              { text: `User Request: ${prompt}` }
+            ]
+          }
+        ],
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema,
         }
-      ],
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('quota') || message.includes('429')) {
+        throw new Error('Gemini API quota exceeded. Please try again later.');
       }
-    });
+      if (message.includes('API_KEY') || message.includes('401') || message.includes('403')) {
+        throw new Error('Invalid Gemini API key. Please check your configuration.');
+      }
+      throw new Error(`AI request failed: ${message}`);
+    }
 
     try {
-      // Accessing the .text property directly as per guidelines
-      const text = response.text.trim();
+      const text = (response.text || '').trim();
+      if (!text) throw new Error('Empty response from AI');
       return JSON.parse(text) as WebsiteData;
     } catch (error) {
       console.error("Failed to parse Gemini response:", error);
-      throw new Error("The AI provided an invalid website configuration. Please try again.");
+      throw new Error("The AI returned an invalid response. Please try again.");
     }
   }
 }

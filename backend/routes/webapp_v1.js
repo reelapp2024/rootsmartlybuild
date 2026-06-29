@@ -38,7 +38,6 @@ router.post('/seo/update', AdminController.updateSeoSettings);
 
 // Route to get SEO settings for a page
 router.post('/seo', AdminController.getSeoSettings);
-router.post('/seoV2', AdminController.getPerPageSeo);
 
 // Route to delete SEO settings for a page
 router.delete('/seo/:pageUrl', AdminController.deleteSeoSettings);

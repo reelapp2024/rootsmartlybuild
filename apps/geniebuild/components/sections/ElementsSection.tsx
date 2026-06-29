@@ -1,8 +1,39 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { AnimatedDiv } from '../motionSafe';
 import { Section, WebsiteElement } from '../../types';
 import { useTheme } from '@ui/blocks';
-import { ELEMENT_DEFAULTS } from '../../constants';
+import { useGlobalElementStyles } from '../builder/state/GlobalElementStylesContext';
+import { useDefaultSizes } from '../builder/state/DefaultSizesContext';
+import {
+  buildHeadingHighlightSpanStyle,
+  resolveHeadingFontSize,
+  resolveHighlightAccentColor,
+  resolveTextFontSize,
+  type HeadingTag,
+  type TextSizePreset,
+} from '../../utils/resolveElementTypography';
+import { ELEMENT_DEFAULTS, IMAGE_BOX_DEFAULT_TITLE_HEADING, PRESET_THEMES } from '../../constants';
+import * as LucideIcons from 'lucide-react';
+import { StatCardValue } from './StatCardValue';
+import { resolveElementBackground } from '../builder/style-editor/ElementBackgroundBlock';
+import {
+  resolveSectionImageUrl,
+  resolveSectionImageUrlForElement,
+  toDisplayImageUrl,
+  SECTION_IMAGE_PLACEHOLDER,
+} from './homepage/utils/sectionImageResolve';
+import { bindEditableHtml, createEditableHtmlProps, editableFocusBlur } from './editableHtmlHelpers';
+import {
+  stripImageBoxImageKeys,
+  normalizeImageBoxImageStyle,
+  buildCombinedImageFilter,
+  buildImageOuterStyle,
+  buildImageImgStyle,
+  buildImageHoverCss,
+} from './utils/imagePresentation';
+import { isNavItemActive } from '../../lib/navActiveState';
+import { resolveHeadingHtmlTag } from '../../utils/htmlTagUtils';
 
 interface ElementsSectionProps {
   section: Section;
@@ -11,16 +42,34 @@ interface ElementsSectionProps {
   onElementUpdate: (elementId: string, updates: Partial<WebsiteElement>) => void;
   onElementSelect?: (elementId: string, element?: WebsiteElement) => void;
   selectedElementId?: string | null;
-  buttonClass: string;
+  buttonClass?: string;
   readOnly?: boolean;
+  /** Live site: current pathname for nav active indicator (e.g. from Next.js usePathname). */
+  sitePathname?: string;
+  /** Live site: pageType from API (e.g. service → highlight Services). */
+  sitePageType?: string;
   isWrapped?: boolean; // If false, renders elements without wrapper div (for use in custom layouts)
   themeColors?: {
     titleColor?: string;
     textColor?: string;
+    accordionQuestionColor?: string;
+    accordionAnswerColor?: string;
+    accordionBackgroundColor?: string;
+    accordionBorderColor?: string;
+    cardBackgroundColor?: string;
+    cardBorderColor?: string;
     accentColor?: string;
     buttonBackgroundColor?: string;
     buttonTextColor?: string;
+    buttonBorderColor?: string;
+    borderColor?: string;
     backgroundColor?: string;
+    subheadingColor?: string;
+    iconBgColor?: string;
+    iconColor?: string;
+    icon?: string;
+    secondaryHeadingColor?: string;
+    themeMode?: string;
     // Global style properties for unified styling
     buttonFontWeight?: string;
     buttonFontSize?: string;
@@ -34,64 +83,212 @@ interface ElementsSectionProps {
     subtitleFontSize?: string;
     subtitleAlign?: string;
     subtitleFontFamily?: string;
+    descriptionFontFamily?: string;
     fontWeight?: string;
     fontSize?: string;
     textAlign?: string;
     fontFamily?: string;
   };
+  /** When set + readOnly, image-box "Learn More" opens detail instead of only navigating (e.g. homepage services). */
+  publishedImageBoxDetailHandler?: (payload: {
+    title: string;
+    description: string;
+    href: string;
+  }) => void;
 }
 
+// Helper for Icons (Supports FontAwesome and Lucide)
+const IconRenderer = ({ icon, className, style, size }: { icon: string, className?: string, style?: React.CSSProperties, size?: string | number }) => {
+    if (!icon || icon === 'none') return null;
+    const rawIcon = String(icon).trim();
+
+    // Handle full FontAwesome class strings first (e.g. "fas fa-tools", "fa-solid fa-wrench", "fa-wrench")
+    if (rawIcon.includes('fa-')) {
+        const hasFaStylePrefix = /\b(fa-solid|fa-regular|fa-brands|fa-light|fa-thin|fas|far|fab|fal|fat)\b/.test(rawIcon);
+        const finalFaClass = hasFaStylePrefix ? rawIcon : `fa-solid ${rawIcon}`;
+        return <i className={`${finalFaClass} ${className || ''}`.trim()} style={{ ...style, fontSize: size || style?.fontSize }}></i>;
+    }
+
+    // Handle potential 'default' property in LucideIcons import
+    const icons = (LucideIcons as any).default || LucideIcons;
+
+    // Normalize icon name for Lucide (PascalCase)
+    // Lucide icons are exported as PascalCase (e.g., "Globe", "Settings")
+    const normalizedLucideName = icon.charAt(0).toUpperCase() + icon.slice(1);
+    
+    // Try to find the icon in LucideIcons
+    let LucideIcon = icons[normalizedLucideName] || icons[icon];
+    
+    // If not found, try to find it by checking all keys (case-insensitive)
+    if (!LucideIcon) {
+        const iconLower = icon.toLowerCase();
+        const foundKey = Object.keys(icons).find(k => k.toLowerCase() === iconLower);
+        if (foundKey) {
+            LucideIcon = icons[foundKey];
+        }
+    }
+
+    if (LucideIcon) {
+        // Lucide icons use 'size' prop or 'width'/'height' in style
+        const iconSize = size || style?.fontSize || '1em';
+        return <LucideIcon className={className} style={{ ...style, width: iconSize, height: iconSize }} />;
+    }
+
+    // Fallback to Font Awesome (lowercase)
+    const faIconName = icon.toLowerCase().replace('fa-', '');
+    const faClass = `fa-solid fa-${faIconName}`;
+    return <i className={`${faClass} ${className || ''}`} style={{ ...style, fontSize: size || style?.fontSize }}></i>;
+};
+
 // Helper for Countdown
-const CountdownTimer = ({ targetDate, style }: { targetDate: string, style: any }) => {
+const CountdownTimer = ({ targetDate, style, content }: { targetDate: string, style: any, content?: any }) => {
     const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+    const [expired, setExpired] = useState(false);
 
     useEffect(() => {
-        const interval = setInterval(() => {
+        const tick = () => {
             const now = new Date().getTime();
             const distance = new Date(targetDate).getTime() - now;
-            
             if (distance < 0) {
-                clearInterval(interval);
-            } else {
-                setTimeLeft({
-                    days: Math.floor(distance / (1000 * 60 * 60 * 24)),
-                    hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-                    minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
-                    seconds: Math.floor((distance % (1000 * 60)) / 1000)
-                });
+                setExpired(true);
+                setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+                return;
             }
-        }, 1000);
+            setExpired(false);
+            setTimeLeft({
+                days: Math.floor(distance / (1000 * 60 * 60 * 24)),
+                hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+                minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
+                seconds: Math.floor((distance % (1000 * 60)) / 1000),
+            });
+        };
+        tick();
+        const interval = setInterval(tick, 1000);
         return () => clearInterval(interval);
     }, [targetDate]);
 
-    const boxClass = "flex flex-col items-center p-3 rounded bg-white/5 border border-white/10 min-w-[60px] md:min-w-[80px]";
-    const numClass = "text-xl md:text-2xl font-bold";
-    const labelClass = "text-[10px] uppercase opacity-60";
+    // Style mode: boxed (default) | minimal | flip | inline
+    const mode: string = style.timerMode || 'boxed';
+    const showSeconds: boolean = content?.showSeconds !== false;
+    const showDays: boolean = content?.showDays !== false;
+    const padZero: boolean = content?.padZero !== false;
 
+    const accent = style.accentColor || '#F59E0B';
+    const numColor = style.numberColor || style.color || '#F8FAFC';
+    const labelColor = style.labelColor || style.color || '#C7CDD6';
+    const boxBg = style.boxBackgroundColor || (mode === 'boxed' ? 'rgba(255,255,255,0.05)' : 'transparent');
+    const boxBorder = style.boxBorderColor || accent;
+    const boxRadius = style.boxBorderRadius || '8px';
+    const numFontSize = style.numberFontSize || '1.75rem';
+    const labelFontSize = style.labelFontSize || '0.625rem';
+    const gap = style.timerGap || '12px';
+
+    const fmt = (n: number) => padZero && n < 10 ? `0${n}` : String(n);
+    const labels = {
+        days:    content?.labelDays    || 'Days',
+        hours:   content?.labelHours   || 'Hrs',
+        minutes: content?.labelMinutes || 'Min',
+        seconds: content?.labelSeconds || 'Sec',
+    };
+
+    if (expired) {
+        return (
+            <div className="flex" style={{ justifyContent: style.textAlign === 'center' ? 'center' : (style.textAlign === 'right' ? 'flex-end' : 'flex-start') }}>
+                <span className="font-bold text-lg" style={{ color: accent }}>{content?.expiredText || 'Time\'s up!'}</span>
+            </div>
+        );
+    }
+
+    const justify = style.textAlign === 'center' ? 'center' : (style.textAlign === 'right' ? 'flex-end' : 'flex-start');
+    const containerStyle: React.CSSProperties = { justifyContent: justify, gap, display: mode === 'inline' ? 'inline-flex' : 'flex' };
+
+    const boxStyle: React.CSSProperties = mode === 'boxed' ? {
+        backgroundColor: boxBg,
+        border: `1px solid ${boxBorder}`,
+        borderRadius: boxRadius,
+        padding: '0.75rem 1rem',
+        minWidth: '4rem',
+    } : mode === 'flip' ? {
+        backgroundColor: boxBg || '#1a1a1a',
+        border: `1px solid ${boxBorder}`,
+        borderRadius: boxRadius,
+        padding: '0.5rem 0.875rem',
+        minWidth: '4rem',
+        boxShadow: 'inset 0 -1px 0 rgba(255,255,255,0.08), 0 2px 0 rgba(0,0,0,0.3)',
+    } : {};
+
+    const renderUnit = (val: number, label: string, key: string) => {
+        if (mode === 'inline') {
+            return (
+                <span key={key} className="inline-flex items-baseline gap-1">
+                    <span className="font-bold tabular-nums" style={{ color: numColor, fontSize: numFontSize }}>{fmt(val)}</span>
+                    <span className="uppercase" style={{ color: labelColor, fontSize: labelFontSize }}>{label}</span>
+                </span>
+            );
+        }
+        return (
+            <div key={key} className="flex flex-col items-center" style={boxStyle}>
+                <span className="font-bold tabular-nums leading-none" style={{ color: numColor, fontSize: numFontSize }}>{fmt(val)}</span>
+                <span className="uppercase tracking-wider mt-1" style={{ color: labelColor, fontSize: labelFontSize, opacity: mode === 'minimal' ? 0.6 : 0.85 }}>{label}</span>
+            </div>
+        );
+    };
+
+    const sep = mode === 'inline' || mode === 'minimal' ? null : null;
+    void sep;
     return (
-        <div className="flex gap-2 md:gap-4" style={{ justifyContent: style.textAlign === 'center' ? 'center' : (style.textAlign === 'right' ? 'flex-end' : 'flex-start') }}>
-            <div className={boxClass} style={{ borderColor: style.accentColor }}>
-                <span className={numClass}>{timeLeft.days}</span>
-                <span className={labelClass}>Days</span>
-            </div>
-            <div className={boxClass} style={{ borderColor: style.accentColor }}>
-                <span className={numClass}>{timeLeft.hours}</span>
-                <span className={labelClass}>Hrs</span>
-            </div>
-            <div className={boxClass} style={{ borderColor: style.accentColor }}>
-                <span className={numClass}>{timeLeft.minutes}</span>
-                <span className={labelClass}>Min</span>
-            </div>
-            <div className={boxClass} style={{ borderColor: style.accentColor }}>
-                <span className={numClass}>{timeLeft.seconds}</span>
-                <span className={labelClass}>Sec</span>
-            </div>
+        <div style={containerStyle}>
+            {showDays && renderUnit(timeLeft.days, labels.days, 'd')}
+            {renderUnit(timeLeft.hours, labels.hours, 'h')}
+            {renderUnit(timeLeft.minutes, labels.minutes, 'm')}
+            {showSeconds && renderUnit(timeLeft.seconds, labels.seconds, 's')}
         </div>
     );
 };
 
+/** Convert rgb/rgba to hex so card/accordion and all elements use # colors per theme */
+const colorToHex = (val: string | undefined): string | undefined => {
+  if (!val || typeof val !== 'string' || val.startsWith('#')) return val;
+  const m = val.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*[\d.]+)?\s*\)/);
+  if (!m) return val;
+  const r = Math.max(0, Math.min(255, parseInt(m[1], 10)));
+  const g = Math.max(0, Math.min(255, parseInt(m[2], 10)));
+  const b = Math.max(0, Math.min(255, parseInt(m[3], 10)));
+  return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+};
+
+/**
+ * Resolve the active text alignment for an element from its style.
+ * Falls back to 'left' when not set. Returns three pre-built strings:
+ *   - textAlignClass: Tailwind class for inline text alignment ('text-left' / 'text-center' / 'text-right')
+ *   - justifyClass:   Flex container alignment ('justify-start' / 'justify-center' / 'justify-end')
+ *                      — use for wrapper around an inline-level element (image/badge/icon/etc.)
+ *   - itemsAlignClass: Flex column alignment ('items-start' / 'items-center' / 'items-end')
+ *                      — use when the element stacks vertically and inner items should align
+ *   - value:          The raw 'left' | 'center' | 'right' value
+ */
+const resolveTextAlign = (style: any): {
+  value: 'left' | 'center' | 'right';
+  textAlignClass: string;
+  justifyClass: string;
+  itemsAlignClass: string;
+} => {
+  const raw = (style?.textAlign || '').toString().toLowerCase();
+  const value: 'left' | 'center' | 'right' =
+    raw === 'center' ? 'center' :
+    raw === 'right' ? 'right' : 'left';
+  return {
+    value,
+    textAlignClass:  value === 'center' ? 'text-center' : value === 'right' ? 'text-right' : 'text-left',
+    justifyClass:    value === 'center' ? 'justify-center' : value === 'right' ? 'justify-end' : 'justify-start',
+    itemsAlignClass: value === 'center' ? 'items-center' : value === 'right' ? 'items-end' : 'items-start',
+  };
+};
+
 const getSafeStyle = (style: any): React.CSSProperties => {
   const css: any = { ...style };
+  if (css.backgroundColor) css.backgroundColor = colorToHex(css.backgroundColor) || css.backgroundColor;
+  if (css.borderColor) css.borderColor = colorToHex(css.borderColor) || css.borderColor;
   
   // Explicitly handle 'margin' object from state
   if (typeof style.margin === 'object' && style.margin !== null) {
@@ -127,20 +324,324 @@ const getSafeStyle = (style: any): React.CSSProperties => {
   return css as React.CSSProperties;
 };
 
-export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onElementUpdate, onElementSelect, selectedElementId, buttonClass, readOnly = false, isWrapped = true, themeColors }) => {
+const getMarqueePxPerSecond = (speed: unknown): number => {
+  const pxPerSecondMap: Record<string, number> = {
+    '1x': 80,
+    '2x': 120,
+    '3x': 160,
+    '4x': 210,
+    '5x': 260,
+    '6x': 310,
+    '7x': 360,
+    '8x': 420,
+    '9x': 470,
+    '10x': 530,
+  };
+  return pxPerSecondMap[String(speed)] || 210;
+};
+
+/**
+ * Lightbox modal — fullscreen image overlay used by `image` elements with
+ * `content.lightbox: true`. Click anywhere or press ESC to close.
+ */
+const ImageLightbox: React.FC<{
+  src: string;
+  alt: string;
+  onClose: () => void;
+}> = ({ src, alt, onClose }) => {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    // Lock body scroll while open
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', handler);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Image preview"
+      onClick={onClose}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-6 cursor-zoom-out"
+      style={{
+        backgroundColor: 'rgba(0, 0, 0, 0.92)',
+        backdropFilter: 'blur(4px)',
+        animation: 'gb-lightbox-fade 0.2s ease-out',
+      }}
+    >
+      <style>{`
+        @keyframes gb-lightbox-fade {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes gb-lightbox-zoom {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
+      <button
+        type="button"
+        aria-label="Close lightbox"
+        onClick={onClose}
+        className="absolute top-5 right-5 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white text-lg flex items-center justify-center transition-colors"
+      >
+        <i className="fa-solid fa-xmark" />
+      </button>
+      <img
+        src={src}
+        alt={alt}
+        onClick={(e) => e.stopPropagation()}
+        className="max-w-full max-h-full object-contain shadow-2xl rounded"
+        style={{ animation: 'gb-lightbox-zoom 0.25s cubic-bezier(0.16,1,0.3,1)' }}
+      />
+    </div>
+  );
+};
+
+const MarqueeTextElement: React.FC<{
+  id: string;
+  text: string;
+  speed: unknown;
+  direction: 'left' | 'right';
+  readOnly: boolean;
+  selectedClass: string;
+  textSizeClass: string;
+  textStyle: React.CSSProperties;
+  safeStyle: React.CSSProperties;
+  onClick?: (e: React.MouseEvent) => void;
+  onBlurText: (value: string) => void;
+  pauseOnHover?: boolean;
+  edgeFade?: boolean;
+}> = ({ id, text, speed, direction, readOnly, selectedClass, textSizeClass, textStyle, safeStyle, onClick, onBlurText, pauseOnHover, edgeFade }) => {
+  const spanRef = useRef<HTMLSpanElement | null>(null);
+  const [copyWidth, setCopyWidth] = useState<number>(0);
+
+  useEffect(() => {
+    const measure = () => {
+      const el = spanRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0) setCopyWidth(rect.width);
+    };
+    measure();
+    const handleResize = () => measure();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [text]);
+
+  const distancePx = Math.max(240, copyWidth); // fallback avoids “stuck” animation on first render
+  const pxPerSecond = getMarqueePxPerSecond(speed);
+  const durationSeconds = Math.max(2, distancePx / Math.max(60, pxPerSecond));
+
+  const wrapperStyle: React.CSSProperties = {
+    margin: (safeStyle as any).margin,
+    padding: safeStyle.padding || '6px 16px',
+    backgroundColor: (safeStyle as any).backgroundColor || 'rgba(0,0,0,0.35)',
+    borderRadius: (safeStyle as any).borderRadius,
+    width: (safeStyle as any).width || '100%',
+    height: (safeStyle as any).height,
+    minHeight: (safeStyle as any).minHeight,
+    maxHeight: (safeStyle as any).maxHeight,
+    overflow: 'hidden',
+    // Edge fade — soft gradient mask on left/right edges so the marquee fades in/out
+    ...(edgeFade ? {
+      WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)',
+      maskImage: 'linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)',
+    } : {}),
+  };
+
+  const trackStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    whiteSpace: 'nowrap',
+    willChange: 'transform',
+    animationName: direction === 'right' ? 'gb-marquee-right' : 'gb-marquee-left',
+    animationDuration: `${durationSeconds}s`,
+    animationTimingFunction: 'linear',
+    animationIterationCount: 'infinite',
+    // CSS var used by keyframes for pixel-accurate distance
+    ['--gb-marquee-distance' as any]: `${distancePx}px`
+  };
+
+  const editableTextStyle: React.CSSProperties = { ...textStyle };
+
+  return (
+    <div
+      key={`${id}-marquee-${direction}-${String(speed)}`}
+      className={`outline-none rounded relative transition-all cursor-pointer ${textSizeClass} ${selectedClass} ${pauseOnHover ? 'gb-marquee-pause-on-hover' : ''}`}
+      style={wrapperStyle}
+      onClick={onClick}
+    >
+      <style>{`
+        @keyframes gb-marquee-left {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(calc(-1 * var(--gb-marquee-distance))); }
+        }
+        @keyframes gb-marquee-right {
+          0% { transform: translateX(calc(-1 * var(--gb-marquee-distance))); }
+          100% { transform: translateX(0); }
+        }
+        .gb-marquee-pause-on-hover:hover > div { animation-play-state: paused; }
+      `}</style>
+
+      <div
+        className="w-max"
+        style={trackStyle}
+      >
+        <span
+          ref={(node) => {
+            spanRef.current = node;
+            bindEditableHtml(node, `${id}-marquee-text`, text);
+          }}
+          style={editableTextStyle}
+          contentEditable={!readOnly}
+          {...editableFocusBlur(`${id}-marquee-text`, readOnly, onBlurText)}
+        />
+        <span style={editableTextStyle} dangerouslySetInnerHTML={{ __html: text }} />
+      </div>
+    </div>
+  );
+};
+
+export const ElementsSection: React.FC<ElementsSectionProps> = ({
+  section,
+  onTextEdit,
+  onElementUpdate,
+  onElementSelect,
+  selectedElementId,
+  buttonClass,
+  readOnly = false,
+  isWrapped = true,
+  themeColors,
+  publishedImageBoxDetailHandler,
+  sitePathname = '',
+  sitePageType = '',
+}) => {
   const elements = section.elements || [];
   const [activeTabs, setActiveTabs] = useState<Record<string, number>>({});
+  // Open lightbox keyed by element id — null when no lightbox is open
+  const [openLightboxId, setOpenLightboxId] = useState<string | null>(null);
+
   const { themeData } = useTheme();
-  
-  // Get theme colors from section styles or passed prop
-  // Simplified: Only core colors, let ELEMENT_DEFAULTS handle the rest
-  const theme = themeColors || {
-    titleColor: section.styles?.titleColor || themeData?.heading || '#F8FAFC',
-    textColor: section.styles?.textColor || themeData?.description || '#D1D5DB',
-    accentColor: section.styles?.accentColor || themeData?.accent || '#3b82f6',
-    buttonBackgroundColor: section.styles?.buttonBackgroundColor || themeData?.primaryButton?.bg || '#E11D48',
-    buttonTextColor: section.styles?.buttonTextColor || themeData?.primaryButton?.text || '#FFFFFF',
+  // Site-wide global element-style overrides (sit between theme and per-element style).
+  const globalElementStyles = useGlobalElementStyles();
+  const defaultSizes = useDefaultSizes();
+  // Headings — `all` defaults + per-level (h1..h6) + legacy flat `heading`
+  const gHeadings    = globalElementStyles?.headings || {};
+  const gHeadingAll  = gHeadings.all || {};
+  const gHeadingLegacy = globalElementStyles?.heading || {};
+  // Compose a heading getter that respects level + light/dark mode.
+  const getHeadingStyleFor = (level: 'h1'|'h2'|'h3'|'h4'|'h5'|'h6', light: boolean) => {
+    const lvl = (gHeadings as any)[level] || {};
+    // Resolution: per-level > all > legacy flat (for old saves)
+    return {
+      color:           (light ? lvl.colorLight : lvl.color)
+                       ?? (light ? gHeadingAll.colorLight : gHeadingAll.color)
+                       ?? gHeadingLegacy.color,
+      fontSize:        lvl.fontSize ?? gHeadingAll.fontSize,
+      fontFamily:      lvl.fontFamily ?? gHeadingAll.fontFamily ?? gHeadingLegacy.fontFamily,
+      fontWeight:      lvl.fontWeight ?? gHeadingAll.fontWeight ?? gHeadingLegacy.fontWeight,
+      lineHeight:      lvl.lineHeight ?? gHeadingAll.lineHeight ?? gHeadingLegacy.lineHeight,
+      letterSpacing:   lvl.letterSpacing ?? gHeadingAll.letterSpacing ?? gHeadingLegacy.letterSpacing,
+      highlightColor:  (light ? lvl.highlightColorLight : lvl.highlightColor)
+                       ?? (light ? gHeadingAll.highlightColorLight : gHeadingAll.highlightColor)
+                       ?? gHeadingLegacy.highlightColor,
+    } as Record<string, string | undefined>;
   };
+  const gText    = globalElementStyles?.text    || {};
+  const gButton  = globalElementStyles?.button  || {};
+  const gIcon    = globalElementStyles?.icon    || {};
+  const gList    = globalElementStyles?.list    || {};
+  const gBadge   = globalElementStyles?.badge   || {};
+
+  // Get theme colors from section styles or passed prop
+  const sectionStyles = (section.styles || {}) as Record<string, unknown>;
+  const isLightMode = section.styles?.themeMode === 'light';
+  // themeData may be { name, elements: {...} } or the elements object directly — normalise the same way SectionRenderer does
+  const td = (themeData as any)?.elements || themeData || {};
+  const tdLight = (td as any)?.light || {};
+  const baseTheme = {
+    // Globals win over theme tokens but per-section/per-element overrides still trump globals.
+    titleColor: section.styles?.titleColor
+      || (isLightMode ? gHeadingAll.colorLight : gHeadingAll.color)
+      || gHeadingLegacy.color
+      || td?.heading || (isLightMode ? '#111827' : '#F8FAFC'),
+    textColor: section.styles?.textColor
+      || (isLightMode ? gText.colorLight : gText.color)
+      || td?.description || (isLightMode ? '#4B5563' : '#D1D5DB'),
+    backgroundColor: (sectionStyles?.backgroundColor as string) || td?.surface || '',
+    accordionQuestionColor:
+      (sectionStyles?.accordionQuestionColor as string) ||
+      td?.accordion?.questionColor ||
+      td?.heading ||
+      '#F8FAFC',
+    accordionAnswerColor:
+      (sectionStyles?.accordionAnswerColor as string) ||
+      td?.accordion?.answerColor ||
+      td?.description ||
+      '#D1D5DB',
+    cardBackgroundColor: (sectionStyles?.cardBackgroundColor as string) || td?.cardBackground || td?.surface || (isLightMode ? '#FFFFFF' : '#131A20'),
+    cardBorderColor: (sectionStyles?.cardBorderColor as string) || td?.cardBorder || td?.borderColor || (isLightMode ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'),
+    accordionBackgroundColor:
+      (sectionStyles?.accordionBackgroundColor as string) ||
+      (sectionStyles?.cardBackgroundColor as string) ||
+      td?.cardBackground || td?.surface ||
+      (isLightMode ? '#FFFFFF' : '#131A20'),
+    accordionBorderColor:
+      (sectionStyles?.accordionBorderColor as string) ||
+      (sectionStyles?.cardBorderColor as string) ||
+      td?.cardBorder || td?.borderColor ||
+      (isLightMode ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'),
+    accentColor: section.styles?.accentColor || td?.accent || '#E11D48',
+    iconColor: section.styles?.iconColor || gIcon.color || td?.icon || td?.accent || '#E11D48',
+    buttonBackgroundColor: section.styles?.buttonBackgroundColor || gButton.backgroundColor || td?.primaryButton?.bg || '#E11D48',
+    buttonTextColor: section.styles?.buttonTextColor || gButton.color || td?.primaryButton?.text || '#FFFFFF',
+    // Globals exposed for renders that read these directly off the theme bag
+    titleFontWeight: gHeadingAll.fontWeight ?? gHeadingLegacy.fontWeight,
+    titleLineHeight: gHeadingAll.lineHeight ?? gHeadingLegacy.lineHeight,
+    titleLetterSpacing: gHeadingAll.letterSpacing ?? gHeadingLegacy.letterSpacing,
+    descriptionFontSize: gText.fontSize,
+    descriptionLineHeight: gText.lineHeight,
+    listMarkerColor: gList.markerColor,
+    listItemGap: gList.itemGap,
+    badgeBackgroundColor: gBadge.backgroundColor,
+    badgeTextColor: gBadge.color,
+    badgeBorderRadius: gBadge.borderRadius,
+    buttonBorderColor: (section.styles as any)?.borderColor || (section.styles as any)?.secondaryButtonBorderColor || 'transparent',
+    // Secondary button colors
+    secondaryButtonBg: (sectionStyles?.secondaryButtonBg as string) || td?.secondaryButton?.bg || 'transparent',
+    secondaryButtonText: (sectionStyles?.secondaryButtonText as string) || td?.secondaryButton?.text || td?.heading || '#F8FAFC',
+    secondaryButtonBorder: (sectionStyles?.secondaryButtonBorder as string) || td?.secondaryButton?.border || td?.ring || td?.accent || '#E11D48',
+    subheadingColor: section.styles?.subheadingColor || td?.subheading || td?.description || '#D1D5DB',
+    iconBgColor: section.styles?.iconBgColor || gIcon.backgroundColor || td?.iconBg || `${td?.icon || td?.accent || '#E11D48'}15`,
+    secondaryHeadingColor: (sectionStyles?.secondaryHeadingColor as string)
+      || (isLightMode ? gHeadingAll.highlightColorLight : gHeadingAll.highlightColor)
+      || gHeadingLegacy.highlightColor
+      || (sectionStyles?.buttonBackgroundColor as string) || td?.secondaryHeading || td?.primaryButton?.bg || td?.accent || '#E11D48',
+
+    // Font fallbacks from global theme typography (per-element global overrides win)
+    titleFontFamily: gHeadingAll.fontFamily || gHeadingLegacy.fontFamily || ((themeData as any)?.typography || td?.typography)?.h1?.fontFamily,
+    subtitleFontFamily: gHeadings.h2?.fontFamily || gHeadingAll.fontFamily || ((themeData as any)?.typography || td?.typography)?.h2?.fontFamily,
+    descriptionFontFamily: gText.fontFamily || ((themeData as any)?.typography || td?.typography)?.p?.fontFamily,
+    buttonFontFamily: ((themeData as any)?.typography || td?.typography)?.button?.fontFamily,
+    
+    // Text Transform fallbacks from section styles
+    titleTextTransform: section.styles?.titleTextTransform,
+    subtitleTextTransform: section.styles?.subtitleTextTransform,
+    descriptionTextTransform: section.styles?.descriptionTextTransform,
+
+    // Section-level typography (sliders / H1–H6) — used when element has no inline override
+    titleFontSize: (sectionStyles?.titleSize as string) || (sectionStyles?.titleFontSize as string) || gHeadings.h2?.fontSize || gHeadingAll.fontSize || (sectionStyles?.fontSize as string),
+    subtitleFontSize:
+      (sectionStyles?.subtitleSize as string) ||
+      (sectionStyles?.subtitleFontSize as string),
+  };
+
+  const theme = { ...baseTheme, ...(themeColors || {}) };
   
   // Helper to merge element style with theme defaults
   // Only uses element color if it's explicitly set (not undefined/null/empty)
@@ -156,14 +657,78 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
   };
 
   const handleContentUpdate = (id: string, key: string, value: any) => {
+    if (readOnly) return;
+    
+    // Special handling for virtual hero elements
+    if (id.includes('-hero-title') && key === 'text' && onTextEdit) {
+      onTextEdit('title', value);
+    } else if (id.includes('-hero-subtitle') && key === 'text' && onTextEdit) {
+      onTextEdit('subtitle', value);
+    } else if (id.includes('-hero-button') && key === 'text' && onTextEdit) {
+      onTextEdit('ctaText', value);
+    } else if (id.includes('-hero-button') && key === 'link' && onTextEdit) {
+      onTextEdit('ctaHref', value);
+    } else if (id.includes('-hero-image') && key === 'imageUrl' && onTextEdit) {
+      onTextEdit('imageUrl', value);
+    } else if (id.includes('-hero-badge') && key === 'text' && onTextEdit) {
+      onTextEdit('badgeText', value);
+    }
+
     const el = elements.find(e => e.id === id);
-    if(el) {
-        onElementUpdate(id, { content: { ...el.content, [key]: value } });
+    if (el) {
+      // Heading canonical content rule:
+      // - textBefore: all words except last
+      // - highlightedText: last word
+      // - textAfter: empty
+      // Keep this in sync on inline edits so render + sidebar always match.
+      if (el.type === 'heading' && key === 'text') {
+        const rawHtml = String(value || '');
+        const plainText = (() => {
+          if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = rawHtml;
+            return (tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
+          }
+          return rawHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        })();
+
+        const words = plainText.split(' ').filter(Boolean);
+        const textBefore = words.length > 1 ? words.slice(0, -1).join(' ') : '';
+        const highlightedText = words.length > 0 ? words[words.length - 1] : '';
+        const textAfter = '';
+
+        onElementUpdate(id, {
+          ...el,
+          content: {
+            ...el.content,
+            text: plainText,
+            textBefore,
+            highlightedText,
+            textAfter,
+          },
+        });
+        return;
+      }
+
+      onElementUpdate(id, { ...el, content: { ...el.content, [key]: value } });
+    }
+  };
+
+  const handleArrayContentUpdate = (id: string, arrayKey: string, index: number, itemKey: string, value: any) => {
+    if (readOnly) return;
+    const el = elements.find(e => e.id === id);
+    if(el && el.content[arrayKey]) {
+        const newArray = [...el.content[arrayKey]];
+        newArray[index] = { ...newArray[index], [itemKey]: value };
+        onElementUpdate(id, { ...el, content: { ...el.content, [arrayKey]: newArray } });
     }
   };
 
   const handleClick = (e: React.MouseEvent, element: WebsiteElement) => {
       e.stopPropagation();
+      // Signal to the iframe background click handler that an element was selected,
+      // so it doesn't fire deselect on the same click.
+      try { (window as any).__gbElementClicked = true; } catch (_) {}
       if (onElementSelect) {
           onElementSelect(element.id, element);
       }
@@ -171,8 +736,17 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
 
   const renderElement = (el: WebsiteElement) => {
     const { id, type, content, style } = el;
+    const bindHtml = (elementId: string, html: string) => (node: HTMLElement | null) =>
+      bindEditableHtml(node, elementId, html);
+    const editHandlers = (
+      elementId: string,
+      onCommit: (html: string) => void,
+      liveCommit = false
+    ) => editableFocusBlur(elementId, readOnly, onCommit, liveCommit);
     const isSelected = selectedElementId === id;
-    const selectedClass = isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-black z-20' : 'hover:ring-1 hover:ring-white/20';
+    const selectedClass = readOnly
+      ? ''
+      : (isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-black z-20' : 'hover:ring-1 hover:ring-white/20');
 
     // STEP 1: Merge Global Element Defaults with Element's specific style
     const renderStyle = {
@@ -180,18 +754,31 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
       ...(el.style || {})
     };
 
-    // Merge element style with theme colors (only if element doesn't have explicit colors)
     let mergedStyle = { ...renderStyle };
+    
+    // Only pre-fill buttons globally, let individual case blocks handle their specific semantic colors
     if (theme) {
-      // Only apply theme colors if element doesn't have explicit colors
-      if (!renderStyle?.color || renderStyle.color === 'transparent' || renderStyle.color === '') {
-        mergedStyle.color = theme.textColor;
-      }
-      // For buttons, use button theme colors
-      if ((type === 'button' || type === 'call-to-action') && (!renderStyle?.backgroundColor || renderStyle.backgroundColor === 'transparent' || renderStyle.backgroundColor === '')) {
-        mergedStyle.backgroundColor = theme.buttonBackgroundColor;
+      if (type === 'button' || type === 'call-to-action') {
+        const variant = renderStyle.buttonVariant || (el.content as any)?.buttonVariant || 'primary';
+        if (!renderStyle?.backgroundColor || renderStyle.backgroundColor === 'transparent' || renderStyle.backgroundColor === '') {
+          if (variant === 'secondary') {
+            mergedStyle.backgroundColor = (theme as any).secondaryButtonBg || 'transparent';
+          } else if (variant === 'outline') {
+            mergedStyle.backgroundColor = 'transparent';
+          } else if (variant === 'ghost') {
+            mergedStyle.backgroundColor = 'transparent';
+          } else {
+            mergedStyle.backgroundColor = theme.buttonBackgroundColor;
+          }
+        }
         if (!renderStyle?.color || renderStyle.color === 'transparent' || renderStyle.color === '') {
-          mergedStyle.color = theme.buttonTextColor;
+          if (variant === 'secondary') {
+            mergedStyle.color = (theme as any).secondaryButtonText || theme.buttonTextColor;
+          } else if (variant === 'outline' || variant === 'ghost') {
+            mergedStyle.color = theme.accentColor || theme.buttonBackgroundColor;
+          } else {
+            mergedStyle.color = theme.buttonTextColor;
+          }
         }
       }
     }
@@ -199,100 +786,549 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
     const safeStyle = getSafeStyle(mergedStyle);
 
     switch (type) {
-        case 'heading':
-            const headingTag = (content.htmlTag || 'h2') as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
-            // Style Hierarchy: renderStyle (ELEMENT_DEFAULTS + element.style) > Theme Colors
+        case 'heading': {
+            const c: any = content || {};
+            const isMainSectionTitle =
+              id === `${section.id}-hero-title` || id === `${section.id}-title`;
+            const sectionHeadingTag = (sectionStyles?.titleHeadingTag as string) || '';
+            let headingTag = resolveHeadingHtmlTag(
+              c.htmlTag ||
+                (isMainSectionTitle && sectionHeadingTag ? sectionHeadingTag : undefined) ||
+                'h2',
+              'h2'
+            ) as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+            // SEO guard — exactly one <h1> per page lives in the hero section.
+            // If a non-hero variant ever asks for h1 (legacy data, hand-edited
+            // export, or a future variant that forgets), silently demote to h2
+            // so we don't ship a multi-h1 page. This is cheap defence-in-depth;
+            // it won't override anything an SEO-aware author should be doing.
+            if (headingTag === 'h1' && section.type !== 'hero') {
+              headingTag = 'h2';
+            }
+            // Per-level + light/dark global overrides for THIS heading's tag.
+            const gHead = getHeadingStyleFor(headingTag, isLightMode);
+
+            const resolvedTitleFontSize = resolveHeadingFontSize({
+              elementStyle: renderStyle,
+              sectionStyles,
+              isHeroTitle: isMainSectionTitle,
+              headingTag,
+              globalHeadings: gHeadings,
+              defaultSizes,
+            });
+            const resolvedHeadingFontFamily =
+              safeStyle.fontFamily && safeStyle.fontFamily.trim() !== ''
+                ? safeStyle.fontFamily
+                : (gHead.fontFamily || theme?.titleFontFamily);
+
+            // Color resolution — per-element > per-level global > theme > fallback
+            const titleCol = safeStyle.color || gHead.color || theme?.titleColor || renderStyle.color || '#F8FAFC';
+
+            const accentCol = resolveHighlightAccentColor({
+              elementStyle: renderStyle,
+              contentHighlightColor: c.highlightColor,
+              headingGlobals: gHead,
+              themeSecondary: theme?.secondaryHeadingColor,
+              themeAccent: theme?.accentColor,
+              titleColor: String(titleCol),
+              isLightMode,
+            });
+
+            // Gradient text fill (when both colors set)
+            const grad1 = renderStyle.gradientFrom;
+            const grad2 = renderStyle.gradientTo;
+            const useGradient = !!(grad1 && grad2);
+
+            // Highlight mode: color (default) | background | underline
+            const highlightMode: 'color' | 'background' | 'underline' =
+                (c.highlightMode === 'background' || c.highlightMode === 'underline') ? c.highlightMode : 'color';
+
+            const highlightSpanStyle = buildHeadingHighlightSpanStyle(
+              accentCol,
+              highlightMode,
+              useGradient
+            );
+
             const headingStyle: React.CSSProperties = {
                 ...safeStyle,
-                color: safeStyle.color || theme?.titleColor || '#F8FAFC',
-                // Fallback to renderStyle (which already contains ELEMENT_DEFAULTS)
-                fontWeight: renderStyle.fontWeight || 'bold',
-                fontSize: renderStyle.fontSize || undefined,
+                // When gradient is active we set transparent fill + bg-clip; else solid color
+                color: useGradient ? 'transparent' : titleCol,
+                ...(useGradient ? {
+                    backgroundImage: `linear-gradient(135deg, ${grad1}, ${grad2})`,
+                    backgroundClip: 'text',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                } : {}),
+                fontWeight: renderStyle.fontWeight || gHead.fontWeight || 'bold',
+                fontSize: resolvedTitleFontSize,
                 textAlign: (renderStyle.textAlign as any) || 'left',
-                fontFamily: (renderStyle.fontFamily && renderStyle.fontFamily.trim() !== '') 
-                    ? renderStyle.fontFamily 
-                    : undefined,
+                textTransform: safeStyle.textTransform || theme?.titleTextTransform || undefined,
+                fontFamily: resolvedHeadingFontFamily && resolvedHeadingFontFamily.trim() !== '' ? resolvedHeadingFontFamily : undefined,
+                lineHeight: renderStyle.lineHeight || gHead.lineHeight || undefined,
+                letterSpacing: renderStyle.letterSpacing || gHead.letterSpacing || undefined,
+                fontStyle: renderStyle.fontStyle || undefined,
+                textDecoration: renderStyle.textDecoration || undefined,
+                textShadow: renderStyle.textShadow || undefined,
+                // Don't force margin:0 inline — that overrides parent `space-y-*` Tailwind classes
+                // (inline styles win over class selectors). Let parent layout handle spacing.
+                // Only zero browser default margins via reset class on the element below.
+                padding: 0,
             };
             // Remove undefined properties
             if (!headingStyle.fontFamily) delete headingStyle.fontFamily;
-            if (!headingStyle.fontSize) delete headingStyle.fontSize;
-            return React.createElement(
-                headingTag,
+
+            let headingText = c.text || '';
+            const hasStructuredHeadingParts =
+                Object.prototype.hasOwnProperty.call(c, 'textBefore') ||
+                Object.prototype.hasOwnProperty.call(c, 'highlightedText') ||
+                Object.prototype.hasOwnProperty.call(c, 'textAfter');
+            let textBefore = c.textBefore || '';
+            let highlightedText = c.highlightedText || '';
+            let textAfter = c.textAfter || '';
+
+            if (!hasStructuredHeadingParts) {
+                const rawText = String(c.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                const words = rawText.split(' ').filter(Boolean);
+                textBefore = words.length > 1 ? words.slice(0, -1).join(' ') : '';
+                highlightedText = words.length > 0 ? words[words.length - 1] : '';
+                textAfter = '';
+            }
+
+            if (highlightedText || textBefore || textAfter) {
+                headingText = `${textBefore} <span style="${highlightSpanStyle}">${highlightedText}</span> ${textAfter}`;
+            }
+
+            const safeHeadingTag = resolveHeadingHtmlTag(headingTag, 'h2');
+            const headingEl = React.createElement(
+                safeHeadingTag,
                 {
-                    key: `${id}-${headingTag}`, // Force re-render when tag changes
-                    className: `font-bold outline-none rounded px-1 relative transition-all cursor-pointer ${selectedClass}`,
+                    key: `${id}-${headingTag}`,
+                    // m-0 resets browser default heading margin; parent `space-y-*` (sibling
+                    // selector, higher specificity) re-applies the right vertical rhythm.
+                    className: `font-bold outline-none relative transition-all cursor-pointer m-0 ${selectedClass}`,
                     style: headingStyle,
                     onClick: (e: React.MouseEvent) => handleClick(e, el),
                     contentEditable: !readOnly,
-                    suppressContentEditableWarning: !readOnly,
-                    onBlur: !readOnly ? (e: any) => handleContentUpdate(id, 'text', e.currentTarget.textContent) : undefined
-                },
-                content.text
+                    ...createEditableHtmlProps(id, headingText, readOnly, (html) =>
+                        handleContentUpdate(id, 'text', html)
+                    ),
+                }
             );
 
-        case 'text':
-            // Get text size class based on textSize variant
-            const textSizeClass = content.textSize === 'small' ? 'text-sm' : 
-                                  content.textSize === 'large' ? 'text-lg' : 
-                                  content.textSize === 'xl' ? 'text-xl' : '';
-            // Style Hierarchy: renderStyle (ELEMENT_DEFAULTS + element.style) > Theme Colors
+            // Kicker line above heading
+            const kickerText = (c.kicker || '').toString().trim();
+            const hasKicker = kickerText !== '';
+
+            // Animation preset → motion variants. Each preset maps initial+animate frames.
+            const animationPreset: string = c.animation || 'none';
+            const animationDelay = Number(c.animationDelay) || 0;
+            const animVariants: Record<string, { initial: any; animate: any }> = {
+                'none':        { initial: {}, animate: {} },
+                'fade-up':     { initial: { opacity: 0, y: 24 },                 animate: { opacity: 1, y: 0 } },
+                'slide-left':  { initial: { opacity: 0, x: -32 },                animate: { opacity: 1, x: 0 } },
+                'slide-right': { initial: { opacity: 0, x: 32 },                 animate: { opacity: 1, x: 0 } },
+                'blur-in':     { initial: { opacity: 0, filter: 'blur(8px)' },   animate: { opacity: 1, filter: 'blur(0px)' } },
+                'scale-in':    { initial: { opacity: 0, scale: 0.92 },           animate: { opacity: 1, scale: 1 } },
+                'typewriter':  { initial: { opacity: 0, clipPath: 'inset(0 100% 0 0)' }, animate: { opacity: 1, clipPath: 'inset(0 0% 0 0)' } },
+            };
+            const animVar = animVariants[animationPreset] || animVariants.none;
+            const hasAnimation = animationPreset !== 'none';
+
+            // If neither kicker nor animation, just return the heading element directly (preserves behavior)
+            if (!hasKicker && !hasAnimation) {
+                return headingEl;
+            }
+
+            const wrapperContent = (
+                <>
+                    {hasKicker && (
+                        <span
+                            className="block mb-3 outline-none"
+                            style={{
+                                color: renderStyle.kickerColor || accentCol,
+                                fontSize: renderStyle.kickerFontSize || '0.75rem',
+                                fontWeight: 800,
+                                letterSpacing: renderStyle.kickerLetterSpacing || '0.18em',
+                                textTransform: 'uppercase',
+                            }}
+                            ref={bindHtml(id, kickerText)}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'kicker', html))}
+                        />
+                    )}
+                    {headingEl}
+                </>
+            );
+
+            if (hasAnimation) {
+                return (
+                    <AnimatedDiv
+                        key={`${id}-anim`}
+                        enabled={!readOnly}
+                        initial={animVar.initial}
+                        whileInView={animVar.animate}
+                        viewport={{ once: true, margin: '-50px' }}
+                        transition={{ duration: 0.7, delay: animationDelay, ease: [0.16, 1, 0.3, 1] }}
+                        style={{ display: 'block' }}
+                    >
+                        {wrapperContent}
+                    </AnimatedDiv>
+                );
+            }
+
+            // No animation but has kicker — plain wrapper
+            return <div key={`${id}-wrap`}>{wrapperContent}</div>;
+        }
+
+        case 'text': {
+            const c: any = content || {};
+            const isSubtitleElement = id.includes('-hero-subtitle') || id.includes('subheading') || c.textSize === 'subheading';
+            const textSizePreset = (c.textSize || 'base') as TextSizePreset;
+            const resolvedTextFontSize = resolveTextFontSize({
+              elementStyle: renderStyle,
+              textSize: textSizePreset,
+              sectionSubtitleTextSize: section.content?.subtitleTextSize as TextSizePreset | undefined,
+              isHeroSubtitle: id.includes('-hero-subtitle'),
+              globalText: gText,
+              defaultSizes,
+            });
+            const resolvedTextFontFamily =
+              safeStyle.fontFamily && safeStyle.fontFamily.trim() !== ''
+                ? safeStyle.fontFamily
+                : isSubtitleElement
+                  ? theme?.subtitleFontFamily
+                  : theme?.descriptionFontFamily;
+
+            const linkColor = renderStyle.linkColor || (theme as any)?.linkColor || theme?.accentColor || '#3B82F6';
+
             const textStyle: React.CSSProperties = {
                 ...safeStyle,
-                color: safeStyle.color || theme.textColor || '#D1D5DB',
-                // Fallback to renderStyle (which already contains ELEMENT_DEFAULTS)
-                fontWeight: renderStyle.fontWeight || '400',
-                fontSize: renderStyle.fontSize || undefined,
+                color: safeStyle.color || (isSubtitleElement ? theme.subheadingColor : theme.textColor) || '#D1D5DB',
+                fontWeight: renderStyle.fontWeight || gText.fontWeight || '400',
+                fontSize: resolvedTextFontSize,
                 textAlign: (renderStyle.textAlign as any) || 'left',
-                fontFamily: (renderStyle.fontFamily && renderStyle.fontFamily.trim() !== '') 
-                    ? renderStyle.fontFamily 
-                    : undefined,
+                textTransform: safeStyle.textTransform || (isSubtitleElement ? theme?.subtitleTextTransform : theme?.descriptionTextTransform) || undefined,
+                fontFamily: resolvedTextFontFamily && resolvedTextFontFamily.trim() !== '' ? resolvedTextFontFamily : undefined,
+                lineHeight: renderStyle.lineHeight || undefined,
+                letterSpacing: renderStyle.letterSpacing || undefined,
+                fontStyle: renderStyle.fontStyle || undefined,
+                textDecoration: renderStyle.textDecoration || undefined,
+                textShadow: renderStyle.textShadow || undefined,
+                marginBottom: renderStyle.paragraphSpacing || undefined,
             };
-            // Remove undefined properties
             if (!textStyle.fontFamily) delete textStyle.fontFamily;
-            if (!textStyle.fontSize) delete textStyle.fontSize;
-            return (
-                <p 
-                    key={`${id}-${content.textSize || 'base'}`}
-                    className={`outline-none rounded px-1 relative transition-all cursor-pointer ${textSizeClass} ${selectedClass}`}
+
+            // Drop cap for first letter (magazine vibe)
+            const dropCapEnabled = !!renderStyle.dropCap;
+            const dropCapSize = renderStyle.dropCapSize || '3em';
+            const dropCapColor = renderStyle.dropCapColor || theme?.accentColor || textStyle.color;
+
+            // Animation preset wrapper
+            const animationPreset: string = c.animation || 'none';
+            const animationDelay = Number(c.animationDelay) || 0;
+            const animVariants: Record<string, { initial: any; animate: any }> = {
+                'none':        { initial: {}, animate: {} },
+                'fade-up':     { initial: { opacity: 0, y: 20 },                 animate: { opacity: 1, y: 0 } },
+                'slide-left':  { initial: { opacity: 0, x: -28 },                animate: { opacity: 1, x: 0 } },
+                'slide-right': { initial: { opacity: 0, x: 28 },                 animate: { opacity: 1, x: 0 } },
+                'blur-in':     { initial: { opacity: 0, filter: 'blur(6px)' },   animate: { opacity: 1, filter: 'blur(0px)' } },
+                'scale-in':    { initial: { opacity: 0, scale: 0.95 },           animate: { opacity: 1, scale: 1 } },
+                'typewriter':  { initial: { opacity: 0, clipPath: 'inset(0 100% 0 0)' }, animate: { opacity: 1, clipPath: 'inset(0 0% 0 0)' } },
+            };
+            const animVar = animVariants[animationPreset] || animVariants.none;
+            const hasAnimation = animationPreset !== 'none';
+
+            // Per-element CSS injection for inline link color + drop cap
+            const scopedCss = `
+                #gb-${id.replace(/[^a-zA-Z0-9_-]/g, '_')} a { color: ${linkColor}; text-decoration: underline; text-underline-offset: 2px; }
+                #gb-${id.replace(/[^a-zA-Z0-9_-]/g, '_')} a:hover { opacity: 0.85; }
+                ${dropCapEnabled ? `#gb-${id.replace(/[^a-zA-Z0-9_-]/g, '_')}::first-letter {
+                    font-size: ${dropCapSize};
+                    float: left;
+                    line-height: 0.9;
+                    margin-right: 0.08em;
+                    margin-top: 0.05em;
+                    color: ${dropCapColor};
+                    font-weight: 700;
+                }` : ''}
+            `;
+            const scopedId = `gb-${id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
+            if (c.enableMarquee) {
+                return (
+                    <MarqueeTextElement
+                      key={id}
+                      id={id}
+                      text={c.text || ''}
+                      speed={c.marqueeSpeed}
+                      direction={c.marqueeDirection === 'right' ? 'right' : 'left'}
+                      readOnly={readOnly}
+                      selectedClass={selectedClass}
+                      textSizeClass=""
+                      textStyle={textStyle}
+                      safeStyle={safeStyle as any}
+                      onClick={!readOnly ? (e) => handleClick(e, el) : undefined}
+                      onBlurText={(v) => handleContentUpdate(id, 'text', v)}
+                      pauseOnHover={!!c.marqueePauseOnHover}
+                      edgeFade={!!c.marqueeEdgeFade}
+                    />
+                );
+            }
+
+            const paragraphEl = (
+                <p
+                    key={`${id}-${c.textSize || 'base'}-${resolvedTextFontSize}`}
+                    id={scopedId}
+                    className={`outline-none rounded px-1 relative transition-all cursor-pointer ${selectedClass}`}
                     style={textStyle}
                     onClick={!readOnly ? (e: React.MouseEvent) => handleClick(e, el) : undefined}
+                    ref={bindHtml(id, c.text || '')}
                     contentEditable={!readOnly}
-                    suppressContentEditableWarning={!readOnly}
-                    onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'text', e.currentTarget.textContent) : undefined}
-                >
-                    {content.text}
-                </p>
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                />
             );
 
+            const wrapped = (
+                <>
+                    <style>{scopedCss}</style>
+                    {paragraphEl}
+                </>
+            );
+
+            const textLinkUrl = String(c.link || '').trim();
+            const textLinkIsExternal =
+                !!textLinkUrl &&
+                (/^(https?:)?\/\//i.test(textLinkUrl) || /^mailto:|^tel:/i.test(textLinkUrl));
+            const textLinkNewTabPref = c.openInNewTab === undefined ? true : !!c.openInNewTab;
+            const textLinkTarget = textLinkUrl
+                ? textLinkIsExternal && textLinkNewTabPref
+                    ? '_blank'
+                    : '_self'
+                : undefined;
+            const textLinkRel = textLinkTarget === '_blank' ? 'noopener noreferrer' : undefined;
+
+            const wrappedWithLink =
+                textLinkUrl && readOnly ? (
+                    <a
+                        href={textLinkUrl}
+                        target={textLinkTarget}
+                        rel={textLinkRel}
+                        className="no-underline text-inherit hover:underline inline-block"
+                    >
+                        {wrapped}
+                    </a>
+                ) : (
+                    wrapped
+                );
+
+            if (hasAnimation) {
+                return (
+                    <AnimatedDiv
+                        key={`${id}-anim`}
+                        enabled={!readOnly}
+                        initial={animVar.initial}
+                        whileInView={animVar.animate}
+                        viewport={{ once: true, margin: '-50px' }}
+                        transition={{ duration: 0.65, delay: animationDelay, ease: [0.16, 1, 0.3, 1] }}
+                        style={{ display: 'block' }}
+                    >
+                        {wrappedWithLink}
+                    </AnimatedDiv>
+                );
+            }
+            return wrappedWithLink;
+        }
+
         case 'button':
-        case 'call-to-action':
-            // Style Hierarchy: renderStyle (ELEMENT_DEFAULTS + element.style) > Theme Colors
-            const buttonStyle: React.CSSProperties = {
-                ...safeStyle, // This includes all properties from getSafeStyle
-                backgroundColor: safeStyle.backgroundColor || theme?.buttonBackgroundColor || '#E11D48',
-                color: safeStyle.color || theme?.buttonTextColor || '#FFFFFF',
-                textAlign: 'center' as const, // Button text is always centered internally
-                // Fallback to renderStyle (which already contains ELEMENT_DEFAULTS)
-                fontWeight: renderStyle.fontWeight || 'bold',
-                fontSize: renderStyle.fontSize || undefined,
-                fontFamily: (renderStyle.fontFamily && renderStyle.fontFamily.trim() !== '') 
-                    ? renderStyle.fontFamily 
-                    : undefined,
+        case 'call-to-action': {
+            const c: any = content || {};
+            const btnVariant = (renderStyle as any).buttonVariant || c.buttonVariant || 'primary';
+            const resolvedButtonFontFamily =
+              safeStyle.fontFamily && safeStyle.fontFamily.trim() !== ''
+                ? safeStyle.fontFamily
+                : theme?.buttonFontFamily;
+
+            // Resolve colors based on variant
+            let btnBg = safeStyle.backgroundColor;
+            let btnColor = safeStyle.color;
+            let btnBorderColor = safeStyle.borderColor;
+            let btnBorderWidth = safeStyle.borderWidth;
+            let btnBorderStyle = safeStyle.borderStyle;
+
+            if (!btnBg || btnBg === 'transparent' || btnBg === '') {
+              if (btnVariant === 'secondary') {
+                btnBg = (theme as any)?.secondaryButtonBg || 'transparent';
+              } else if (btnVariant === 'outline' || btnVariant === 'ghost') {
+                btnBg = 'transparent';
+              } else {
+                btnBg = theme?.buttonBackgroundColor || '#E11D48';
+              }
+            }
+            if (!btnColor || btnColor === 'transparent' || btnColor === '') {
+              if (btnVariant === 'secondary') {
+                btnColor = (theme as any)?.secondaryButtonText || theme?.buttonTextColor || '#F8FAFC';
+              } else if (btnVariant === 'outline') {
+                btnColor = (theme as any)?.secondaryButtonBorder || theme?.accentColor || theme?.buttonBackgroundColor;
+              } else if (btnVariant === 'ghost') {
+                btnColor = theme?.textColor || theme?.buttonTextColor || '#F8FAFC';
+              } else {
+                btnColor = theme?.buttonTextColor || '#FFFFFF';
+              }
+            }
+            if (!btnBorderColor || btnBorderColor === 'transparent' || btnBorderColor === '') {
+              if (btnVariant === 'secondary') {
+                btnBorderColor = (theme as any)?.secondaryButtonBorder || theme?.accentColor || '#E11D48';
+                btnBorderWidth = btnBorderWidth || '1px';
+                btnBorderStyle = btnBorderStyle || 'solid';
+              } else if (btnVariant === 'outline') {
+                btnBorderColor = (theme as any)?.secondaryButtonBorder || theme?.accentColor || theme?.buttonBackgroundColor || '#E11D48';
+                btnBorderWidth = btnBorderWidth || '2px';
+                btnBorderStyle = btnBorderStyle || 'solid';
+              } else if (btnVariant === 'ghost') {
+                btnBorderColor = 'transparent';
+              } else {
+                btnBorderColor = theme?.buttonBorderColor && theme?.buttonBorderColor !== 'transparent' ? theme?.buttonBorderColor : 'transparent';
+              }
+            }
+
+            // Size preset (sm/md/lg/xl) — sets padding + fontSize together. Sidebar overrides win.
+            const sizePreset: 'sm' | 'md' | 'lg' | 'xl' = (['sm','md','lg','xl'] as const).includes(c.size) ? c.size : 'md';
+            const sizeMap: Record<string, { padding: string; fontSize: string }> = {
+                sm: { padding: '8px 16px',   fontSize: '0.8125rem' },
+                md: { padding: '12px 24px',  fontSize: '0.9375rem' },
+                lg: { padding: '14px 28px',  fontSize: '1rem' },
+                xl: { padding: '18px 36px',  fontSize: '1.125rem' },
             };
-            // Remove undefined properties
-            if (!buttonStyle.fontSize) delete buttonStyle.fontSize;
+            const sizeDef = sizeMap[sizePreset];
+
+            // Width mode — auto / full / fixed
+            const widthMode: 'auto' | 'full' | 'fixed' = (['auto','full','fixed'] as const).includes(c.width) ? c.width : 'auto';
+            const fixedWidth = c.fixedWidth || '200px';
+
+            // Hover effect
+            const hoverEffect: string = c.hoverEffect || 'lift';
+
+            const buttonStyle: React.CSSProperties = {
+                ...safeStyle,
+                backgroundColor: btnBg,
+                color: btnColor,
+                borderColor: btnBorderColor,
+                borderWidth: btnBorderWidth || (btnBorderColor && btnBorderColor !== 'transparent' ? '1px' : undefined),
+                borderStyle: btnBorderStyle || (btnBorderColor && btnBorderColor !== 'transparent' ? 'solid' : undefined),
+                textAlign: 'center' as const,
+                fontWeight: renderStyle.fontWeight || 'bold',
+                fontSize: renderStyle.fontSize || sizeDef.fontSize,
+                padding: safeStyle.padding || sizeDef.padding,
+                letterSpacing: renderStyle.letterSpacing || undefined,
+                textTransform: renderStyle.textTransform || undefined,
+                boxShadow: renderStyle.boxShadow || undefined,
+                fontFamily: resolvedButtonFontFamily && resolvedButtonFontFamily.trim() !== '' ? resolvedButtonFontFamily : undefined,
+                width: widthMode === 'full' ? '100%' : widthMode === 'fixed' ? fixedWidth : undefined,
+            };
             if (!buttonStyle.fontFamily) delete buttonStyle.fontFamily;
-            const buttonElement = (
-                <button 
-                    className={`${buttonClass} ${!readOnly ? 'outline-none relative transition-all cursor-pointer' : ''} ${selectedClass}`}
+            // Icon support
+            const btnIcon: string | undefined = c.icon && c.icon !== 'none' ? c.icon : undefined;
+            const btnIconPosition: 'left' | 'right' = c.iconPosition === 'right' ? 'right' : 'left';
+            const btnLoading: boolean = !!c.loading;
+            const iconRotation: number = Number(renderStyle.iconRotation) || 0;
+            const iconSize: string = renderStyle.iconSize || '1em';
+
+            // Hover & focus styling injected via scoped CSS
+            const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const hoverBg = renderStyle.hoverBackgroundColor || '';
+            const hoverFg = renderStyle.hoverColor || '';
+            const hoverBorder = renderStyle.hoverBorderColor || '';
+            const accentForGlow = (theme?.accentColor || btnBg || '#E11D48');
+            const hoverCss = (() => {
+                let css = '';
+                if (hoverBg)     css += `background-color: ${hoverBg} !important;`;
+                if (hoverFg)     css += `color: ${hoverFg} !important;`;
+                if (hoverBorder) css += `border-color: ${hoverBorder} !important;`;
+                // Built-in hover effects
+                if (hoverEffect === 'lift')   css += 'transform: translateY(-2px); box-shadow: 0 8px 20px -8px rgba(0,0,0,0.25);';
+                if (hoverEffect === 'scale')  css += 'transform: scale(1.04);';
+                if (hoverEffect === 'glow')   css += `box-shadow: 0 0 24px ${accentForGlow}55;`;
+                if (hoverEffect === 'arrow')  css += '/* arrow span handled below */';
+                return css;
+            })();
+            const arrowMoveCss = hoverEffect === 'arrow'
+                ? `#gb-btn-${safeId}:hover .gb-btn-arrow { transform: translateX(4px); }`
+                : '';
+            const scopedButtonCss = `
+                #gb-btn-${safeId} { transition: all 0.25s cubic-bezier(0.16,1,0.3,1); }
+                #gb-btn-${safeId}:hover { ${hoverCss} }
+                ${arrowMoveCss}
+            `;
+
+            // Slide-arrow hover effect: append a small chevron at the end (right side)
+            const useArrowSpan = hoverEffect === 'arrow' && !btnLoading;
+            const renderIcon = (extraStyle?: React.CSSProperties) => btnIcon ? (
+                <IconRenderer
+                    icon={btnIcon}
+                    size={iconSize}
+                    style={{
+                        color: btnColor,
+                        transform: iconRotation ? `rotate(${iconRotation}deg)` : undefined,
+                        ...extraStyle,
+                    }}
+                />
+            ) : null;
+
+            const buttonInnerWithIconOrLoad = (
+                <>
+                    {btnLoading ? (
+                        <>
+                            <span
+                                className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"
+                                style={{ borderColor: btnColor, borderTopColor: 'transparent' }}
+                                aria-hidden="true"
+                            />
+                            <span>{c.loadingText || 'Loading…'}</span>
+                        </>
+                    ) : (
+                        <>
+                            {btnIcon && btnIconPosition === 'left' && renderIcon()}
+                            <span
+                                ref={bindHtml(id, c.text || '')}
+                                contentEditable={!readOnly}
+                                {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                            />
+                            {btnIcon && btnIconPosition === 'right' && renderIcon()}
+                            {useArrowSpan && !btnIcon && (
+                                <span
+                                    aria-hidden
+                                    className="gb-btn-arrow inline-block transition-transform duration-200"
+                                    style={{ color: btnColor }}
+                                >
+                                    <i className="fa-solid fa-arrow-right" style={{ fontSize: iconSize }} />
+                                </span>
+                            )}
+                        </>
+                    )}
+                </>
+            );
+
+            const showAsFlex = !!btnIcon || btnLoading || useArrowSpan;
+            const buttonElement = showAsFlex ? (
+                <button
+                    id={`gb-btn-${safeId}`}
+                    className={`${buttonClass} ${!readOnly ? 'outline-none relative cursor-pointer' : ''} ${selectedClass} inline-flex items-center justify-center gap-2`}
                     style={buttonStyle}
                     onClick={!readOnly ? (e) => handleClick(e, el) : undefined}
-                    contentEditable={!readOnly}
-                    suppressContentEditableWarning={!readOnly}
-                    onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'text', e.currentTarget.textContent) : undefined}
+                    disabled={btnLoading}
                 >
-                    {content.text}
+                    {buttonInnerWithIconOrLoad}
                 </button>
+            ) : (
+                <button
+                    id={`gb-btn-${safeId}`}
+                    className={`${buttonClass} ${!readOnly ? 'outline-none relative cursor-pointer' : ''} ${selectedClass}`}
+                    style={buttonStyle}
+                    onClick={!readOnly ? (e) => handleClick(e, el) : undefined}
+                    ref={bindHtml(id, c.text || '')}
+                    contentEditable={!readOnly}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                />
             );
             
             // Use flexbox with justify-content for proper button alignment
@@ -313,49 +1349,107 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
             const elementTextAlign = (renderStyle?.textAlign as string) || undefined;
             const buttonTextAlign = elementTextAlign || 'center';
             
-            return (
-                <div 
-                    key={id} 
-                    style={{ 
-                        display: 'flex', 
-                        width: '100%', 
-                        justifyContent: buttonTextAlign === 'left' ? 'flex-start' : buttonTextAlign === 'right' ? 'flex-end' : 'center' 
+            // Reveal animation
+            const animationPreset: string = c.animation || 'none';
+            const animVariants: Record<string, { initial: any; animate: any; transition?: any }> = {
+                'none':        { initial: {}, animate: {} },
+                'fade-up':     { initial: { opacity: 0, y: 16 },         animate: { opacity: 1, y: 0 } },
+                'slide-left':  { initial: { opacity: 0, x: -24 },        animate: { opacity: 1, x: 0 } },
+                'slide-right': { initial: { opacity: 0, x: 24 },         animate: { opacity: 1, x: 0 } },
+                'scale-in':    { initial: { opacity: 0, scale: 0.92 },   animate: { opacity: 1, scale: 1 } },
+                'pulse':       { initial: { scale: 1 },                  animate: { scale: [1, 1.05, 1] }, transition: { duration: 1.6, repeat: Infinity, ease: 'easeInOut' } },
+            };
+            const animVar = animVariants[animationPreset] || animVariants.none;
+            const hasAnimation = animationPreset !== 'none';
+
+            // Anchor wrapping:
+            // - external links may open in new tab (default true)
+            // - internal links always stay in same tab
+            const linkUrl = c.link as string | undefined;
+            const linkIsExternal = !!linkUrl && (/^(https?:)?\/\//i.test(linkUrl) || /^mailto:|^tel:/i.test(linkUrl));
+            const linkNewTabPref = (c.openInNewTab === undefined) ? true : !!c.openInNewTab;
+            const linkTarget = linkUrl ? ((linkIsExternal && linkNewTabPref) ? '_blank' : '_self') : undefined;
+            const linkRel = linkTarget === '_blank' ? 'noopener noreferrer' : undefined;
+
+            const buttonWithLink = linkUrl ? (
+                <a
+                    href={linkUrl}
+                    target={linkTarget}
+                    rel={linkRel}
+                    onClick={!readOnly ? (e) => { handleClick(e, el); } : undefined}
+                    className={widthMode === 'full' ? 'block' : 'inline-block'}
+                    style={widthMode === 'full' ? { width: '100%' } : undefined}
+                >
+                    {buttonElement}
+                </a>
+            ) : buttonElement;
+
+            const wrapperJustify =
+                buttonTextAlign === 'left' ? 'flex-start' :
+                buttonTextAlign === 'right' ? 'flex-end' : 'center';
+
+            const inner = (
+                <div
+                    style={{
+                        display: 'flex',
+                        width: '100%',
+                        justifyContent: widthMode === 'full' ? 'stretch' : wrapperJustify,
                     }}
                 >
-                    <div>
-                        {content.link ? (
-                            <a 
-                                href={content.link}
-                                target={content.link.startsWith('http') ? '_blank' : '_self'}
-                                rel={content.link.startsWith('http') ? 'noopener noreferrer' : undefined}
-                                onClick={!readOnly ? (e) => {
-                                    handleClick(e, el);
-                                } : undefined}
-                                className="inline-block"
-                            >
-                                {buttonElement}
-                            </a>
-                        ) : (
-                            buttonElement
-                        )}
-                        {type === 'call-to-action' && content.subText && (
-                            <p className="mt-2 text-sm opacity-70" contentEditable={!readOnly} suppressContentEditableWarning={!readOnly} onBlur={!readOnly ? (e) => handleContentUpdate(id, 'subText', e.currentTarget.textContent) : undefined}>{content.subText}</p>
+                    <style>{scopedButtonCss}</style>
+                    <div style={widthMode === 'full' ? { width: '100%' } : undefined}>
+                        {buttonWithLink}
+                        {type === 'call-to-action' && c.subText && (
+                            <p className="mt-2 text-sm opacity-70"
+                               ref={bindHtml(id, c.subText || '')}
+                               contentEditable={!readOnly}
+                               {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))} />
                         )}
                     </div>
                 </div>
             );
 
-        case 'image':
+            if (hasAnimation) {
+                return (
+                    <AnimatedDiv
+                        key={`${id}-anim`}
+                        enabled={!readOnly}
+                        initial={animVar.initial}
+                        whileInView={animVar.animate}
+                        viewport={{ once: animationPreset !== 'pulse', margin: '-50px' }}
+                        transition={animVar.transition || { duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                        {inner}
+                    </AnimatedDiv>
+                );
+            }
+            return <div key={id}>{inner}</div>;
+        }
+
+        case 'image': {
+            const c: any = content || {};
             const objectFit = (renderStyle?.objectFit || 'cover') as any;
             const objectPosition = (renderStyle?.objectPosition || 'center') as string;
-            const overlayColor = (renderStyle as any)?.overlayColor;
-            const overlayOpacity = (renderStyle as any)?.overlayOpacity !== undefined ? parseFloat((renderStyle as any).overlayOpacity) : 0;
-            
-            const imageUrl = content.imageUrl || content.src || '';
-            const fullImageUrl = imageUrl 
-                ? (imageUrl.startsWith('http') ? imageUrl : `http://localhost:1111${imageUrl.startsWith('/') ? '' : '/'}${imageUrl}`)
-                : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80';
-            // 1. Core Outer Style (No hardcoded boxShadow here!)
+            const overlayColor = renderStyle?.overlayColor;
+            const overlayOpacity = renderStyle?.overlayOpacity !== undefined ? parseFloat(renderStyle.overlayOpacity) : 0;
+
+            const resolvedSrc = resolveSectionImageUrlForElement(section, { id, content });
+            const fullImageUrl = toDisplayImageUrl(resolvedSrc);
+
+            // Combine filter preset + numeric adjustments into one CSS filter string
+            const filterParts: string[] = [];
+            if (renderStyle?.filterPreset) filterParts.push(renderStyle.filterPreset);
+            if (renderStyle?.brightness)   filterParts.push(`brightness(${renderStyle.brightness}%)`);
+            if (renderStyle?.contrast)     filterParts.push(`contrast(${renderStyle.contrast}%)`);
+            if (renderStyle?.saturate)     filterParts.push(`saturate(${renderStyle.saturate}%)`);
+            if (renderStyle?.hueRotate)    filterParts.push(`hue-rotate(${renderStyle.hueRotate}deg)`);
+            // Backward compat: legacy `filter` style key
+            if (filterParts.length === 0 && renderStyle?.filter && renderStyle.filter !== 'none') {
+                filterParts.push(renderStyle.filter);
+            }
+            const combinedFilter = filterParts.length > 0 ? filterParts.join(' ') : undefined;
+
+            // Outer style — keeps borders + shadow + ring
             const outerStyle: React.CSSProperties = {
                 position: 'relative',
                 width: renderStyle?.width || '100%',
@@ -364,25 +1458,18 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
                 borderWidth: renderStyle?.borderWidth || '0px',
                 borderStyle: renderStyle?.borderStyle || 'none',
                 borderColor: renderStyle?.borderColor || 'transparent',
-                filter: renderStyle?.filter || 'none',
+                backgroundColor: renderStyle?.backgroundColor || undefined,
             };
-            // 2. The Professional Shadow & Ring Merger
-            // Fallback hierarchy: Element Style -> Theme Default
-            let finalBoxShadow = (renderStyle?.boxShadow && renderStyle.boxShadow !== 'none') 
-                ? renderStyle.boxShadow 
+            let finalBoxShadow = (renderStyle?.boxShadow && renderStyle.boxShadow !== 'none')
+                ? renderStyle.boxShadow
                 : (themeData?.shadow ? `0 4px 6px -1px ${themeData.shadow}, 0 2px 4px -1px ${themeData.shadow}` : undefined);
-            
             if (isSelected && !readOnly) {
-                // Use themeData.ring for selection ring (like website multicolor theme)
                 const ringColor = themeData?.ring || '#3b82f6';
                 const ringShadow = `0 0 0 2px #000000, 0 0 0 4px ${ringColor}`;
-                // Merge user shadow with selection ring, or just apply ring
                 finalBoxShadow = finalBoxShadow ? `${finalBoxShadow}, ${ringShadow}` : ringShadow;
             }
-            if (finalBoxShadow) {
-                outerStyle.boxShadow = finalBoxShadow;
-            }
-            // 3. Inner Style (Safely handles clipping)
+            if (finalBoxShadow) outerStyle.boxShadow = finalBoxShadow;
+
             const innerStyle: React.CSSProperties = {
                 position: 'relative',
                 width: '100%',
@@ -396,24 +1483,92 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
                 objectFit: objectFit,
                 objectPosition: objectPosition,
                 opacity: renderStyle?.opacity !== undefined ? renderStyle.opacity : 1,
+                filter: combinedFilter,
+                transition: 'transform 0.4s cubic-bezier(0.16,1,0.3,1), filter 0.3s, opacity 0.3s',
             };
-            return (
-                <div 
-                    key={id}
-                    style={outerStyle} 
-                    className="group transition-all duration-300"
-                    onClick={!readOnly ? (e) => handleClick(e, el) : undefined}
+
+            // Behaviour flags
+            const altText = c.imageAlt || c.altText || c.alt || 'Image';
+            const isLazy = c.lazy !== false;
+            const linkUrl = (c.link || '').toString().trim();
+            const hasLink = linkUrl !== '';
+            const lightboxOn = !!c.lightbox;
+            const linkIsExternal = hasLink && (/^(https?:)?\/\//i.test(linkUrl) || /^mailto:|^tel:/i.test(linkUrl));
+            const linkNewTabPref = (c.openInNewTab === undefined) ? true : !!c.openInNewTab;
+            const linkTarget = hasLink ? ((linkIsExternal && linkNewTabPref) ? '_blank' : '_self') : undefined;
+            const linkRel = linkTarget === '_blank' ? 'noopener noreferrer' : undefined;
+
+            // Hover effect — scoped CSS on the outer container
+            const hoverEffect: string = renderStyle?.hoverEffect || 'none';
+            const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const hoverCss = (() => {
+                if (hoverEffect === 'none') return '';
+                if (hoverEffect === 'zoom')     return `#gb-img-${safeId}:hover img { transform: scale(1.06); }`;
+                if (hoverEffect === 'lift')     return `#gb-img-${safeId}:hover { transform: translateY(-4px); box-shadow: 0 16px 32px -12px rgba(0,0,0,0.35) !important; }`;
+                if (hoverEffect === 'brighten') return `#gb-img-${safeId}:hover img { filter: brightness(1.15) ${combinedFilter || ''}; }`;
+                if (hoverEffect === 'darken')   return `#gb-img-${safeId}:hover img { filter: brightness(0.7) ${combinedFilter || ''}; }`;
+                if (hoverEffect === 'tint')     return `#gb-img-${safeId}:hover .gb-img-tint { opacity: 1; }`;
+                return '';
+            })();
+            const scopedCss = hoverCss
+                ? `#gb-img-${safeId} { transition: transform 0.3s, box-shadow 0.3s; } ${hoverCss}`
+                : '';
+
+            // Reveal animation
+            const animationPreset: string = c.animation || 'none';
+            const animationDelay = Number(c.animationDelay) || 0;
+            const animVariants: Record<string, { initial: any; animate: any }> = {
+                'none':        { initial: {}, animate: {} },
+                'fade-up':     { initial: { opacity: 0, y: 24 },                  animate: { opacity: 1, y: 0 } },
+                'slide-left':  { initial: { opacity: 0, x: -32 },                 animate: { opacity: 1, x: 0 } },
+                'slide-right': { initial: { opacity: 0, x: 32 },                  animate: { opacity: 1, x: 0 } },
+                'blur-in':     { initial: { opacity: 0, filter: 'blur(10px)' },   animate: { opacity: 1, filter: 'blur(0px)' } },
+                'scale-in':    { initial: { opacity: 0, scale: 0.92 },            animate: { opacity: 1, scale: 1 } },
+                'zoom':        { initial: { opacity: 0, scale: 1.1 },             animate: { opacity: 1, scale: 1 } },
+            };
+            const animVar = animVariants[animationPreset] || animVariants.none;
+            const hasAnimation = animationPreset !== 'none';
+
+            // Caption
+            const caption = (c.caption || '').toString();
+            const hasCaption = caption.trim() !== '';
+
+            // Click handling: in builder always select; in preview, lightbox > link > nothing
+            const handleImgClick = (e: React.MouseEvent) => {
+                if (!readOnly) { handleClick(e, el); return; }
+                if (lightboxOn) { e.preventDefault(); setOpenLightboxId(id); return; }
+                // else let the <a> wrapper handle navigation
+            };
+
+            const imageBlock = (
+                <div
+                    id={`gb-img-${safeId}`}
+                    style={outerStyle}
+                    className={`group transition-all duration-300 ${lightboxOn && readOnly ? 'cursor-zoom-in' : (hasLink && readOnly ? 'cursor-pointer' : '')}`}
+                    onClick={handleImgClick}
                 >
                     <div style={innerStyle}>
                         <img
                             src={fullImageUrl}
-                            alt={content.imageAlt || content.altText || content.alt || 'Image'}
+                            alt={altText}
+                            loading={isLazy ? 'lazy' : 'eager'}
                             style={imgStyle}
                             onError={(e) => {
-                                // Fallback to placeholder if image fails to load
-                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/600x400';
+                                (e.target as HTMLImageElement).src = SECTION_IMAGE_PLACEHOLDER;
                             }}
                         />
+                        {/* Hover tint overlay (revealed on hover when hoverEffect = 'tint') */}
+                        {hoverEffect === 'tint' && (
+                            <div
+                                className="gb-img-tint absolute inset-0 pointer-events-none transition-opacity duration-300"
+                                style={{
+                                    backgroundColor: overlayColor || ((theme as any)?.accentColor || '#E11D48'),
+                                    opacity: 0,
+                                    mixBlendMode: 'multiply',
+                                }}
+                            />
+                        )}
+                        {/* Static tint overlay (always-on dim) */}
                         {overlayOpacity > 0 && (
                             <div
                                 className="absolute inset-0 pointer-events-none transition-opacity duration-300"
@@ -426,6 +1581,61 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
                     </div>
                 </div>
             );
+
+            // Caption shown below the image
+            const captionEl = hasCaption ? (
+                <p
+                    className="mt-2 text-sm text-center outline-none"
+                    style={{
+                        color: theme?.textColor || '#9CA3AF',
+                        opacity: 0.85,
+                        fontStyle: 'italic',
+                    }}
+                    ref={bindHtml(id, caption)}
+                    contentEditable={!readOnly}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'caption', html))}
+                />
+            ) : null;
+
+            // Wrap with anchor only when in preview AND link is set AND no lightbox
+            const wrapped = hasLink && readOnly && !lightboxOn ? (
+                <a href={linkUrl} target={linkTarget} rel={linkRel} className="block">
+                    {imageBlock}
+                </a>
+            ) : imageBlock;
+
+            const innerWithCaption = (
+                <>
+                    {scopedCss && <style>{scopedCss}</style>}
+                    {wrapped}
+                    {captionEl}
+                    {lightboxOn && openLightboxId === id && readOnly && (
+                        <ImageLightbox src={fullImageUrl} alt={altText} onClose={() => setOpenLightboxId(null)} />
+                    )}
+                </>
+            );
+
+            // Wrapper alignment — image is intrinsically inline; align via flex container
+            const imgAlign = resolveTextAlign(renderStyle);
+            const outerAlignClass = `flex flex-col ${imgAlign.itemsAlignClass}`;
+
+            if (hasAnimation) {
+                return (
+                    <AnimatedDiv
+                        key={`${id}-anim`}
+                        enabled={!readOnly}
+                        className={outerAlignClass}
+                        initial={animVar.initial}
+                        whileInView={animVar.animate}
+                        viewport={{ once: true, margin: '-50px' }}
+                        transition={{ duration: 0.7, delay: animationDelay, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                        {innerWithCaption}
+                    </AnimatedDiv>
+                );
+            }
+            return <div key={id} className={outerAlignClass}>{innerWithCaption}</div>;
+        }
 
         case 'video':
             // Helper to check if URL is YouTube
@@ -453,18 +1663,42 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
                     : `http://localhost:1111${videoUrl.startsWith('/') ? '' : '/'}${videoUrl}`)
                 : '';
             
+            // Wrapper alignment — wrap the (intrinsically full-width) video player.
+            // Effect only visible when user constrains width via maxWidth in style.
+            const videoAlign = resolveTextAlign(renderStyle);
+            const videoAspect = (renderStyle as any).videoAspectRatio || '16 / 9';
+            const videoRadius = (renderStyle as any).borderRadius || '0.5rem';
+            const videoBg = (renderStyle as any).videoBg || (safeStyle.backgroundColor as string) || '#000000';
+            const videoObjectFit = (renderStyle as any).videoObjectFit || 'contain';
+            const posterImg = (content as any).poster || '';
+            const vidAutoplay: boolean = !!(content as any).autoplay;
+            const vidLoop:     boolean = !!(content as any).loop;
+            const vidMuted:    boolean = (content as any).muted !== false; // muted is default-on (browsers require for autoplay)
+            const vidControls: boolean = (content as any).controls !== false;
             return (
-                <div 
-                    key={id} 
-                    className={`relative w-full aspect-video bg-black rounded-lg overflow-hidden group ${selectedClass}`} 
+                <div
+                    key={`${id}-wrap`}
+                    className={`flex w-full ${videoAlign.justifyClass}`}
+                >
+                <div
+                    key={id}
+                    className={`relative overflow-hidden group ${selectedClass}`}
                     onClick={!readOnly ? (e) => {
-                        // Only handle click if not clicking on the overlay
                         if ((e.target as HTMLElement).closest('.video-edit-overlay')) {
                             return;
                         }
-                                                handleClick(e, el);
-                    } : undefined} 
-                    style={safeStyle}
+                        handleClick(e, el);
+                    } : undefined}
+                    style={{
+                        width: renderStyle?.width || '100%',
+                        maxWidth: renderStyle?.maxWidth,
+                        ...safeStyle,
+                        // Re-apply our dimensional props AFTER safeStyle so they win over any stray
+                        // legacy keys that might leak in (e.g. an old `aspectRatio: undefined`).
+                        aspectRatio: videoAspect,
+                        backgroundColor: videoBg,
+                        borderRadius: videoRadius,
+                    }}
                 >
                     {fullVideoUrl ? (
                         <>
@@ -505,10 +1739,16 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
                                 </>
                             ) : (
                                 <>
-                                    <video 
-                                        src={fullVideoUrl} 
-                                        className={`w-full h-full object-contain ${!readOnly ? 'pointer-events-none' : ''}`}
-                                        controls={readOnly}
+                                    <video
+                                        src={fullVideoUrl}
+                                        poster={posterImg || undefined}
+                                        className={`w-full h-full ${!readOnly ? 'pointer-events-none' : ''}`}
+                                        style={{ objectFit: videoObjectFit as any }}
+                                        controls={readOnly && vidControls}
+                                        autoPlay={readOnly && vidAutoplay}
+                                        loop={vidLoop}
+                                        muted={vidMuted}
+                                        playsInline
                                         onClick={!readOnly ? (e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
@@ -551,88 +1791,1786 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
                         </div>
                     )}
                 </div>
-            );
-
-        case 'icon':
-            // Ensure icon class is properly formatted (handle both 'fa-star' and 'star' formats)
-            const iconClass = content.icon 
-                ? (content.icon.startsWith('fa-') ? `fa-solid ${content.icon}` : `fa-solid fa-${content.icon}`)
-                : 'fa-solid fa-star';
-            // Use theme accentColor if element color is not explicitly set
-            const iconColor = safeStyle.color || renderStyle?.accentColor || theme?.accentColor || '#F59E0B';
-            return (
-                <div key={id} className={`inline-block ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={safeStyle}>
-                    <i className={iconClass} style={{ fontSize: content.iconSize || safeStyle.fontSize || '2rem', color: iconColor }}></i>
                 </div>
             );
+
+         case 'icon': {
+             const iconColor = (safeStyle as any).iconColor || safeStyle.color || (renderStyle as any)?.iconColor || theme?.iconColor || theme?.icon || (renderStyle as any)?.accentColor || theme?.accentColor || '#F59E0B';
+             const iconBg = renderStyle.iconBackgroundColor || renderStyle.iconBgColor || 'transparent';
+             const hasContainer = iconBg !== 'transparent' || (renderStyle.iconBorderStyle && renderStyle.iconBorderStyle !== 'none') || renderStyle.iconBorder || renderStyle.iconShadow;
+             const iconAlign = resolveTextAlign(renderStyle);
+             // Hover + entry animation classes (registered via inline keyframes below)
+             const hoverEffect: string = (renderStyle as any).iconHoverEffect || '';
+             const entryAnim: string  = (renderStyle as any).iconEntryAnimation || '';
+             const hoverClass = hoverEffect === 'scale'  ? 'iconHover-scale'
+                              : hoverEffect === 'rotate' ? 'iconHover-rotate'
+                              : hoverEffect === 'bounce' ? 'iconHover-bounce'
+                              : hoverEffect === 'pulse'  ? 'iconHover-pulse'
+                              : hoverEffect === 'lift'   ? 'iconHover-lift'
+                              : '';
+             const entryClass = entryAnim === 'fade'     ? 'animate-[iconFade_0.5s_ease-out]'
+                              : entryAnim === 'scale-in' ? 'animate-[iconScaleIn_0.4s_ease-out]'
+                              : entryAnim === 'pop'      ? 'animate-[iconPop_0.5s_cubic-bezier(0.34,1.56,0.64,1)]'
+                              : entryAnim === 'spin-in'  ? 'animate-[iconSpinIn_0.6s_ease-out]'
+                              : '';
+
+             return (
+                 <div key={`${id}-wrap`} className={`flex w-full ${iconAlign.justifyClass}`}>
+                 <style>{`
+                   @keyframes iconFade { from { opacity: 0; } to { opacity: 1; } }
+                   @keyframes iconScaleIn { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
+                   @keyframes iconPop { 0% { opacity: 0; transform: scale(0.3); } 60% { opacity: 1; transform: scale(1.15); } 100% { transform: scale(1); } }
+                   @keyframes iconSpinIn { from { opacity: 0; transform: rotate(-180deg) scale(0.5); } to { opacity: 1; transform: rotate(0) scale(1); } }
+                   .iconHover-scale  { transition: transform 0.25s ease; }
+                   .iconHover-scale:hover  { transform: scale(1.12); }
+                   .iconHover-rotate { transition: transform 0.4s ease; }
+                   .iconHover-rotate:hover { transform: rotate(15deg); }
+                   .iconHover-bounce:hover { animation: iconBounce 0.5s ease; }
+                   @keyframes iconBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+                   .iconHover-pulse:hover  { animation: iconPulseHover 0.8s ease infinite; }
+                   @keyframes iconPulseHover { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+                   .iconHover-lift   { transition: transform 0.25s ease, box-shadow 0.25s ease; }
+                   .iconHover-lift:hover { transform: translateY(-2px); box-shadow: 0 6px 16px -4px rgba(0,0,0,0.25); }
+                 `}</style>
+                 <div key={id} className={`${selectedClass} ${hoverClass} ${entryClass}`} onClick={(e) => handleClick(e, el)}
+                     style={{
+                         ...safeStyle,
+                         display: 'inline-flex',
+                         alignItems: 'center',
+                         justifyContent: 'center',
+                         width: hasContainer ? (renderStyle.iconContainerSize || '3rem') : 'auto',
+                         height: hasContainer ? (renderStyle.iconContainerSize || '3rem') : 'auto',
+                         backgroundColor: iconBg,
+                         border: renderStyle.iconBorderStyle && renderStyle.iconBorderStyle !== 'none'
+                             ? `${renderStyle.iconBorderWidth || '1px'} ${renderStyle.iconBorderStyle} ${renderStyle.iconBorderColor || iconColor}`
+                             : (renderStyle.iconBorder || 'none'),
+                         borderRadius: renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0px',
+                         borderTopLeftRadius: renderStyle.iconBorderTopLeftRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0px'),
+                         borderTopRightRadius: renderStyle.iconBorderTopRightRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0px'),
+                         borderBottomRightRadius: renderStyle.iconBorderBottomRightRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0px'),
+                         borderBottomLeftRadius: renderStyle.iconBorderBottomLeftRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0px'),
+                         boxShadow: renderStyle.iconShadow || 'none'
+                     }}>
+                     <IconRenderer icon={content.icon} size={content.iconSize || safeStyle.fontSize || '2rem'} style={{ color: iconColor }} />
+                 </div>
+                 </div>
+             );
+         }
             
-        case 'icon-box':
-            // Ensure icon class is properly formatted
-            const iconBoxClass = content.icon 
-                ? (content.icon.startsWith('fa-') ? `fa-solid ${content.icon}` : `fa-solid fa-${content.icon}`)
-                : 'fa-solid fa-layer-group';
-            // Use theme accentColor if element color is not explicitly set
-            const iconBoxColor = renderStyle?.accentColor || theme?.accentColor || '#F59E0B';
+        case 'icon-box': {
+            const iconBoxColor = renderStyle.iconColor || theme?.iconColor || renderStyle?.accentColor || theme?.accentColor || '#F59E0B';
+            const iconBoxBg = renderStyle.iconBackgroundColor || renderStyle.iconBgColor || theme?.iconBgColor || 'rgba(241, 245, 249, 0.05)';
+            const ibResolvedBg = resolveElementBackground(renderStyle);
+
             return (
-                <div key={id} className={`flex gap-4 p-4 rounded-lg bg-white/5 border border-white/5 ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={safeStyle}>
-                    <div className="shrink-0">
-                         <i className={iconBoxClass} style={{ fontSize: '2rem', color: iconBoxColor }}></i>
+                <div key={id} className={`flex gap-4 p-4 rounded-lg relative ${ibResolvedBg.overlay ? 'overflow-hidden' : ''} ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={{ ...safeStyle, backgroundColor: safeStyle.backgroundColor || theme?.cardBackgroundColor || 'rgba(255,255,255,0.05)', borderColor: safeStyle.borderColor || theme?.cardBorderColor || 'rgba(255,255,255,0.08)', borderWidth: safeStyle.borderWidth || '1px', borderStyle: safeStyle.borderStyle || 'solid', ...ibResolvedBg.backgroundStyle }}>
+                    {ibResolvedBg.overlay && (
+                        <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ backgroundColor: ibResolvedBg.overlay.color, opacity: ibResolvedBg.overlay.opacity, mixBlendMode: ibResolvedBg.overlay.blendMode as any, zIndex: 0 }} />
+                    )}
+                    <div className="shrink-0 flex items-center justify-center rounded-lg" 
+                        style={{ 
+                            width: renderStyle.iconContainerSize || '3rem',
+                            height: renderStyle.iconContainerSize || '3rem',
+                            backgroundColor: iconBoxBg,
+                            color: iconBoxColor,
+                            border: renderStyle.iconBorderStyle && renderStyle.iconBorderStyle !== 'none' 
+                                ? `${renderStyle.iconBorderWidth || '1px'} ${renderStyle.iconBorderStyle} ${renderStyle.iconBorderColor || iconBoxColor}`
+                                : (renderStyle.iconBorder || 'none'),
+                            borderRadius: renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '8px',
+                            borderTopLeftRadius: renderStyle.iconBorderTopLeftRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '8px'),
+                            borderTopRightRadius: renderStyle.iconBorderTopRightRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '8px'),
+                            borderBottomRightRadius: renderStyle.iconBorderBottomRightRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '8px'),
+                            borderBottomLeftRadius: renderStyle.iconBorderBottomLeftRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '8px'),
+                            boxShadow: renderStyle.iconShadow || 'none'
+                        }}>
+                         <IconRenderer icon={content.icon || 'fa-layer-group'} size={renderStyle.iconSize || '1.5rem'} style={{ color: iconBoxColor }} />
                     </div>
                     <div>
-                        <h3 className="font-bold text-lg mb-1" style={{ color: theme?.titleColor || safeStyle.color }} contentEditable={!readOnly} suppressContentEditableWarning={!readOnly} onBlur={!readOnly ? (e) => handleContentUpdate(id, 'text', e.currentTarget.textContent) : undefined}>{content.text || 'Icon Box Title'}</h3>
-                        <p className="opacity-70 text-sm" style={{ color: theme?.textColor || safeStyle.color }} contentEditable={!readOnly} suppressContentEditableWarning={!readOnly} onBlur={!readOnly ? (e) => handleContentUpdate(id, 'subText', e.currentTarget.textContent) : undefined}>{content.subText || 'Description for this icon box goes here.'}</p>
+                        <h3 className="font-bold mb-1 outline-none" 
+                            style={{ 
+                                color: renderStyle.titleColor || theme?.titleColor || '#0F172A',
+                                fontSize: renderStyle.titleFontSize || '1.125rem',
+                                fontWeight: renderStyle.titleFontWeight || '700',
+                                textTransform: (renderStyle.titleTextTransform || renderStyle.textTransform) as any || 'none',
+                                fontStyle: renderStyle.titleFontStyle || 'normal',
+                                letterSpacing: renderStyle.titleLetterSpacing || 'normal',
+                                fontFamily: renderStyle.titleFontFamily || renderStyle.fontFamily || theme?.titleFontFamily
+                            }} 
+                            ref={bindHtml(id, content.text || 'Icon Box Title')} 
+                            contentEditable={!readOnly} 
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))} 
+                        />
+                        <p className="opacity-70 outline-none" 
+                            style={{ 
+                                color: renderStyle.descriptionColor || renderStyle.textColor || theme?.textColor || '#475569',
+                                fontSize: renderStyle.descriptionFontSize || '0.875rem',
+                                fontWeight: renderStyle.descriptionFontWeight || '400',
+                                textTransform: (renderStyle.descriptionTextTransform || renderStyle.textTransform) as any || 'none',
+                                fontStyle: renderStyle.descriptionFontStyle || 'normal',
+                                letterSpacing: renderStyle.descriptionLetterSpacing || 'normal',
+                                fontFamily: renderStyle.descriptionFontFamily || renderStyle.fontFamily || theme?.descriptionFontFamily
+                            }} 
+                            ref={bindHtml(id, content.subText || 'Description for this icon box goes here.')} 
+                            contentEditable={!readOnly} 
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))} 
+                        />
+                    </div>
+                </div>
+            );
+        }
+
+        case 'feature-box': {
+            const fbSelectedClass = isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-black z-20' : '';
+            const c: any = content || {};
+            const iconPos = c.iconPosition || renderStyle.iconPosition || 'top';
+            const hasIcon = c.icon && c.icon !== 'none' && c.icon !== '';
+
+            // Theme tokens: explicit featureBox.* wins, then falls back to generic theme tokens.
+            const t: any = theme || {};
+            const themeIconColor = t.featureBoxIconColor || t.iconColor || t.accentColor || '#E11D48';
+            const themeIconBg    = t.featureBoxIconBg    || t.iconBgColor || `${themeIconColor}15`;
+            const themeCardBg    = t.featureBoxBackground || t.cardBackgroundColor || '#FFFFFF';
+            const themeCardBorder = t.featureBoxBorder   || t.cardBorderColor || t.borderColor || 'rgba(0,0,0,0.08)';
+            const themeTitleColor = t.featureBoxTitleColor || t.titleColor || '#111827';
+            const themeTextColor  = t.featureBoxTextColor  || t.textColor || '#4B5563';
+
+            // User-customized element styles (sidebar edits) override theme; otherwise follow live theme.
+            const featureIconColor   = renderStyle.iconColor || themeIconColor;
+            const featureIconBg      = renderStyle.iconBackgroundColor || renderStyle.iconBgColor || themeIconBg;
+            const featureCardBg      = renderStyle.backgroundColor || themeCardBg;
+            const featureBorderColor = renderStyle.borderColor || themeCardBorder;
+            const featureTitleColor  = renderStyle.titleColor || renderStyle.color || themeTitleColor;
+            const featureTextColor   = renderStyle.descriptionColor || renderStyle.textColor || themeTextColor;
+            const accentColor        = t.accentColor || themeIconColor;
+
+            const iconSize   = renderStyle.iconContainerSize || '3rem';
+            const iconRadius = renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0.75rem';
+
+            // Layout variant
+            type FbLayout = 'classic' | 'inline' | 'minimal' | 'numbered' | 'stat' | 'split';
+            const FB_ALLOWED: FbLayout[] = ['classic','inline','minimal','numbered','stat','split'];
+            const layout: FbLayout = (FB_ALLOWED as string[]).includes(c.cardLayout) ? c.cardLayout : 'classic';
+
+            const isMinimal  = layout === 'minimal';
+            const isNumbered = layout === 'numbered';
+            const isStat     = layout === 'stat';
+            const isSplit    = layout === 'split';
+            const isInline   = layout === 'inline';
+
+            // Auto-number: index of this element among feature-box siblings in the section (1-based, 2-digit).
+            const autoNumber = (() => {
+                if (c.number && c.number.toString().trim() !== '') return c.number.toString().trim();
+                const siblings = (section?.elements || []).filter(e => e.type === 'feature-box');
+                const idx = siblings.findIndex(e => e.id === id);
+                return String(Math.max(1, idx + 1)).padStart(2, '0');
+            })();
+
+            // Optional extras
+            const badgeText = (c.badgeText || '').toString().trim();
+            const hasBadge  = badgeText !== '';
+            const ctaText   = (c.ctaText || '').toString().trim();
+            const hasCta    = ctaText !== '';
+            const statText  = (c.stat || '').toString().trim();
+            const linkUrl   = (c.link || '').toString().trim();
+            const hasLink   = linkUrl !== '';
+
+            // Default padding / bg vary per layout
+            const defaultPadding =
+                isMinimal ? '0.5rem 0' :
+                isSplit   ? '0' :
+                isInline  ? '1.25rem 1.5rem' :
+                '1.5rem';
+
+            // Resolve flexible background (Color/Gradient/Image) from element style.
+            // resolved.backgroundStyle wins over the legacy single backgroundColor.
+            const fbResolvedBg = resolveElementBackground(renderStyle);
+            const fbHasFlexBg = !!(fbResolvedBg.backgroundStyle.backgroundImage); // gradient/image
+            // Per-corner card radius overrides (when user uses per-corner mode)
+            const fbCardCornerStyle: React.CSSProperties = {
+                ...(renderStyle.borderTopLeftRadius     ? { borderTopLeftRadius:     renderStyle.borderTopLeftRadius }     : {}),
+                ...(renderStyle.borderTopRightRadius    ? { borderTopRightRadius:    renderStyle.borderTopRightRadius }    : {}),
+                ...(renderStyle.borderBottomRightRadius ? { borderBottomRightRadius: renderStyle.borderBottomRightRadius } : {}),
+                ...(renderStyle.borderBottomLeftRadius  ? { borderBottomLeftRadius:  renderStyle.borderBottomLeftRadius }  : {}),
+            };
+
+            // Per-side padding wins over shorthand. Strip leftover `padding` from safeStyle
+            // when per-sides are present so it doesn't reset them via shorthand.
+            const hasPerSidePadding = !!(renderStyle.paddingTop || renderStyle.paddingRight || renderStyle.paddingBottom || renderStyle.paddingLeft);
+            const safeStyleNoPadding = hasPerSidePadding
+                ? (() => { const { padding: _p, ...rest } = safeStyle as any; return rest; })()
+                : safeStyle;
+
+            const fbPaddingStyle: React.CSSProperties = hasPerSidePadding
+                ? {
+                    paddingTop:    renderStyle.paddingTop    || undefined,
+                    paddingRight:  renderStyle.paddingRight  || undefined,
+                    paddingBottom: renderStyle.paddingBottom || undefined,
+                    paddingLeft:   renderStyle.paddingLeft   || undefined,
+                }
+                : { padding: safeStyle.padding || defaultPadding };
+
+            const featureBoxStyle: React.CSSProperties = {
+                ...safeStyleNoPadding,
+                ...fbResolvedBg.backgroundStyle,
+                backgroundColor: isMinimal
+                    ? 'transparent'
+                    : (fbResolvedBg.backgroundStyle.backgroundColor || featureCardBg),
+                borderColor: featureBorderColor,
+                borderWidth: safeStyle.borderWidth || (isMinimal ? '0' : '1px'),
+                borderStyle: safeStyle.borderStyle || 'solid',
+                borderRadius: (safeStyle as any).borderRadius || (isMinimal ? '0' : '1rem'),
+                ...fbCardCornerStyle,
+                ...fbPaddingStyle,
+                overflow: (isSplit || fbHasFlexBg || fbResolvedBg.overlay) ? 'hidden' : undefined,
+                position: fbResolvedBg.overlay ? 'relative' : undefined,
+            };
+
+            // ─── Sub-renderers (shared across variants) ───
+
+            const softBorder = `${featureTitleColor}12`;
+
+            const badgeCol = renderStyle.badgeColor || accentColor;
+            const renderBadge = () => hasBadge && (
+                <span
+                    className="outline-none inline-flex items-center"
+                    style={{
+                        backgroundColor: `${badgeCol}14`,
+                        color: badgeCol,
+                        fontSize: '0.62rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        padding: '3px 9px',
+                        borderRadius: '9999px',
+                    }}
+                    ref={bindHtml(id, badgeText)}
+                    contentEditable={!readOnly}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'badgeText', html))}
+                />
+            );
+
+            // Per-corner overrides win over the unified iconBorderRadius
+            const fbIconCornerStyle: React.CSSProperties = {
+                borderRadius: iconRadius,
+                ...(renderStyle.iconBorderTopLeftRadius     ? { borderTopLeftRadius:     renderStyle.iconBorderTopLeftRadius }     : {}),
+                ...(renderStyle.iconBorderTopRightRadius    ? { borderTopRightRadius:    renderStyle.iconBorderTopRightRadius }    : {}),
+                ...(renderStyle.iconBorderBottomRightRadius ? { borderBottomRightRadius: renderStyle.iconBorderBottomRightRadius } : {}),
+                ...(renderStyle.iconBorderBottomLeftRadius  ? { borderBottomLeftRadius:  renderStyle.iconBorderBottomLeftRadius }  : {}),
+            };
+
+            const renderIconBox = (size: string = iconSize) => hasIcon && (
+                <div
+                    className="shrink-0 flex items-center justify-center transition-all duration-300"
+                    style={{
+                        width: size,
+                        height: size,
+                        backgroundColor: featureIconBg,
+                        color: featureIconColor,
+                        ...fbIconCornerStyle,
+                        boxShadow: renderStyle.iconShadow || 'none',
+                        border: renderStyle.iconBorderStyle && renderStyle.iconBorderStyle !== 'none'
+                            ? `${renderStyle.iconBorderWidth || '1px'} ${renderStyle.iconBorderStyle} ${renderStyle.iconBorderColor || featureIconColor}`
+                            : 'none',
+                    } as any}
+                >
+                    <IconRenderer icon={c.icon} size={renderStyle.iconSize || '1.25rem'} style={{ color: featureIconColor }} />
+                </div>
+            );
+
+            const renderTitle = (size?: string) => (
+                <h4
+                    className="font-bold outline-none leading-snug"
+                    style={{
+                        color: featureTitleColor,
+                        fontSize: renderStyle.titleFontSize || size || '1.05rem',
+                        fontWeight: renderStyle.titleFontWeight || '700',
+                        textTransform: (renderStyle.titleTextTransform || renderStyle.textTransform) as any || 'none',
+                        fontStyle: renderStyle.titleFontStyle || 'normal',
+                        letterSpacing: renderStyle.titleLetterSpacing || '-0.01em',
+                        fontFamily: renderStyle.titleFontFamily || renderStyle.fontFamily || theme?.titleFontFamily,
+                        margin: 0,
+                    }}
+                    ref={bindHtml(id, c.text || 'Feature Title')}
+                    contentEditable={!readOnly}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                />
+            );
+
+            const renderDescription = () => c.subText && c.subText.toString().trim() !== '' && (
+                <p
+                    className="leading-relaxed outline-none"
+                    style={{
+                        color: featureTextColor,
+                        fontSize: renderStyle.descriptionFontSize || '0.875rem',
+                        fontWeight: renderStyle.descriptionFontWeight || '400',
+                        textTransform: (renderStyle.descriptionTextTransform || renderStyle.textTransform) as any || 'none',
+                        fontStyle: renderStyle.descriptionFontStyle || 'normal',
+                        letterSpacing: renderStyle.descriptionLetterSpacing || 'normal',
+                        fontFamily: renderStyle.descriptionFontFamily || renderStyle.fontFamily || theme?.descriptionFontFamily,
+                        opacity: 0.85,
+                        margin: 0,
+                    }}
+                    ref={bindHtml(id, c.subText)}
+                    contentEditable={!readOnly}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))}
+                />
+            );
+
+            const ctaCol = renderStyle.ctaColor || accentColor;
+            const renderCta = () => hasCta && (
+                <span
+                    className="inline-flex items-center gap-1.5 mt-3 outline-none group/cta"
+                    style={{
+                        color: ctaCol,
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                    }}
+                >
+                    <span
+                        className="outline-none"
+                        ref={bindHtml(id, ctaText)}
+                        contentEditable={!readOnly}
+                        {...editHandlers(id, (html) => handleContentUpdate(id, 'ctaText', html))}
+                    />
+                    <i className="fa-solid fa-arrow-right text-[0.7rem] transition-transform group-hover/cta:translate-x-0.5" />
+                </span>
+            );
+
+            const numChipCol  = renderStyle.numberBadgeColor || accentColor;
+            const numChipSize = renderStyle.numberBadgeSize || '2.5rem';
+            const renderNumberBadge = (sizeOverride?: string) => {
+                const size = sizeOverride || numChipSize;
+                return (
+                    <div
+                        className="shrink-0 flex items-center justify-center font-black tabular-nums"
+                        style={{
+                            width: size,
+                            height: size,
+                            borderRadius: '9999px',
+                            backgroundColor: `${numChipCol}14`,
+                            color: numChipCol,
+                            fontSize: `calc(${size} * 0.42)`,
+                            letterSpacing: '-0.02em',
+                            border: `1px solid ${numChipCol}22`,
+                        }}
+                    >
+                        {autoNumber}
+                    </div>
+                );
+            };
+
+            const statCol = renderStyle.statColor || accentColor;
+            const renderStatValue = () => (
+                <div
+                    className="outline-none font-black leading-none tabular-nums"
+                    style={{
+                        color: statCol,
+                        fontSize: renderStyle.statFontSize || 'clamp(2rem, 4vw, 2.75rem)',
+                        letterSpacing: '-0.03em',
+                        marginBottom: '0.5rem',
+                    }}
+                    ref={bindHtml(id, statText || '100%')}
+                    contentEditable={!readOnly}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'stat', html))}
+                />
+            );
+
+            // Text alignment inside the card (left/center/right) — applies to all variants.
+            const cardTextAlign: 'left' | 'center' | 'right' =
+                (c.cardTextAlign === 'center' || c.cardTextAlign === 'right') ? c.cardTextAlign : 'left';
+            const textAlignClass =
+                cardTextAlign === 'center' ? 'text-center' :
+                cardTextAlign === 'right'  ? 'text-right'  : 'text-left';
+            const itemsAlignClass =
+                cardTextAlign === 'center' ? 'items-center' :
+                cardTextAlign === 'right'  ? 'items-end'    : 'items-start';
+
+            // ─── Content (layout-dependent) ───
+            let inner: React.ReactNode;
+
+            if (isMinimal) {
+                inner = (
+                    <div className={`flex flex-col gap-2 ${itemsAlignClass}`}>
+                        {hasBadge && <div>{renderBadge()}</div>}
+                        <div className="flex items-center gap-3">
+                            {hasIcon && (
+                                <span style={{ color: featureIconColor }}>
+                                    <IconRenderer icon={c.icon} size={renderStyle.iconSize || '1.25rem'} style={{ color: featureIconColor }} />
+                                </span>
+                            )}
+                            {renderTitle()}
+                        </div>
+                        {renderDescription()}
+                        {renderCta()}
+                    </div>
+                );
+            } else if (isInline) {
+                inner = (
+                    <div className="flex items-start gap-4">
+                        {renderIconBox()}
+                        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                            {hasBadge && <div>{renderBadge()}</div>}
+                            {renderTitle()}
+                            {renderDescription()}
+                            {renderCta()}
+                        </div>
+                    </div>
+                );
+            } else if (isNumbered) {
+                inner = (
+                    <div className="flex items-start gap-4">
+                        {renderNumberBadge()}
+                        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                            {hasBadge && <div>{renderBadge()}</div>}
+                            {renderTitle()}
+                            {renderDescription()}
+                            {renderCta()}
+                        </div>
+                    </div>
+                );
+            } else if (isStat) {
+                inner = (
+                    <div className={`flex flex-col gap-1.5 ${itemsAlignClass}`}>
+                        {hasBadge && <div className="mb-1">{renderBadge()}</div>}
+                        {renderStatValue()}
+                        {renderTitle()}
+                        {renderDescription()}
+                        {renderCta()}
+                    </div>
+                );
+            } else if (isSplit) {
+                inner = (
+                    <div className="flex min-h-[140px]">
+                        <div
+                            className="flex items-center justify-center flex-shrink-0"
+                            style={{
+                                width: '5.5rem',
+                                background: `linear-gradient(180deg, ${accentColor}14, ${accentColor}06)`,
+                                borderRight: `1px solid ${softBorder}`,
+                            }}
+                        >
+                            {hasIcon ? renderIconBox('3rem') : renderNumberBadge('2.75rem')}
+                        </div>
+                        <div className="flex-1 p-5 flex flex-col gap-1.5">
+                            {hasBadge && <div>{renderBadge()}</div>}
+                            {renderTitle()}
+                            {renderDescription()}
+                            {renderCta()}
+                        </div>
+                    </div>
+                );
+            } else {
+                // classic — respects iconPosition (top/left/right)
+                const isTop   = iconPos === 'top';
+                const isRight = iconPos === 'right';
+                const flexDir = isTop ? 'flex-col' : isRight ? 'flex-row-reverse' : 'flex-row';
+                // When icon stacks on top, align the whole column per text-align
+                const outerAlign = isTop ? itemsAlignClass : 'items-start';
+                inner = (
+                    <div className={`flex ${flexDir} gap-4 ${outerAlign}`}>
+                        {renderIconBox()}
+                        <div className={`flex-1 flex flex-col gap-1.5 ${isTop && hasIcon ? 'mt-1' : ''} ${isTop ? itemsAlignClass : ''}`}>
+                            {hasBadge && <div>{renderBadge()}</div>}
+                            {renderTitle()}
+                            {renderDescription()}
+                            {renderCta()}
+                        </div>
+                    </div>
+                );
+            }
+
+            // Wrap in <a> when linked (preview shows arrow + hover lift). In builder read mode
+            // the wrapper still selects the element on click (handleClick).
+            const wrapperClass = `relative overflow-hidden transition-all duration-300 ${textAlignClass} ${fbSelectedClass} ${hasLink && !isMinimal ? 'hover:-translate-y-0.5' : ''}`;
+            const commonProps = {
+                style: featureBoxStyle,
+                onClick: (e: React.MouseEvent) => {
+                    // In builder (not read-only) always select element and block navigation
+                    if (!readOnly) { e.preventDefault(); }
+                    handleClick(e as any, el);
+                },
+            };
+
+            // Optional overlay layer — only when the user set Background Overlay in sidebar
+            const fbOverlayEl = fbResolvedBg.overlay ? (
+                <div
+                    aria-hidden
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                        backgroundColor: fbResolvedBg.overlay.color,
+                        opacity: fbResolvedBg.overlay.opacity,
+                        mixBlendMode: fbResolvedBg.overlay.blendMode as any,
+                        zIndex: 0,
+                    }}
+                />
+            ) : null;
+            // Inner content needs to sit above the overlay
+            const innerWithOverlay = fbOverlayEl ? (
+                <>
+                    {fbOverlayEl}
+                    <div className="relative" style={{ zIndex: 1 }}>{inner}</div>
+                </>
+            ) : inner;
+
+            if (hasLink && readOnly) {
+                return (
+                    <a
+                        key={id}
+                        href={linkUrl}
+                        className={`${wrapperClass} block no-underline`}
+                        style={{ ...featureBoxStyle, color: 'inherit' }}
+                    >
+                        {innerWithOverlay}
+                    </a>
+                );
+            }
+            return (
+                <div key={id} className={wrapperClass} {...commonProps}>
+                    {innerWithOverlay}
+                </div>
+            );
+        }
+
+        case 'testimonial-card': {
+            // Premium testimonial card — composite element with 3 layout variants
+            // (classic / compact / hero). Every content field is optional and hides
+            // when not populated. Every style key flows through the sidebar.
+            const tcSelectedClass = isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-black z-20' : '';
+            const c: any = content || {};
+
+            const t: any = theme || {};
+            const themeAccent     = t.testimonialCardAccent || t.accentColor || '#E11D48';
+            const themeStarColor  = t.testimonialCardStarColor || t.accentColor || '#F59E0B';
+
+            // Priority everywhere: explicit element style (user sidebar edit)
+            //   → dedicated `testimonialCard.*` theme token
+            //   → hardcoded editorial defaults (white card, dark text — testimonial cards look best this way)
+            // User CAN always override any of these from the sidebar.
+            const cardBg      = renderStyle.backgroundColor || t.testimonialCardBackground || '#FFFFFF';
+            const cardBorder  = renderStyle.borderColor     || t.testimonialCardBorder     || 'rgba(15,23,42,0.08)';
+            const titleColor  = renderStyle.titleColor      || t.testimonialCardTitleColor || '#0F172A';
+            const textColor   = renderStyle.descriptionColor || renderStyle.textColor || t.testimonialCardTextColor || '#475569';
+            const quoteColor  = renderStyle.quoteColor || renderStyle.color || titleColor;
+            const accentColor = renderStyle.accentColor || themeAccent;
+            const starColor   = renderStyle.starColor || themeStarColor;
+
+            // Text alignment — content.cardTextAlign drives the whole card.
+            // Falls back to renderStyle.textAlign if set (sidebar-level override).
+            const tcAlign = ((c.cardTextAlign as string) || (renderStyle.textAlign as string) || 'left').toLowerCase();
+            const tcAlignValue: 'left' | 'center' | 'right' =
+                tcAlign === 'center' ? 'center' : tcAlign === 'right' ? 'right' : 'left';
+            const tcTextAlignClass =
+                tcAlignValue === 'center' ? 'text-center' :
+                tcAlignValue === 'right'  ? 'text-right'  : 'text-left';
+            const tcItemsAlignClass =
+                tcAlignValue === 'center' ? 'items-center' :
+                tcAlignValue === 'right'  ? 'items-end'    : 'items-start';
+
+            // Round incoming rating to the nearest 0.5 step (supports 3.5, 4.5 etc.)
+            const rawRating   = Number(c.rating);
+            const rating      = Number.isFinite(rawRating)
+                ? Math.max(0, Math.min(5, Math.round(rawRating * 2) / 2))
+                : 5;
+            const maxRating   = 5;
+            const service     = (c.service ?? '').toString();
+            const hasService  = service.trim() !== '';
+            const quote       = c.quote || c.text || 'Great service — fast, fair and friendly.';
+            const author      = c.author || 'Customer Name';
+            const role        = c.role || 'Location';
+            const date        = (c.date ?? '').toString().trim();
+            const hasDate     = date !== '';
+            const avatarUrl   = toDisplayImageUrl(
+                resolveSectionImageUrl(section, {
+                    elementId: `${id}-avatar`,
+                    elementImageUrl: c.avatar || c.imageUrl || '',
+                })
+            );
+            const showAvatar  = c.showAvatar !== false;
+            const showStars   = c.showStars !== false;
+            const showVerified = c.showVerified !== false;
+            const showVerifiedCustomer = !!c.showVerifiedCustomer;
+            const verifiedCustomerLabel = (c.verifiedCustomerLabel || 'Verified Customer').toString();
+            const helpfulCount = c.helpfulCount !== undefined && c.helpfulCount !== null
+                ? Math.max(0, parseInt(String(c.helpfulCount).replace(/[^0-9]/g, ''), 10) || 0)
+                : null;
+            const showReply = !!c.showReply;
+            const replyAuthor = (c.replyAuthor || 'Business Response').toString();
+            const replyText = (c.reply || '').toString();
+            const accentStripe = !!c.accentStripe;
+
+            // Source platform pill — Google / Yelp / etc.
+            const sourceKey: string = c.source || 'none';
+            const sourceMap: Record<string, { label: string; icon: string; brand: string }> = {
+                google:     { label: 'via Google',     icon: 'fa-brands fa-google',     brand: '#4285F4' },
+                yelp:       { label: 'via Yelp',       icon: 'fa-brands fa-yelp',       brand: '#D32323' },
+                trustpilot: { label: 'via Trustpilot', icon: 'fa-solid fa-star',        brand: '#00B67A' },
+                facebook:   { label: 'via Facebook',   icon: 'fa-brands fa-facebook',   brand: '#1877F2' },
+                custom:     { label: `via ${c.sourceLabel || 'Custom'}`, icon: 'fa-solid fa-link', brand: accentColor },
+            };
+            const sourceMeta = sourceMap[sourceKey];
+
+            // Criteria rating breakdown (up to 3)
+            const criteriaList: Array<{ label: string; rating: number }> = Array.isArray(c.criteria) ? c.criteria : [];
+            const hasCriteria = criteriaList.length > 0;
+
+            const avatarSize   = renderStyle.avatarSize || '3rem';
+            const avatarRadius = renderStyle.avatarBorderRadius !== undefined ? renderStyle.avatarBorderRadius : '50%';
+            const starSize     = renderStyle.starSize || '0.95rem';
+
+            // Layout variant — 6 options
+            type CardLayout = 'classic' | 'compact' | 'hero' | 'minimal' | 'quote-first' | 'split';
+            const ALLOWED: CardLayout[] = ['classic','compact','hero','minimal','quote-first','split'];
+            const layout: CardLayout = (ALLOWED as string[]).includes(c.cardLayout) ? c.cardLayout : 'classic';
+
+            // Resting / hover shadow — neutral, no accent glow
+            const restShadow  = renderStyle.boxShadow || '0 1px 2px rgba(15,23,42,0.04)';
+            const hoverShadow = '0 12px 28px -12px rgba(15,23,42,0.15), 0 4px 10px -4px rgba(15,23,42,0.08)';
+
+            const stripeWidth = renderStyle.accentStripeWidth || '4px';
+            const stripeColor = renderStyle.accentStripeColor || accentColor;
+
+            // Minimal variant: borderless, no bg — airy editorial layout
+            const isMinimal = layout === 'minimal';
+            // Split variant uses internal panels, so outer card has zero padding
+            const isSplit   = layout === 'split';
+
+            const defaultPadding =
+                isMinimal ? '0.5rem 0' :
+                isSplit ? '0' :
+                layout === 'compact' ? '1.5rem' :
+                '2rem';
+
+            // Resolve flexible background (Color/Gradient/Image) from element style.
+            const tcResolvedBg = resolveElementBackground(renderStyle);
+            const tcHasFlexBg = !!(tcResolvedBg.backgroundStyle.backgroundImage);
+            const cardStyle: React.CSSProperties = {
+                ...safeStyle,
+                ...tcResolvedBg.backgroundStyle,
+                backgroundColor: isMinimal
+                    ? 'transparent'
+                    : (tcResolvedBg.backgroundStyle.backgroundColor || cardBg),
+                borderColor: cardBorder,
+                borderWidth: safeStyle.borderWidth || (isMinimal ? '0' : '1px'),
+                borderStyle: safeStyle.borderStyle || 'solid',
+                borderRadius: (safeStyle as any).borderRadius || (isMinimal ? '0' : '1.5rem'),
+                padding: safeStyle.padding || defaultPadding,
+                boxShadow: isMinimal ? 'none' : restShadow,
+                overflow: (isSplit || tcHasFlexBg || tcResolvedBg.overlay) ? 'hidden' : undefined,
+                position: tcResolvedBg.overlay ? 'relative' : (isSplit ? undefined : undefined),
+                // Accent stripe uses a thicker left border — overrides borderWidth/borderColor partially
+                ...(accentStripe && !isMinimal ? {
+                    borderLeftWidth: stripeWidth,
+                    borderLeftColor: stripeColor,
+                    borderLeftStyle: 'solid',
+                } : {}),
+            };
+
+            // ─── Sub-renderers (shared across variants) ───
+
+            // Editorial design language:
+            //   • Accent color is reserved for ONE thing that earns it (the stars).
+            //   • Everything else uses calm neutrals with soft borders — calmer,
+            //     more trustworthy, less "template-y".
+            const softBg      = `${titleColor}06`;   // very faint neutral chip background
+            const softBorder  = `${titleColor}12`;   // subtle neutral border
+            const mutedText   = `${titleColor}99`;   // secondary label color — darkens with theme
+
+            // Render 0–5 stars supporting half-steps (e.g. 3.5 → 3 full + 1 half + 1 empty).
+            // Subtle accent-tinted soft pill brings back one small color accent without noise.
+            const renderStars = (displayRating: number, size: string = starSize) => (
+                <div
+                    className="inline-flex items-center gap-2"
+                    style={{
+                        padding: '4px 10px',
+                        borderRadius: '9999px',
+                        backgroundColor: `${starColor}10`,
+                    }}
+                >
+                    <div className="flex items-center" style={{ gap: '3px', color: starColor, fontSize: size }}>
+                        {Array.from({ length: maxRating }).map((_, i) => {
+                            const diff = displayRating - i;
+                            if (diff >= 1) {
+                                return <i key={i} className="fa-solid fa-star" />;
+                            }
+                            if (diff >= 0.5) {
+                                return <i key={i} className="fa-solid fa-star-half-stroke" />;
+                            }
+                            return <i key={i} className="fa-regular fa-star" style={{ opacity: 0.3 }} />;
+                        })}
+                    </div>
+                    <span className="text-xs font-bold tabular-nums" style={{ color: starColor, opacity: 0.9 }}>
+                        {displayRating.toFixed(1)}
+                    </span>
+                </div>
+            );
+
+            const renderServiceTag = () => hasService && (
+                <span
+                    className="outline-none inline-flex items-center"
+                    style={{
+                        backgroundColor: 'transparent',
+                        color: mutedText,
+                        fontSize: renderStyle.serviceFontSize || '0.68rem',
+                        fontWeight: renderStyle.serviceFontWeight || '700',
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        border: `1px solid ${softBorder}`,
+                    } as any}
+                    ref={bindHtml(id, service)}
+                    contentEditable={!readOnly}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'service', html))}
+                />
+            );
+
+            // Source pill — mostly neutral; only the platform icon keeps its brand color
+            // (small, recognizable, not overwhelming). Sidebar can still force a full override.
+            const sourceOverride = renderStyle.sourceColor;
+            const renderSourcePill = () => sourceMeta && (
+                <span
+                    className="inline-flex items-center gap-1.5"
+                    style={{
+                        fontSize: renderStyle.dateFontSize || '0.7rem',
+                        fontWeight: 500,
+                        color: mutedText,
+                    }}
+                    title={sourceMeta.label}
+                >
+                    <i className={sourceMeta.icon} style={{ color: sourceOverride || sourceMeta.brand, fontSize: '0.75rem' }} />
+                    <span>{sourceMeta.label}</span>
+                </span>
+            );
+
+            const renderDate = () => hasDate && (
+                <span
+                    className="outline-none"
+                    style={{
+                        color: renderStyle.dateColor || mutedText,
+                        fontSize: renderStyle.dateFontSize || '0.7rem',
+                        fontWeight: 500,
+                    }}
+                    ref={bindHtml(id, date)}
+                    contentEditable={!readOnly}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'date', html))}
+                />
+            );
+
+            // Verified-customer: subtle neutral pill, tiny shield icon keeps the trust cue
+            // but doesn't scream "look at me" in green anymore.
+            const vcColor = renderStyle.verifiedCustomerColor || mutedText;
+            const renderVerifiedPill = () => showVerifiedCustomer && (
+                <span
+                    className="inline-flex items-center gap-1.5"
+                    style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        color: vcColor,
+                        backgroundColor: softBg,
+                        padding: '3px 9px',
+                        borderRadius: '6px',
+                        border: `1px solid ${softBorder}`,
+                    }}
+                >
+                    <i className="fa-solid fa-shield-check" style={{ fontSize: '0.65rem', color: renderStyle.verifiedCustomerColor || '#16A34A', opacity: 0.85 }} />
+                    <span
+                        className="outline-none"
+                        ref={bindHtml(id, verifiedCustomerLabel)}
+                        contentEditable={!readOnly}
+                        {...editHandlers(id, (html) => handleContentUpdate(id, 'verifiedCustomerLabel', html))}
+                    />
+                </span>
+            );
+
+            // Criteria chips: flat, borderless, use subtle soft background — keeps focus on the stars
+            const criteriaBg = renderStyle.criteriaBgColor || softBg;
+            const criteriaLabelColor = renderStyle.criteriaLabelColor || mutedText;
+            const renderCriteria = () => hasCriteria && (
+                <div className="grid gap-2 mb-5 relative z-10" style={{ gridTemplateColumns: `repeat(${Math.min(criteriaList.length, 3)}, minmax(0, 1fr))` }}>
+                    {criteriaList.slice(0, 3).map((cr, i) => (
+                        <div
+                            key={i}
+                            className="flex flex-col gap-1 px-3 py-2 rounded-md"
+                            style={{ backgroundColor: criteriaBg }}
+                        >
+                            <span className="text-[0.6rem] font-semibold uppercase tracking-wider truncate" style={{ color: criteriaLabelColor }}>
+                                {cr.label || 'Criterion'}
+                            </span>
+                            <div className="flex items-center" style={{ gap: '1px', color: starColor, fontSize: '0.7rem' }}>
+                                {Array.from({ length: maxRating }).map((_, j) => {
+                                    const crVal = Math.max(0, Math.min(5, Math.round((cr.rating || 0) * 2) / 2));
+                                    const diff = crVal - j;
+                                    if (diff >= 1) return <i key={j} className="fa-solid fa-star" />;
+                                    if (diff >= 0.5) return <i key={j} className="fa-solid fa-star-half-stroke" />;
+                                    return <i key={j} className="fa-regular fa-star" style={{ opacity: 0.25 }} />;
+                                })}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+
+            const renderQuote = (size?: string, weight?: string) => (
+                <p
+                    className="outline-none relative z-10"
+                    style={{
+                        color: quoteColor,
+                        fontSize: renderStyle.quoteFontSize || size || '1.0625rem',
+                        lineHeight: renderStyle.quoteLineHeight || '1.6',
+                        fontStyle: renderStyle.quoteFontStyle || 'normal',
+                        fontWeight: renderStyle.quoteFontWeight || weight || '500',
+                        letterSpacing: renderStyle.quoteLetterSpacing || '-0.005em',
+                        fontFamily: renderStyle.quoteFontFamily || renderStyle.fontFamily || theme?.descriptionFontFamily,
+                    }}
+                    ref={bindHtml(id, quote)}
+                    contentEditable={!readOnly}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'quote', html))}
+                />
+            );
+
+            // Thin accent ring on avatar — subtle color touch that anchors the card.
+            const renderAvatar = (size: string = avatarSize) => showAvatar && (
+                <img
+                    src={avatarUrl}
+                    alt={author.replace(/<[^>]+>/g, '')}
+                    referrerPolicy="no-referrer"
+                    onError={(e) => { (e.target as HTMLImageElement).src = SECTION_IMAGE_PLACEHOLDER; }}
+                    className="flex-shrink-0"
+                    style={{
+                        display: 'block',
+                        width: size,
+                        height: size,
+                        borderRadius: avatarRadius,
+                        objectFit: 'cover',
+                        border: `2px solid ${accentColor}2A`,
+                    }}
+                />
+            );
+
+            const renderAuthorBlock = (align: 'left' | 'center' = 'left') => (
+                <div className={`flex-1 min-w-0 ${align === 'center' ? 'text-center' : ''}`}>
+                    <div className={`flex items-center gap-1.5 ${align === 'center' ? 'justify-center' : ''}`}>
+                        <div
+                            className="outline-none leading-tight truncate"
+                            style={{
+                                color: titleColor,
+                                fontSize: renderStyle.titleFontSize || '0.9375rem',
+                                fontWeight: renderStyle.titleFontWeight || '700',
+                                fontFamily: renderStyle.titleFontFamily || renderStyle.fontFamily || theme?.titleFontFamily,
+                                letterSpacing: renderStyle.titleLetterSpacing || '-0.005em',
+                            }}
+                            ref={bindHtml(id, author)}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'author', html))}
+                        />
+                        {showVerified && (
+                            <span
+                                aria-hidden
+                                className="inline-flex items-center justify-center flex-shrink-0"
+                                title="Verified"
+                                style={{
+                                    width: '15px', height: '15px', borderRadius: '9999px',
+                                    backgroundColor: renderStyle.verifiedColor || `${titleColor}18`,
+                                    color: renderStyle.verifiedColor ? '#FFFFFF' : titleColor,
+                                    fontSize: '8px', lineHeight: 1,
+                                }}
+                            >
+                                <i className="fa-solid fa-check" style={{ fontSize: '7px' }} />
+                            </span>
+                        )}
+                    </div>
+                    <div
+                        className={`flex items-center gap-1.5 ${align === 'center' ? 'justify-center' : ''}`}
+                        style={{
+                            color: textColor,
+                            fontSize: renderStyle.descriptionFontSize || '0.75rem',
+                            fontWeight: renderStyle.descriptionFontWeight || '500',
+                            fontFamily: renderStyle.descriptionFontFamily || renderStyle.fontFamily || theme?.descriptionFontFamily,
+                            marginTop: '3px',
+                            opacity: 0.75,
+                        }}
+                    >
+                        <i className="fa-solid fa-location-dot" style={{ fontSize: '0.625rem', opacity: 0.6 }} />
+                        <span
+                            className="outline-none truncate"
+                            ref={bindHtml(id, role)}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'role', html))}
+                        />
                     </div>
                 </div>
             );
 
-        case 'image-box':
-            // Construct full image URL for image-box
-            const imageBoxUrl = content.imageUrl || content.src || '';
-            const fullImageBoxUrl = imageBoxUrl 
-                ? (imageBoxUrl.startsWith('http') ? imageBoxUrl : `http://localhost:1111${imageBoxUrl.startsWith('/') ? '' : '/'}${imageBoxUrl}`)
-                : 'https://via.placeholder.com/400x250';
-            
-            return (
-                <div key={id} className={`flex flex-col gap-4 p-0 rounded-lg overflow-hidden bg-white/5 border border-white/5 ${selectedClass}`} onClick={!readOnly ? (e) => handleClick(e, el) : undefined} style={safeStyle}>
-                     <img 
-                        src={fullImageBoxUrl} 
-                        className="w-full h-48 object-cover" 
-                        alt={content.title || content.text || 'Image Box'} 
-                        onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x250';
-                        }}
-                     />
-                     <div className="p-6 pt-2">
-                        <h3 className="font-bold text-xl mb-2" style={{ color: theme?.titleColor || safeStyle.color }} contentEditable={!readOnly} suppressContentEditableWarning={!readOnly} onBlur={!readOnly ? (e) => handleContentUpdate(id, 'text', e.currentTarget.textContent) : undefined}>{content.title || content.text || 'Image Box Title'}</h3>
-                        <p className="opacity-70 text-sm" style={{ color: theme?.textColor || safeStyle.color }} contentEditable={!readOnly} suppressContentEditableWarning={!readOnly} onBlur={!readOnly ? (e) => handleContentUpdate(id, 'description', e.currentTarget.textContent) : undefined}>{content.description || content.subText || 'Description text for the image box element.'}</p>
-                     </div>
+            const replyBg = renderStyle.replyBgColor || softBg;
+            const replyStripe = renderStyle.replyStripeColor || softBorder;
+            const replyAuthorCol = renderStyle.replyAuthorColor || titleColor;
+            const replyTextCol = renderStyle.replyTextColor || textColor;
+            const renderReply = () => showReply && replyText.trim() !== '' && (
+                <div
+                    className="mt-5 pl-4 py-3 pr-4 rounded-lg relative z-10"
+                    style={{
+                        backgroundColor: replyBg,
+                        borderLeft: `3px solid ${replyStripe}`,
+                    }}
+                >
+                    <div className="flex items-center gap-2 mb-1.5">
+                        <i className="fa-solid fa-reply" style={{ color: mutedText, fontSize: '0.7rem' }} />
+                        <span
+                            className="text-[0.7rem] font-bold outline-none"
+                            style={{ color: replyAuthorCol }}
+                            ref={bindHtml(id, replyAuthor)}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'replyAuthor', html))}
+                        />
+                    </div>
+                    <p
+                        className="outline-none text-[0.8rem] leading-relaxed"
+                        style={{ color: replyTextCol }}
+                        ref={bindHtml(id, replyText)}
+                        contentEditable={!readOnly}
+                        {...editHandlers(id, (html) => handleContentUpdate(id, 'reply', html))}
+                    />
                 </div>
             );
 
-        case 'list':
-            // Use theme textColor if element color is not explicitly set
-            const listStyle = {
-                ...safeStyle,
-                color: safeStyle.color || theme?.textColor || '#D1D5DB'
+            const helpfulCol = renderStyle.helpfulColor || textColor;
+            const helpfulFontSize = renderStyle.helpfulFontSize || '0.7rem';
+            const renderFooterMeta = () => {
+                // Bottom row: helpful count on left, source + date on right
+                const hasAnyMeta = helpfulCount !== null || sourceMeta || hasDate;
+                if (!hasAnyMeta) return null;
+                return (
+                    <div className="flex items-center justify-between gap-2 flex-wrap mt-4 pt-4 relative z-10"
+                         style={{ borderTop: `1px dashed ${cardBorder}` }}>
+                        {helpfulCount !== null ? (
+                            <span className="flex items-center gap-1.5 font-medium" style={{ color: helpfulCol, fontSize: helpfulFontSize, opacity: renderStyle.helpfulColor ? 1 : 0.7 }}>
+                                <i className="fa-solid fa-thumbs-up" style={{ fontSize: helpfulFontSize }} />
+                                <span><strong style={{ color: titleColor }}>{helpfulCount}</strong> found this helpful</span>
+                            </span>
+                        ) : <span />}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {renderDate()}
+                            {renderSourcePill()}
+                        </div>
+                    </div>
+                );
             };
-            return (
-                <ul key={id} className={`list-disc list-inside space-y-2 ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={listStyle}>
-                    {(content.items || [{title: 'List Item 1'}, {title: 'List Item 2'}, {title: 'List Item 3'}]).map((item, i) => (
-                        <li key={i} className="opacity-90">
-                            {item.title}
-                        </li>
-                    ))}
-                </ul>
+
+            // Subtle quote mark — small, neutral, top-right corner so it doesn't collide
+            // with the header row. Hero centers it above the quote text.
+            const decorativeQuoteGlyph = (
+                <i
+                    aria-hidden
+                    className="fa-solid fa-quote-left absolute pointer-events-none select-none"
+                    style={{
+                        fontSize: layout === 'hero' ? '1.75rem' : '1rem',
+                        color: titleColor,
+                        opacity: layout === 'hero' ? 0.16 : 0.12,
+                        top: layout === 'hero' ? '1.5rem' : '1.25rem',
+                        ...(layout === 'hero'
+                            ? { left: '50%', transform: 'translateX(-50%)' }
+                            : { right: '1.25rem' }),
+                    } as any}
+                />
             );
 
-        case 'star-rating':
+            // Optional bg overlay layer
+            const tcOverlayEl = tcResolvedBg.overlay ? (
+                <div
+                    aria-hidden
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                        backgroundColor: tcResolvedBg.overlay.color,
+                        opacity: tcResolvedBg.overlay.opacity,
+                        mixBlendMode: tcResolvedBg.overlay.blendMode as any,
+                        zIndex: 0,
+                    }}
+                />
+            ) : null;
+
+            // ─── Layout switch ───
+            return (
+                <div
+                    key={id}
+                    className={`group relative flex flex-col ${tcTextAlignClass} ${tcItemsAlignClass} h-full overflow-hidden transition-all duration-500 hover:-translate-y-1 ${tcSelectedClass}`}
+                    onClick={(e) => handleClick(e, el)}
+                    style={cardStyle}
+                    onMouseEnter={(e) => { if (!isMinimal) { (e.currentTarget as HTMLDivElement).style.boxShadow = hoverShadow; (e.currentTarget as HTMLDivElement).style.borderColor = `${titleColor}18`; } }}
+                    onMouseLeave={(e) => { if (!isMinimal) { (e.currentTarget as HTMLDivElement).style.boxShadow = restShadow; (e.currentTarget as HTMLDivElement).style.borderColor = cardBorder; } }}
+                >
+                    {tcOverlayEl}
+                    {!isMinimal && decorativeQuoteGlyph}
+
+                    {layout === 'compact' && (
+                        <>
+                            {/* Compact: avatar left, everything inline */}
+                            <div className="flex items-start gap-4 mb-4 relative z-10">
+                                {renderAvatar('2.5rem')}
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <div
+                                                className="outline-none truncate text-[0.9rem] font-bold leading-tight"
+                                                style={{ color: titleColor }}
+                                                ref={bindHtml(id, author)}
+                                                contentEditable={!readOnly}
+                                                {...editHandlers(id, (html) => handleContentUpdate(id, 'author', html))}
+                                            />
+                                            {showVerified && (
+                                                <span aria-hidden style={{ width: '13px', height: '13px', borderRadius: '9999px', backgroundColor: renderStyle.verifiedColor || `${titleColor}18`, color: renderStyle.verifiedColor ? '#FFF' : titleColor, fontSize: '7px', lineHeight: 1 }} className="inline-flex items-center justify-center flex-shrink-0">
+                                                    <i className="fa-solid fa-check" style={{ fontSize: '6px' }} />
+                                                </span>
+                                            )}
+                                        </div>
+                                        {showStars && renderStars(rating, '0.8rem')}
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span
+                                            className="outline-none text-[0.7rem] truncate"
+                                            style={{ color: textColor, opacity: 0.7 }}
+                                            ref={bindHtml(id, role)}
+                                            contentEditable={!readOnly}
+                                            {...editHandlers(id, (html) => handleContentUpdate(id, 'role', html))}
+                                        />
+                                        {hasService && <span style={{ color: textColor, opacity: 0.3 }}>·</span>}
+                                        {renderServiceTag()}
+                                    </div>
+                                </div>
+                            </div>
+                            {(showVerifiedCustomer) && (
+                                <div className="flex items-center gap-2 flex-wrap mb-3 relative z-10">
+                                    {renderVerifiedPill()}
+                                </div>
+                            )}
+                            {renderCriteria()}
+                            <div className="flex-1 relative z-10">
+                                {renderQuote('0.95rem', '500')}
+                            </div>
+                            {renderReply()}
+                            {renderFooterMeta()}
+                        </>
+                    )}
+
+                    {layout === 'hero' && (
+                        <>
+                            {/* Hero: massive centered quote, author below */}
+                            {(showStars || hasService || showVerifiedCustomer) && (
+                                <div className="flex items-center justify-center gap-2 flex-wrap mb-5 relative z-10">
+                                    {showStars && renderStars(rating)}
+                                    {hasService && renderServiceTag()}
+                                    {renderVerifiedPill()}
+                                </div>
+                            )}
+                            {renderCriteria()}
+                            <div className="flex-1 flex items-center justify-center mb-6 relative z-10">
+                                <div className="max-w-2xl text-center">
+                                    {renderQuote('1.375rem', '500')}
+                                </div>
+                            </div>
+                            <div className="flex flex-col items-center gap-3 relative z-10">
+                                {renderAvatar('3.5rem')}
+                                {renderAuthorBlock('center')}
+                            </div>
+                            {renderReply()}
+                            {renderFooterMeta()}
+                        </>
+                    )}
+
+                    {layout === 'classic' && (
+                        <>
+                            {/* Classic: rating + service top, quote middle, author bottom */}
+                            <div className="flex items-start justify-between gap-3 mb-5 relative z-10 flex-wrap">
+                                {showStars ? renderStars(rating) : <div />}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {renderVerifiedPill()}
+                                    {renderServiceTag()}
+                                </div>
+                            </div>
+                            {renderCriteria()}
+                            <div className="flex-1 mb-6 relative z-10">
+                                {renderQuote()}
+                            </div>
+                            {/* Divider — flat, understated */}
+                            <div
+                                aria-hidden
+                                className="h-px w-full mb-5 relative z-10"
+                                style={{ backgroundColor: softBorder }}
+                            />
+                            {/* Author row */}
+                            <div className="flex items-center gap-4 relative z-10">
+                                {renderAvatar()}
+                                {renderAuthorBlock('left')}
+                            </div>
+                            {renderReply()}
+                            {renderFooterMeta()}
+                        </>
+                    )}
+
+                    {layout === 'minimal' && (
+                        <>
+                            {/* Minimal: no card chrome at all. Airy stack: stars, quote, —  author inline */}
+                            {showStars && <div className="mb-4 relative z-10">{renderStars(rating, '0.85rem')}</div>}
+                            {renderCriteria()}
+                            <div className="relative z-10">
+                                {renderQuote('1.05rem', '500')}
+                            </div>
+                            <div className="flex items-center gap-3 mt-5 relative z-10">
+                                <span className="inline-block w-8 h-px" style={{ backgroundColor: accentColor, opacity: 0.5 }} />
+                                <div className="flex items-center gap-2 text-[0.85rem]">
+                                    <span
+                                        className="outline-none font-semibold"
+                                        style={{ color: titleColor }}
+                                        ref={bindHtml(id, author)}
+                                        contentEditable={!readOnly}
+                                        {...editHandlers(id, (html) => handleContentUpdate(id, 'author', html))}
+                                    />
+                                    {hasDate && (
+                                        <>
+                                            <span style={{ color: mutedText, opacity: 0.5 }}>·</span>
+                                            <span
+                                                className="outline-none text-[0.8rem]"
+                                                style={{ color: mutedText }}
+                                                ref={bindHtml(id, date)}
+                                                contentEditable={!readOnly}
+                                                {...editHandlers(id, (html) => handleContentUpdate(id, 'date', html))}
+                                            />
+                                        </>
+                                    )}
+                                    <span style={{ color: mutedText, opacity: 0.5 }}>·</span>
+                                    <span
+                                        className="outline-none text-[0.8rem]"
+                                        style={{ color: mutedText }}
+                                        ref={bindHtml(id, role)}
+                                        contentEditable={!readOnly}
+                                        {...editHandlers(id, (html) => handleContentUpdate(id, 'role', html))}
+                                    />
+                                </div>
+                            </div>
+                            {renderReply()}
+                        </>
+                    )}
+
+                    {layout === 'quote-first' && (
+                        <>
+                            {/* Editorial: big italic quote up top with oversized glyph, then small attribution row */}
+                            <div className="relative z-10 mb-6">
+                                {renderQuote('1.375rem', '500')}
+                            </div>
+                            {renderCriteria()}
+                            <div className="flex items-center justify-between gap-4 pt-5 relative z-10" style={{ borderTop: `1px solid ${softBorder}` }}>
+                                <div className="flex items-center gap-3">
+                                    {renderAvatar('2.25rem')}
+                                    {renderAuthorBlock('left')}
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {showStars && renderStars(rating, '0.75rem')}
+                                    {renderVerifiedPill()}
+                                </div>
+                            </div>
+                            {renderReply()}
+                            {renderFooterMeta()}
+                        </>
+                    )}
+
+                    {layout === 'split' && (
+                        <>
+                            {/* Split: two internal panels — left tinted accent panel with avatar, right white panel with quote */}
+                            <div className="flex relative z-10 min-h-[180px]">
+                                <div
+                                    className="flex flex-col items-center justify-center gap-3 p-5 flex-shrink-0"
+                                    style={{
+                                        width: '130px',
+                                        background: `linear-gradient(180deg, ${accentColor}14, ${accentColor}06)`,
+                                        borderRight: `1px solid ${softBorder}`,
+                                    }}
+                                >
+                                    {renderAvatar('3.25rem')}
+                                    <div className="text-center">
+                                        <div className="flex items-center justify-center gap-1">
+                                            <div
+                                                className="outline-none text-[0.82rem] font-bold leading-tight"
+                                                style={{ color: titleColor }}
+                                                ref={bindHtml(id, author)}
+                                                contentEditable={!readOnly}
+                                                {...editHandlers(id, (html) => handleContentUpdate(id, 'author', html))}
+                                            />
+                                            {showVerified && (
+                                                <span aria-hidden style={{ width: '12px', height: '12px', borderRadius: '9999px', backgroundColor: renderStyle.verifiedColor || `${titleColor}18`, color: renderStyle.verifiedColor ? '#FFF' : titleColor, fontSize: '6px', lineHeight: 1 }} className="inline-flex items-center justify-center flex-shrink-0">
+                                                    <i className="fa-solid fa-check" style={{ fontSize: '6px' }} />
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div
+                                            className="outline-none text-[0.68rem] mt-1"
+                                            style={{ color: mutedText }}
+                                            ref={bindHtml(id, role)}
+                                            contentEditable={!readOnly}
+                                            {...editHandlers(id, (html) => handleContentUpdate(id, 'role', html))}
+                                        />
+                                    </div>
+                                    {showStars && <div style={{ transform: 'scale(0.85)' }}>{renderStars(rating, '0.7rem')}</div>}
+                                </div>
+                                <div className="flex-1 p-6 flex flex-col">
+                                    <div className="flex items-center gap-2 mb-3 flex-wrap">
+                                        {renderServiceTag()}
+                                        {renderVerifiedPill()}
+                                    </div>
+                                    {renderCriteria()}
+                                    <div className="flex-1">
+                                        {renderQuote('0.95rem', '500')}
+                                    </div>
+                                    {(hasDate || sourceMeta || helpfulCount !== null) && (
+                                        <div className="flex items-center justify-between gap-2 flex-wrap mt-4 pt-3" style={{ borderTop: `1px dashed ${softBorder}` }}>
+                                            {helpfulCount !== null ? (
+                                                <span className="flex items-center gap-1.5 font-medium" style={{ color: helpfulCol, fontSize: helpfulFontSize, opacity: renderStyle.helpfulColor ? 1 : 0.7 }}>
+                                                    <i className="fa-solid fa-thumbs-up" style={{ fontSize: helpfulFontSize }} />
+                                                    <span><strong style={{ color: titleColor }}>{helpfulCount}</strong> helpful</span>
+                                                </span>
+                                            ) : <span />}
+                                            <div className="flex items-center gap-2">
+                                                {renderDate()}
+                                                {renderSourcePill()}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            {renderReply()}
+                        </>
+                    )}
+                </div>
+            );
+        }
+
+        case 'image-box': {
+            // Simple, bulletproof image-box: image on top, content below. ONE layout.
+            // All visuals come from plain style keys; no layout switcheroo or react.cloneElement.
+            const resolvedBoxSrc = resolveSectionImageUrlForElement(section, { id, content });
+            const fullImageBoxUrl = toDisplayImageUrl(resolvedBoxSrc);
+
+            // Strip image-area + layout keys so they do not leak onto the card wrapper.
+            const ibSafeStyle: any = stripImageBoxImageKeys({ ...(safeStyle as any) });
+            delete ibSafeStyle.aspectRatio;
+            delete ibSafeStyle.overflow;
+            delete ibSafeStyle.padding;
+            delete ibSafeStyle.flexDirection;
+            delete ibSafeStyle.position;
+
+            // Card chrome
+            const ibCardBg     = ibSafeStyle.backgroundColor || 'transparent';
+            const ibCardBorder = ibSafeStyle.borderColor || 'transparent';
+            const ibBorderWidth = ibSafeStyle.borderWidth || '0px';
+            const ibRadius     = ibSafeStyle.borderRadius || '0.875rem';
+            // Content area — generous default gap so title/desc/button breathe
+            const ibContentPadding = (renderStyle as any).contentPadding || '1rem';
+            const ibContentGap     = (renderStyle as any).contentGap || '1rem';
+            // Gap between the image and the content block (title starts here)
+            const ibImageGap       = (renderStyle as any).imageContentGap || '1rem';
+            const ibImageHeight    = (renderStyle as any).imageHeight  || '12rem';
+            const safeImgId = `ib-${id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const ibImageScopeId = `ib-img-${safeImgId}`;
+            const ibImageNorm = normalizeImageBoxImageStyle(renderStyle as any);
+            const ibCombinedFilter = buildCombinedImageFilter(
+              ibImageNorm,
+              (renderStyle as any).filter
+            );
+            const ibImageAspectRaw = (renderStyle as any).imageAspectRatio || '';
+            const ibHasImageAspect = !!(ibImageAspectRaw && ibImageAspectRaw !== 'auto');
+            const ibImageOuterStyle = buildImageOuterStyle(ibImageNorm, {
+              height: ibImageHeight,
+              useAspectRatio: ibHasImageAspect,
+            });
+            const ibImgStyle = buildImageImgStyle(ibImageNorm, ibCombinedFilter);
+            // Title
+            const ibTitleCol      = (renderStyle as any).titleColor || theme?.titleColor || '#111827';
+            const ibTitleHeadingTag = (
+              ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(String((renderStyle as any).titleHeadingTag || ''))
+                ? String((renderStyle as any).titleHeadingTag)
+                : IMAGE_BOX_DEFAULT_TITLE_HEADING
+            ) as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+            const ibHeadingSizeFallback: Record<string, string> = {
+              h1: '3rem', h2: '2.5rem', h3: '2rem', h4: '1.5rem', h5: '1.25rem', h6: '1rem',
+            };
+            const ibTitleFontSize = (renderStyle as any).titleFontSize
+              || ibHeadingSizeFallback[ibTitleHeadingTag]
+              || ibHeadingSizeFallback.h5;
+            const IbTitleTag = ibTitleHeadingTag;
+            const ibTitleFontFamily = (renderStyle as any).titleFontFamily || theme?.titleFontFamily || '';
+            const ibTitleWeight   = (renderStyle as any).titleFontWeight || '700';
+            const ibTitleAlign    = (renderStyle as any).titleAlign || (renderStyle as any).textAlign || 'left';
+            // Description
+            const ibDescCol      = (renderStyle as any).descriptionColor || theme?.textColor || '#4B5563';
+            const ibDescTextSize = (renderStyle as any).descriptionTextSize as string | undefined;
+            const ibDescFontSize = (renderStyle as any).descriptionFontSize
+              || (ibDescTextSize === 'small' ? '0.875rem'
+                : ibDescTextSize === 'large' ? '1.125rem'
+                : ibDescTextSize === 'xl' ? '1.25rem'
+                : '0.875rem');
+            const ibDescFontFamily = (renderStyle as any).descriptionFontFamily || theme?.descriptionFontFamily || '';
+            const ibDescAlign    = (renderStyle as any).descriptionAlign || (renderStyle as any).textAlign || 'left';
+            // Line clamp — limit description to N lines (0 = no clamp)
+            const ibDescLineClamp: number = parseInt(String((renderStyle as any).descriptionLineClamp || 0), 10) || 0;
+            // Button (CTA) — default to showing when showButton is unset
+            const ibShowButton: boolean = (content as any).showButton !== false && (
+                (content as any).showButton === true || !!(content as any).buttonText || (content as any).showButton === undefined
+            );
+            const ibBtnText: string = (content as any).buttonText || 'Learn More';
+            const ibBtnLink: string = (content as any).buttonLink || '#';
+            // Default to "link" variant — simple text + URL, no big colored button.
+            const ibBtnVariant: string = (renderStyle as any).buttonVariant || 'link';
+            // New-tab opt-in. Defaults to ON across all linkable elements;
+            // user can explicitly flip to same-tab in the sidebar.
+            const ibBtnNewTabPref = (content as any).buttonNewTab;
+            const ibBtnNewTab: boolean = ibBtnNewTabPref === undefined ? true : !!ibBtnNewTabPref;
+            const ibBtnAccent = theme?.accentColor || theme?.buttonBackgroundColor || '#E11D48';
+            const variantBg = ibBtnVariant === 'outline' || ibBtnVariant === 'ghost' || ibBtnVariant === 'link'
+                ? 'transparent'
+                : ibBtnVariant === 'secondary'
+                    ? `${ibBtnAccent}1A`
+                    : (theme?.buttonBackgroundColor || ibBtnAccent);
+            const variantText = ibBtnVariant === 'primary'
+                ? (theme?.buttonTextColor || '#FFFFFF')
+                : ibBtnVariant === 'ghost'
+                    ? (theme?.titleColor || '#111827')
+                    : ibBtnAccent;
+            const variantBorder = ibBtnVariant === 'outline' ? `1.5px solid ${ibBtnAccent}` : 'none';
+            const variantUnderline = ibBtnVariant === 'link' ? 'underline' : 'none';
+            const variantPadding = ibBtnVariant === 'link' ? '0.25rem 0' : '0.625rem 1.25rem';
+            const ibBtnBg    = (renderStyle as any).buttonBgColor    || variantBg;
+            const ibBtnText_ = (renderStyle as any).buttonTextColor  || variantText;
+
+            // Whole-card link (preview mode only — when button is off + content.link is set)
+            const wholeCardLink: string = (!ibShowButton && (content as any).link) ? String((content as any).link) : '';
+
+            const ibImageHoverCss = buildImageHoverCss(
+              `#${ibImageScopeId}`,
+              ibImageNorm.hoverEffect,
+              ibCombinedFilter,
+              ibImageNorm.overlayColor
+            );
+
+            const cardNode = (
+                <div
+                    key={id}
+                    className={`${safeImgId}-card ${selectedClass}`}
+                    onClick={!readOnly ? (e) => handleClick(e, el) : undefined}
+                    style={{
+                        ...ibSafeStyle,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        backgroundColor: ibCardBg,
+                        borderColor: ibCardBorder,
+                        borderWidth: ibBorderWidth,
+                        borderStyle: 'solid',
+                        borderRadius: ibRadius,
+                        overflow: 'hidden',
+                    }}
+                >
+                    {ibImageHoverCss && <style>{ibImageHoverCss}</style>}
+                    <div id={ibImageScopeId} style={ibImageOuterStyle}>
+                        <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: 'inherit', overflow: 'hidden' }}>
+                            <img
+                                src={fullImageBoxUrl}
+                                alt={(content.title as string) || (content.text as string) || 'Image Box'}
+                                className={`w-full block ${safeImgId}-img`}
+                                style={ibImgStyle}
+                                onError={(e) => { (e.target as HTMLImageElement).src = SECTION_IMAGE_PLACEHOLDER; }}
+                            />
+                            {ibImageNorm.hoverEffect === 'tint' && (
+                                <div
+                                    className="gb-img-tint absolute inset-0 pointer-events-none transition-opacity duration-300"
+                                    style={{
+                                        backgroundColor: ibImageNorm.overlayColor || theme?.accentColor || '#E11D48',
+                                        opacity: 0,
+                                        mixBlendMode: 'multiply',
+                                    }}
+                                />
+                            )}
+                            {ibImageNorm.overlayOpacity > 0 && (
+                                <div
+                                    className="absolute inset-0 pointer-events-none"
+                                    style={{
+                                        backgroundColor: ibImageNorm.overlayColor || '#000000',
+                                        opacity: ibImageNorm.overlayOpacity,
+                                    }}
+                                />
+                            )}
+                        </div>
+                    </div>
+                    <div
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            // marginTop separates the content block from the image above —
+                            // a real gap, not absorbed by content padding.
+                            marginTop: ibImageGap,
+                            paddingTop: ibContentPadding,
+                            paddingRight: ibContentPadding,
+                            paddingBottom: ibContentPadding,
+                            paddingLeft: ibContentPadding,
+                            gap: ibContentGap,
+                        }}
+                    >
+                        <IbTitleTag
+                            className="outline-none m-0"
+                            style={{
+                                color: ibTitleCol,
+                                fontSize: ibTitleFontSize,
+                                fontFamily: ibTitleFontFamily || undefined,
+                                fontWeight: ibTitleWeight as any,
+                                lineHeight: 1.3,
+                                textAlign: ibTitleAlign as any,
+                                margin: 0,
+                            }}
+                            ref={bindHtml(`${id}::title`, content.title || content.text || 'Image Box Title')}
+                            contentEditable={!readOnly}
+                            {...editHandlers(`${id}::title`, (html) => {
+                                if (readOnly) return;
+                                const el0 = elements.find((e) => e.id === id);
+                                if (!el0) return;
+                                onElementUpdate(id, {
+                                    ...el0,
+                                    content: { ...el0.content, text: html, title: html },
+                                });
+                            }, true)}
+                        />
+                        <p
+                            className="outline-none m-0"
+                            style={{
+                                color: ibDescCol,
+                                fontSize: ibDescFontSize,
+                                fontFamily: ibDescFontFamily || undefined,
+                                lineHeight: 1.6,
+                                textAlign: ibDescAlign as any,
+                                margin: 0,
+                                // Line-clamp to N lines (truncate with ellipsis). Off when 0/unset.
+                                ...(ibDescLineClamp > 0 ? {
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: ibDescLineClamp,
+                                    WebkitBoxOrient: 'vertical' as any,
+                                    overflow: 'hidden',
+                                } : {}),
+                            }}
+                            ref={bindHtml(`${id}::desc`, content.description || content.subText || 'Description text.')}
+                            contentEditable={!readOnly}
+                            {...editHandlers(`${id}::desc`, (html) => {
+                                if (readOnly) return;
+                                const el0 = elements.find((e) => e.id === id);
+                                if (!el0) return;
+                                onElementUpdate(id, {
+                                    ...el0,
+                                    content: { ...el0.content, description: html, subText: html },
+                                });
+                            }, true)}
+                        />
+                        {ibShowButton && (() => {
+                            const ibBtnIcon: string | undefined = (content as any).buttonIcon && (content as any).buttonIcon !== 'none'
+                                ? (content as any).buttonIcon : undefined;
+                            const ibBtnIconPos: 'left' | 'right' = (content as any).buttonIconPosition === 'right' ? 'right' : 'left';
+                            const ibBtnIconSize: string = (renderStyle as any).buttonIconSize || '1em';
+                            const ibBtnIconGap: string = (renderStyle as any).buttonIconGap || '0.5rem';
+                            const iconNode = ibBtnIcon ? (
+                                <IconRenderer icon={ibBtnIcon} size={ibBtnIconSize} style={{ color: ibBtnText_ }} />
+                            ) : null;
+                            const descRaw = String((content as any).description || (content as any).subText || '').trim();
+                            const useLearnMoreModal =
+                                typeof publishedImageBoxDetailHandler === 'function' &&
+                                descRaw.length > 40;
+                            const cardTitle = String((content as any).title || (content as any).text || '').trim();
+                            const btnCommonClass = `self-start cursor-pointer transition-opacity hover:opacity-90 outline-none ${ibBtnIcon ? 'inline-flex items-center' : 'inline-block'}`;
+                            const btnCommonStyle: React.CSSProperties = {
+                                backgroundColor: ibBtnBg,
+                                color: ibBtnText_,
+                                padding: (renderStyle as any).buttonPadding || variantPadding,
+                                borderRadius: (renderStyle as any).buttonRadius || (ibBtnVariant === 'link' ? '0' : '0.5rem'),
+                                fontSize: (renderStyle as any).buttonFontSize || '0.875rem',
+                                fontWeight: (renderStyle as any).buttonFontWeight || 600,
+                                border: (renderStyle as any).buttonBorderColor
+                                    ? `1.5px solid ${(renderStyle as any).buttonBorderColor}`
+                                    : variantBorder,
+                                textDecoration: variantUnderline,
+                                margin: 0,
+                                gap: ibBtnIcon ? ibBtnIconGap : undefined,
+                            };
+                            const innerLabel = (
+                                <>
+                                    {ibBtnIcon && ibBtnIconPos === 'left' && iconNode}
+                                    <span
+                                        contentEditable={!readOnly}
+                                        suppressContentEditableWarning={!readOnly}
+                                        onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'buttonText', e.currentTarget.textContent || '') : undefined}
+                                    >
+                                        {ibBtnText}
+                                    </span>
+                                    {ibBtnIcon && ibBtnIconPos === 'right' && iconNode}
+                                </>
+                            );
+                            if (useLearnMoreModal) {
+                                return (
+                                    <button
+                                        type="button"
+                                        className={btnCommonClass}
+                                        style={{ ...btnCommonStyle, font: 'inherit' }}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            publishedImageBoxDetailHandler({
+                                                title: cardTitle,
+                                                description: descRaw,
+                                                href: ibBtnLink || '#',
+                                            });
+                                        }}
+                                    >
+                                        {innerLabel}
+                                    </button>
+                                );
+                            }
+                            return (
+                                <a
+                                    href={ibBtnLink}
+                                    target={ibBtnNewTab ? '_blank' : undefined}
+                                    rel={ibBtnNewTab ? 'noopener noreferrer' : undefined}
+                                    onClick={!readOnly ? (e) => { e.preventDefault(); e.stopPropagation(); } : undefined}
+                                    className={btnCommonClass}
+                                    style={btnCommonStyle}
+                                >
+                                    {innerLabel}
+                                </a>
+                            );
+                        })()}
+                    </div>
+                </div>
+            );
+
+            // Wrap in <a> only in preview mode — edit mode would block element selection.
+            if (wholeCardLink && readOnly) {
+                const isExternal = /^https?:\/\//i.test(wholeCardLink);
+                return (
+                    <a
+                        key={`${id}-cardlink`}
+                        href={wholeCardLink}
+                        target={isExternal ? '_blank' : undefined}
+                        rel={isExternal ? 'noopener noreferrer' : undefined}
+                        className="block no-underline text-inherit"
+                    >
+                        {cardNode}
+                    </a>
+                );
+            }
+            return cardNode;
+        }
+
+        case 'list': {
+            // List type options (stored on style for one-place editing):
+            //   bullet/number/check/dash/arrow/star/none/custom
+            // Falls back to content.listType for backward compat.
+            const listType: string = (renderStyle as any).listType || (content as any).listType || 'bullet';
+            const items: any[] = content.items || [{title: 'List Item 1'}, {title: 'List Item 2'}, {title: 'List Item 3'}];
+            const textCol  = safeStyle.color || theme?.textColor || '#D1D5DB';
+            const markerCol = (renderStyle as any).markerColor || (renderStyle as any).iconColor || theme?.accentColor || textCol;
+            const itemGap   = (renderStyle as any).itemGap || '0.5rem';
+            const indent    = (renderStyle as any).indent || '0px';
+            const customIcon: string = (renderStyle as any).bulletIcon || (content as any).bulletIcon || 'fa-check';
+
+            // Marker sizing + chip styling (all optional, default to current behavior)
+            const markerSize: string = (renderStyle as any).markerSize || '0.875rem';
+            const markerGap:  string = (renderStyle as any).markerGap  || '0.625rem';
+            const markerContainerSize: string = (renderStyle as any).markerContainerSize || '';
+            const markerBgColor: string        = (renderStyle as any).markerBackgroundColor || '';
+            const markerRadius: string         = (renderStyle as any).markerBorderRadius || '9999px';
+            const markerBorderColor: string    = (renderStyle as any).markerBorderColor || '';
+            const markerBorderWidth: string    = (renderStyle as any).markerBorderWidth || '0';
+
+            // Per-item dividers — paint a subtle line between items
+            const dividerColor: string = (renderStyle as any).dividerColor || '';
+            const dividerWidth: string = (renderStyle as any).dividerWidth || '1px';
+
+            // Hover color on text (optional)
+            const hoverColor: string = (renderStyle as any).hoverColor || '';
+
+            // Multi-column layout — 1 / 2 / 3
+            const cols: number = Math.max(1, Math.min(3, parseInt(String((renderStyle as any).columns || 1), 10) || 1));
+            const colGap: string = (renderStyle as any).columnGap || '2rem';
+
+            const listStyle = { ...safeStyle, color: textCol, paddingLeft: indent };
+
+            // Build per-item style with optional divider between items
+            const itemDivider: React.CSSProperties = dividerColor
+                ? { borderBottom: `${dividerWidth} solid ${dividerColor}`, paddingBottom: itemGap }
+                : {};
+
+            // Scoped hover CSS — only injected when hoverColor is set
+            const safeListId = `gb-list-${id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const hoverCss = hoverColor
+                ? `#${safeListId} > li { transition: color 0.18s ease; } #${safeListId} > li:hover { color: ${hoverColor}; }`
+                : '';
+
+            // Layout — horizontal (single row, wraps) wins over multi-column
+            // CSS columns; otherwise multi-column flow when cols > 1; otherwise stacked.
+            const orientation: string = (renderStyle as any).orientation || 'vertical';
+            const isHorizontal = orientation === 'horizontal';
+            const containerLayout: React.CSSProperties = isHorizontal
+                ? { display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: itemGap, alignItems: 'center' }
+                : cols > 1
+                    ? { columnCount: cols, columnGap: colGap, display: 'block' }
+                    : { display: 'flex', flexDirection: 'column', gap: itemGap };
+
+            // Use real <ol>/<ul> for native bullets/numbers (better a11y);
+            // for icon-style markers we render a styled flex layout per item.
+            if (listType === 'number') {
+                return (
+                    <>
+                        {hoverCss && <style>{hoverCss}</style>}
+                        <ol
+                            key={id}
+                            id={safeListId}
+                            className={`list-decimal list-inside ${selectedClass}`}
+                            style={{ ...listStyle, ...containerLayout }}
+                            onClick={(e) => handleClick(e, el)}
+                        >
+                            {items.map((item: any, i: number) => (
+                                <li
+                                    key={i}
+                                    className="opacity-90 outline-none"
+                                    style={{ ...itemDivider, breakInside: 'avoid' as any }}
+                                    ref={bindHtml(`${id}-item-${i}`, item.title || '')}
+                                    contentEditable={!readOnly}
+                                    {...editHandlers(`${id}-item-${i}`, (html) => handleArrayContentUpdate(id, 'items', i, 'title', html))}
+                                />
+                            ))}
+                        </ol>
+                    </>
+                );
+            }
+            if (listType === 'bullet') {
+                return (
+                    <>
+                        {hoverCss && <style>{hoverCss}</style>}
+                        <ul
+                            key={id}
+                            id={safeListId}
+                            className={`list-disc list-inside ${selectedClass}`}
+                            style={{ ...listStyle, ...containerLayout }}
+                            onClick={(e) => handleClick(e, el)}
+                        >
+                            {items.map((item: any, i: number) => (
+                                <li
+                                    key={i}
+                                    className="opacity-90 outline-none"
+                                    style={{ ...itemDivider, breakInside: 'avoid' as any }}
+                                    ref={bindHtml(`${id}-item-${i}`, item.title || '')}
+                                    contentEditable={!readOnly}
+                                    {...editHandlers(`${id}-item-${i}`, (html) => handleArrayContentUpdate(id, 'items', i, 'title', html))}
+                                />
+                            ))}
+                        </ul>
+                    </>
+                );
+            }
+            // Icon-style: check / dash / arrow / star / none / custom
+            const iconForType: Record<string, string | null> = {
+                check: 'fa-check',
+                dash: null, // render a literal dash
+                arrow: 'fa-arrow-right',
+                star: 'fa-star',
+                none: null,
+                custom: customIcon,
+            };
+            const iconClass = iconForType[listType];
+            // Marker chip styling — when markerContainerSize OR bg is set, wrap the
+            // icon in a fixed-size flex container so it reads as a chip.
+            const useMarkerChip = !!markerContainerSize || !!markerBgColor || markerBorderWidth !== '0';
+            const markerChipStyle: React.CSSProperties = useMarkerChip
+                ? {
+                    width: markerContainerSize || '1.5rem',
+                    height: markerContainerSize || '1.5rem',
+                    backgroundColor: markerBgColor || 'transparent',
+                    borderRadius: markerRadius,
+                    border: markerBorderWidth !== '0'
+                        ? `${markerBorderWidth} solid ${markerBorderColor || markerCol}`
+                        : 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    color: markerCol,
+                    marginTop: '2px',
+                }
+                : { color: markerCol, flexShrink: 0, marginTop: '4px' };
+            return (
+                <>
+                    {hoverCss && <style>{hoverCss}</style>}
+                    <ul
+                        key={id}
+                        id={safeListId}
+                        role="list"
+                        className={`${selectedClass}`}
+                        style={{ ...listStyle, listStyle: 'none', padding: safeStyle.padding || 0, paddingLeft: indent, ...containerLayout }}
+                        onClick={(e) => handleClick(e, el)}
+                    >
+                        {items.map((item: any, i: number) => {
+                            // Per-item icon override (only meaningful when listType=custom).
+                            const perItemIcon = listType === 'custom' && item.icon ? item.icon : iconClass;
+                            const itemLink: string = (item.link && String(item.link).trim()) || '';
+                            // Per-item new-tab default — ON unless user explicitly flips it.
+                            const itemNewTabPref = item.linkNewTab;
+                            const itemNewTab: boolean = itemNewTabPref === undefined ? true : !!itemNewTabPref;
+                            const textNode = (
+                                <span
+                                    className="outline-none flex-1"
+                                    ref={bindHtml(`${id}-item-${i}`, item.title || '')}
+                                    contentEditable={!readOnly}
+                                    {...editHandlers(`${id}-item-${i}`, (html) => handleArrayContentUpdate(id, 'items', i, 'title', html))}
+                                />
+                            );
+                            return (
+                                <li key={i}
+                                    className="flex items-start opacity-90"
+                                    style={{ gap: markerGap, ...itemDivider, breakInside: 'avoid' as any }}
+                                >
+                                    {listType === 'dash' && (
+                                        <span aria-hidden="true" style={{ color: markerCol, lineHeight: 1.5 }}>—</span>
+                                    )}
+                                    {perItemIcon && listType !== 'none' && listType !== 'dash' && (
+                                        <span style={markerChipStyle}>
+                                            <IconRenderer icon={perItemIcon} size={markerSize} style={{ color: markerCol }} />
+                                        </span>
+                                    )}
+                                    {itemLink ? (
+                                        <a
+                                            href={itemLink}
+                                            target={readOnly && itemNewTab ? '_blank' : undefined}
+                                            rel={readOnly && itemNewTab ? 'noopener noreferrer' : undefined}
+                                            className="flex-1 no-underline text-inherit hover:underline"
+                                            onClick={(e) => {
+                                                if (!readOnly) {
+                                                    e.preventDefault();
+                                                    handleClick(e, el);
+                                                }
+                                            }}
+                                        >
+                                            {textNode}
+                                        </a>
+                                    ) : (
+                                        textNode
+                                    )}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </>
+            );
+        }
+
+        case 'star-rating': {
             const rating = content.rating !== undefined ? parseFloat(String(content.rating)) : 5;
             const maxRating = content.maxRating !== undefined ? parseInt(String(content.maxRating)) : 5;
             const starColor = safeStyle.color || theme?.accentColor || '#F59E0B';
-            const inactiveColor = 'rgba(255, 255, 255, 0.2)'; // Faded background star
-            
+            const inactiveColor = 'rgba(255, 255, 255, 0.2)';
+            const starAlign = resolveTextAlign(renderStyle);
+
             return (
-                <div key={id} className={`flex gap-1 ${selectedClass}`} onClick={!readOnly ? (e) => handleClick(e, el) : undefined} style={{ ...safeStyle, color: undefined }}>
+                <div key={id} className={`flex gap-1 w-full ${starAlign.justifyClass} ${selectedClass}`} onClick={!readOnly ? (e) => handleClick(e, el) : undefined} style={{ ...safeStyle, color: undefined }}>
                     {Array.from({ length: maxRating }, (_, i) => i + 1).map(star => {
                         const isFull = rating >= star;
                         const isHalf = !isFull && rating >= star - 0.5;
@@ -654,249 +3592,983 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
                     })}
                 </div>
             );
-            
+        }
+
         case 'badge':
-            // CRITICAL: Badges should ALWAYS use current theme badge colors
-            // This ensures badges update when theme changes
-            // Only use element colors if they're explicitly customized to non-theme colors
+            // 1. Get LIVE theme badge colors (Bypassing stale ThemeProvider context)
+            const getLiveBadgeColors = () => {
+                const liveSurface = (theme as Record<string, string>)?.backgroundColor || (sectionStyles?.backgroundColor as string) || '';
+                const preset = PRESET_THEMES.find(t => t.elements.surface.toLowerCase() === liveSurface.toLowerCase());
+                if (preset) return { bg: preset.elements.badge.background, text: preset.elements.badge.text };
+                
+                const hex = theme?.buttonBackgroundColor || '#3b82f6';
+                let r = 59, g = 130, b = 246;
+                if (hex.startsWith('#') && hex.length === 7) {
+                    r = parseInt(hex.slice(1, 3), 16) || r; g = parseInt(hex.slice(3, 5), 16) || g; b = parseInt(hex.slice(5, 7), 16) || b;
+                }
+                return { bg: `rgba(${r}, ${g}, ${b}, 0.15)`, text: theme?.buttonTextColor || '#FFFFFF' };
+            };
+            const liveBadge = getLiveBadgeColors();
+            const currentThemeBg = liveBadge.bg;
+            const currentThemeText = liveBadge.text;
             
-            // Get current theme badge colors (these update reactively when theme changes via useTheme hook)
-            const currentThemeBg = themeData?.badge?.background;
-            const currentThemeText = themeData?.badge?.text;
-            
-            // Get element style directly (not merged with ELEMENT_DEFAULTS)
-            // Check both backgroundColor and accentColor (legacy support)
+            // 2. Safely extract element style
             const elementStyle = el.style || {};
-            const elementBg = elementStyle.backgroundColor || elementStyle.accentColor;
-            const elementText = elementStyle.color;
+            const rawBg = elementStyle.backgroundColor || elementStyle.accentColor || '';
+            const rawText = elementStyle.color || '';
+
+            // 3. Helper to clean duplicated color strings (e.g., "#HEX,#HEX" or "rgba(...),rgba(...)")
+            const sanitizeColor = (colorStr: string) => {
+                if (!colorStr) return '';
+                // Fix duplicated rgba: "rgba(255,0,0,0.5),rgba(255,0,0,0.5)"
+                if (colorStr.includes('),rgba')) {
+                    return colorStr.split('),rgba')[0] + ')';
+                }
+                // Fix duplicated hex: "#F8FAFC,#F8FAFC"
+                if (colorStr.includes('#') && colorStr.indexOf('#', 1) !== -1) {
+                    return colorStr.substring(0, colorStr.indexOf('#', 1)).replace(/,$/, '');
+                }
+                return colorStr;
+            };
+
+            const cleanElementBg = sanitizeColor(rawBg);
+            const cleanElementText = sanitizeColor(rawText);
+
+            // 4. Build a list of ALL known preset theme colors to detect remnants of previous themes
+            const knownThemeBgs = PRESET_THEMES.map(t => t.elements.badge?.background).filter(Boolean) as string[];
+            knownThemeBgs.push('#ec4899', '#F59E0B', 'rgba(225,29,72,0.15)', 'transparent');
+
+            const knownThemeTexts = PRESET_THEMES.map(t => t.elements.badge?.text).filter(Boolean) as string[];
+            knownThemeTexts.push('#F8FAFC', '#FFFFFF', '#D1D5DB', 'transparent');
+
+            // 5. Determine if it's a TRUE custom color
+            // It is custom ONLY if it exists AND it does not match ANY of our known theme colors
+            const isCustomBg = cleanElementBg !== '' && 
+                !knownThemeBgs.some(bg => bg.replace(/\s/g, '') === cleanElementBg.replace(/\s/g, ''));
+                               
+            const isCustomText = cleanElementText !== '' && 
+                !knownThemeTexts.some(text => text.replace(/\s/g, '') === cleanElementText.replace(/\s/g, ''));
+
+            // 6. Resolve final colors: Use custom if it exists, otherwise strictly force the current theme
+            const badgeBgColor = isCustomBg ? cleanElementBg : currentThemeBg;
+            const badgeTextColor = isCustomText ? cleanElementText : currentThemeText;
             
-            // Check if element has explicit colors that are NOT theme colors (user customization)
-            // We always prefer theme colors to allow theme updates
-            // Only use element colors if they exist AND don't match current theme
-            // Empty style objects will result in undefined, which will use theme colors
-            const useCustomBg = elementBg && 
-                               elementBg !== '' && 
-                               elementBg !== 'transparent' &&
-                               currentThemeBg &&
-                               elementBg !== currentThemeBg;
-            const useCustomText = elementText && 
-                                 elementText !== '' && 
-                                 elementText !== 'transparent' &&
-                                 currentThemeText &&
-                                 elementText !== currentThemeText;
-            
-            // Always use theme colors unless element has explicit custom non-theme colors
-            // This ensures badges update when theme changes
-            const badgeBgColor = useCustomBg 
-                ? elementBg 
-                : (currentThemeBg || 'rgba(225,29,72,0.15)');
-            const badgeTextColor = useCustomText 
-                ? elementText 
-                : (currentThemeText || '#F8FAFC');
-            
-            // Badge size and padding - use element style or defaults
+            // 7. Badge size and padding
             const badgeFontSize = renderStyle?.fontSize || '0.75rem';
-            const badgePadding = renderStyle?.padding || '4px 12px';
+            const badgePadding = renderStyle?.padding || '6px 12px';
             const badgeBorderRadius = renderStyle?.borderRadius || '9999px';
             
-            // Create safe style object excluding colors (they're set explicitly above)
+            // 8. Create safe style object excluding colors
             const badgeSafeStyle = { ...safeStyle };
             delete badgeSafeStyle.backgroundColor;
             delete badgeSafeStyle.color;
+
+            // 9. Icon logic
+            const hasIcon = content.icon && content.icon !== 'none';
+            const iconPosition = content.iconPosition || 'left';
+            const iconSize = content.iconSize || '0.75rem';
             
-            return (
-                <span 
-                    key={id} 
-                    className={`inline-flex items-center font-medium ${selectedClass}`} 
-                    style={{ 
-                        backgroundColor: badgeBgColor, 
-                        color: badgeTextColor, 
+            // Pulse animation for attention-grabbing badges ("NEW", "SALE", "LIVE").
+            // Two variants — "pulse-dot" adds an animated dot before the text,
+            // "pulse-glow" makes the whole badge gently pulse its background.
+            const pulseMode: string = (content as any).pulse || 'none';
+            const pulseDotClass = pulseMode === 'pulse-dot' ? 'animate-pulse' : '';
+            const pulseGlowClass = pulseMode === 'pulse-glow' ? 'animate-[pulse_1.8s_ease-in-out_infinite]' : '';
+            // Wrapper alignment for the inline-level badge
+            const badgeAlign = resolveTextAlign(renderStyle);
+            // Entry animation — small CSS keyframe applied to the badge on first paint.
+            // Stored on style.entryAnimation; render injects a one-shot animation class.
+            const entryAnim: string = (renderStyle as any)?.entryAnimation || '';
+            const entryClass = entryAnim === 'fade'      ? 'animate-[badgeFade_0.5s_ease-out]'
+                              : entryAnim === 'slide-up' ? 'animate-[badgeSlideUp_0.5s_ease-out]'
+                              : entryAnim === 'scale-in' ? 'animate-[badgeScaleIn_0.4s_ease-out]'
+                              : entryAnim === 'pop'      ? 'animate-[badgePop_0.5s_cubic-bezier(0.34,1.56,0.64,1)]'
+                              : '';
+            // Gradient variant uses backgroundImage. Strip safeStyle's bg props so
+            // our explicit values win (avoid double-painting from spread).
+            const badgeBgImage = (renderStyle as any)?.backgroundImage || '';
+
+            // Link support — preview mode wraps the badge in an <a>. New-tab
+            // defaults to ON when `linkNewTab` is undefined (the convention
+            // across our linkable elements). Edit mode never wraps in <a>
+            // since that would block element selection.
+            const badgeLinkRaw: string = String((content as any).link || '').trim();
+            const badgeLink: string =
+              badgeLinkRaw && badgeLinkRaw !== '#' && !/^https?:\/\//i.test(badgeLinkRaw) && !/^mailto:|^tel:/i.test(badgeLinkRaw)
+                ? (badgeLinkRaw.startsWith('/') ? badgeLinkRaw : `/${badgeLinkRaw}`)
+                : badgeLinkRaw;
+            const badgeNewTabPref = (content as any).linkNewTab;
+            const badgeIsExternal = /^https?:\/\//i.test(badgeLink);
+            const badgeNewTab: boolean = badgeIsExternal && (badgeNewTabPref === undefined ? true : !!badgeNewTabPref);
+
+            const badgeInner = (
+                <span
+                    key={id}
+                    className={`inline-flex items-center font-medium ${selectedClass} ${pulseGlowClass} ${entryClass}`}
+                    style={{
+                        backgroundColor: badgeBgImage ? 'transparent' : badgeBgColor,
+                        backgroundImage: badgeBgImage || undefined,
+                        color: badgeTextColor,
                         fontSize: badgeFontSize,
                         padding: badgePadding,
                         borderRadius: badgeBorderRadius,
-                        ...badgeSafeStyle 
+                        ...badgeSafeStyle,
+                        // Re-apply after spread so safeStyle doesn't clobber our gradient.
+                        ...(badgeBgImage ? { backgroundImage: badgeBgImage, backgroundColor: 'transparent' } : {}),
+                        // Force inline-flex + content-width so badge can never stretch full-width
+                        // even if a stray `display`/`width`/`textAlign` leaks in from safeStyle.
+                        display: 'inline-flex',
+                        width: 'max-content',
+                        maxWidth: '100%',
+                        textAlign: 'left' as any, // text inside the badge always reads naturally L→R
                     }}
                     onClick={!readOnly ? (e) => handleClick(e, el) : undefined}
-                    contentEditable={!readOnly}
-                    suppressContentEditableWarning={!readOnly}
-                    onBlur={!readOnly ? (e) => handleContentUpdate(id, 'text', e.currentTarget.textContent) : undefined}
                 >
-                    {content.text || 'Badge'}
+                    {pulseMode === 'pulse-dot' && (
+                      <span
+                        className={`inline-block w-1.5 h-1.5 rounded-full mr-2 ${pulseDotClass}`}
+                        style={{ backgroundColor: badgeTextColor }}
+                        aria-hidden="true"
+                      />
+                    )}
+                    {hasIcon && iconPosition === 'left' && (
+                        <IconRenderer icon={content.icon} size={iconSize} className="mr-2" />
+                    )}
+                    <span
+                        ref={bindHtml(id, content.text || 'Badge')}
+                        contentEditable={!readOnly}
+                        {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                    />
+                    {hasIcon && iconPosition === 'right' && (
+                        <IconRenderer icon={content.icon} size={iconSize} className="ml-2" />
+                    )}
                 </span>
             );
 
-        case 'highlight-text':
-            // Use theme accentColor if element backgroundColor is not explicitly set
-            const highlightBgColor = renderStyle?.accentColor || theme?.accentColor || '#facc15';
-            const highlightTextStyle = {
-                ...safeStyle,
-                color: safeStyle.color || theme?.textColor || '#D1D5DB'
-            };
             return (
-                <p key={id} className={`${selectedClass}`} style={highlightTextStyle} onClick={!readOnly ? (e) => handleClick(e, el) : undefined}>
-                    Here is some <span className="px-1 rounded" style={{ backgroundColor: highlightBgColor, color: '#000' }}>{content.text || 'Highlighted'}</span> text example.
+                <div key={`${id}-wrap`} className={`flex w-full ${badgeAlign.justifyClass}`}>
+                    <style>{`
+                      @keyframes badgeFade { from { opacity: 0; } to { opacity: 1; } }
+                      @keyframes badgeSlideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+                      @keyframes badgeScaleIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+                      @keyframes badgePop { 0% { opacity: 0; transform: scale(0.5); } 60% { opacity: 1; transform: scale(1.1); } 100% { transform: scale(1); } }
+                    `}</style>
+                    {badgeLink && badgeLink !== '#' && readOnly ? (
+                        <a
+                            href={badgeLink}
+                            target={badgeNewTab ? '_blank' : undefined}
+                            rel={badgeNewTab ? 'noopener noreferrer' : undefined}
+                            className="no-underline text-inherit inline-block cursor-pointer"
+                        >
+                            {badgeInner}
+                        </a>
+                    ) : badgeInner}
+                </div>
+            );
+
+        case 'highlight-text': {
+            // Highlight style mode (stored on style for one-place editing).
+            //   marker        — bg fill + text color (default)
+            //   underline     — colored line under the text
+            //   brushstroke   — slanted thick underline (organic feel)
+            //   box-outline   — thin border around the text
+            //   strikethrough — line through the text
+            //   none          — no decoration (just colored text)
+            const hlMode: string = (renderStyle as any).highlightMode || 'marker';
+            const highlightBgColor   = (safeStyle as any).highlightColor || renderStyle?.accentColor || theme?.accentColor || '#facc15';
+            const highlightTextColor = (safeStyle as any).highlightTextColor || (hlMode === 'marker' ? '#000000' : highlightBgColor);
+            const highlightTextStyle = { ...safeStyle, color: safeStyle.color || theme?.textColor || '#D1D5DB' };
+            const padX = (renderStyle as any).highlightPaddingX || (hlMode === 'marker' || hlMode === 'box-outline' ? '0.375rem' : '0');
+            const padY = (renderStyle as any).highlightPaddingY || (hlMode === 'marker' || hlMode === 'box-outline' ? '0.125rem' : '0');
+            const hlRadius = (renderStyle as any).highlightRadius || (hlMode === 'marker' ? '0.25rem' : '0');
+            const textBefore = content.textBefore || '';
+            const textAfter  = content.textAfter  || '';
+            const highlighted = content.text || content.highlightedText || 'Highlighted';
+
+            // Per-mode highlight span style
+            const hlSpanStyle: React.CSSProperties = (() => {
+                const base: React.CSSProperties = {
+                    color: highlightTextColor,
+                    padding: `${padY} ${padX}`,
+                    borderRadius: hlRadius,
+                };
+                if (hlMode === 'marker') {
+                    return { ...base, backgroundColor: highlightBgColor };
+                }
+                if (hlMode === 'underline') {
+                    return {
+                        ...base,
+                        backgroundImage: `linear-gradient(${highlightBgColor}, ${highlightBgColor})`,
+                        backgroundSize: '100% 0.18em',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: '0 88%',
+                    };
+                }
+                if (hlMode === 'brushstroke') {
+                    return {
+                        ...base,
+                        backgroundImage: `linear-gradient(105deg, transparent 4%, ${highlightBgColor}66 4%, ${highlightBgColor}66 96%, transparent 96%)`,
+                        backgroundSize: '100% 0.6em',
+                        backgroundRepeat: 'no-repeat',
+                        backgroundPosition: '0 88%',
+                    };
+                }
+                if (hlMode === 'box-outline') {
+                    return {
+                        ...base,
+                        border: `1.5px solid ${highlightBgColor}`,
+                    };
+                }
+                if (hlMode === 'strikethrough') {
+                    return { ...base, textDecoration: `line-through ${highlightBgColor}`, textDecorationThickness: '2px' };
+                }
+                /* none */ return base;
+            })();
+
+            return (
+                <p key={id} className={`leading-relaxed ${selectedClass}`} style={highlightTextStyle} onClick={!readOnly ? (e) => handleClick(e, el) : undefined}>
+                    {textBefore && (
+                        <span
+                            className="outline-none"
+                            ref={bindHtml(id, textBefore)}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'textBefore', html))}
+                        />
+                    )}
+                    {textBefore && ' '}
+                    <span
+                        className="font-semibold outline-none"
+                        style={hlSpanStyle}
+                        ref={bindHtml(id, highlighted)}
+                        contentEditable={!readOnly}
+                        {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                    />
+                    {textAfter && ' '}
+                    {textAfter && (
+                        <span
+                            className="outline-none"
+                            ref={bindHtml(id, textAfter)}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'textAfter', html))}
+                        />
+                    )}
                 </p>
             );
+        }
 
-        case 'blockquote':
-            // Use theme accentColor and textColor if element colors are not explicitly set
-            const blockquoteBorderColor = renderStyle?.borderColor || renderStyle?.accentColor || theme?.accentColor || '#fff';
-            const blockquoteStyle = {
+        case 'blockquote': {
+            // Visual style mode (stored on style for sidebar parity).
+            //   bar-left    — default classic, accent vertical bar on left
+            //   large-quote — big decorative ❝ mark above the text
+            //   card        — soft card background, no bar
+            //   minimal     — italic only, no bar / no bg
+            //   center      — centered text with quote marks on both sides
+            const bqMode: string = (renderStyle as any).blockquoteMode || 'bar-left';
+            const accentCol = renderStyle?.accentColor || theme?.accentColor || '#E11D48';
+            const blockquoteBorderColor = renderStyle?.borderColor || accentCol;
+            const bqResolvedBg = resolveElementBackground(renderStyle);
+            const isItalic: boolean = ((renderStyle as any).fontStyle ?? 'italic') !== 'normal';
+            // Skip wrapping the text in `"..."` — users can type their own punctuation.
+            const quoteText = content.text || 'This is a quote.';
+            const authorName = content.author || 'Author Name';
+
+            // Mode-specific layout / class composition
+            const baseStyle: React.CSSProperties = {
                 ...safeStyle,
                 color: safeStyle.color || theme?.textColor || '#D1D5DB',
-                borderColor: blockquoteBorderColor
+                ...bqResolvedBg.backgroundStyle,
+                position: bqResolvedBg.overlay ? 'relative' : safeStyle.position,
+                overflow: bqResolvedBg.overlay ? 'hidden' : safeStyle.overflow,
+                fontStyle: isItalic ? 'italic' : 'normal',
             };
+
+            let modeClass = '';
+            const modeStyle: React.CSSProperties = { ...baseStyle };
+            if (bqMode === 'bar-left') {
+                modeClass = 'pl-4 py-2 border-l-4';
+                modeStyle.borderColor = blockquoteBorderColor;
+            } else if (bqMode === 'card') {
+                modeClass = 'p-6 rounded-xl';
+                modeStyle.backgroundColor = safeStyle.backgroundColor || theme?.cardBackgroundColor || 'rgba(255,255,255,0.04)';
+                if (!safeStyle.borderColor) modeStyle.border = `1px solid ${theme?.cardBorderColor || 'rgba(255,255,255,0.08)'}`;
+            } else if (bqMode === 'large-quote' || bqMode === 'center') {
+                modeClass = bqMode === 'center' ? 'text-center py-4' : 'py-2';
+            } else { /* minimal */ modeClass = 'py-2'; }
+
             return (
-                <blockquote key={id} className={`border-l-4 pl-4 py-2 italic opacity-80 ${selectedClass}`} style={blockquoteStyle} onClick={!readOnly ? (e) => handleClick(e, el) : undefined}>
-                    <p className="mb-2" contentEditable={!readOnly} suppressContentEditableWarning={!readOnly} onBlur={!readOnly ? (e) => handleContentUpdate(id, 'text', e.currentTarget.textContent) : undefined}>"{content.text || 'This is a quote.'}"</p>
-                    <cite className="text-sm font-bold not-italic opacity-70">- {content.author || 'Author Name'}</cite>
+                <blockquote key={id} className={`${modeClass} opacity-90 ${selectedClass}`} style={modeStyle} onClick={!readOnly ? (e) => handleClick(e, el) : undefined}>
+                    {bqResolvedBg.overlay && (
+                        <div aria-hidden className="absolute inset-0 pointer-events-none"
+                            style={{
+                                backgroundColor: bqResolvedBg.overlay.color,
+                                opacity: bqResolvedBg.overlay.opacity,
+                                mixBlendMode: bqResolvedBg.overlay.blendMode as any,
+                                zIndex: 0,
+                            }} />
+                    )}
+                    <div className={bqResolvedBg.overlay ? 'relative' : ''} style={bqResolvedBg.overlay ? { zIndex: 1 } : undefined}>
+                        {bqMode === 'large-quote' && (
+                            <div aria-hidden className="text-5xl leading-none mb-2 opacity-50" style={{ color: accentCol, fontStyle: 'normal' }}>❝</div>
+                        )}
+                        {bqMode === 'center' ? (
+                            <p
+                              className="mb-3 text-lg"
+                              ref={bindHtml(id, `“${quoteText}”`)}
+                              contentEditable={!readOnly}
+                              {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                            />
+                        ) : (
+                            <p className="mb-2" ref={bindHtml(id, quoteText)} contentEditable={!readOnly} {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))} />
+                        )}
+                        <cite
+                            className="text-sm font-bold not-italic opacity-70 outline-none"
+                            style={{ color: (renderStyle as any).authorColor || accentCol }}
+                            contentEditable={!readOnly}
+                            suppressContentEditableWarning={!readOnly}
+                            onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'author', e.currentTarget.innerHTML.replace(/^—\s*/, '').replace(/^-\s*/, '')) : undefined}
+                        >
+                            — {authorName}
+                        </cite>
+                    </div>
                 </blockquote>
             );
+        }
 
-        case 'accordion':
-            const accordionStyle = { ...safeStyle, color: safeStyle.color || theme?.textColor || '#D1D5DB' };
+        case 'accordion': {
+            // Wrapper: opt-in background only when user explicitly sets `bgType`
+            // (gradient/image) OR a dedicated `wrapperBackgroundColor` key.
+            // Plain `backgroundColor` is treated as the ITEM card color, NOT the
+            // wrapper — otherwise sections that style items would also paint a
+            // tinted wrapper around them.
+            const accWantsWrapperBg = !!(renderStyle as any).wrapperBackgroundColor
+                || (renderStyle as any).bgType === 'gradient'
+                || (renderStyle as any).bgType === 'image';
+            const accResolvedBg = accWantsWrapperBg
+                ? resolveElementBackground({
+                    ...(renderStyle as any),
+                    backgroundColor: (renderStyle as any).wrapperBackgroundColor || (renderStyle as any).backgroundColor,
+                })
+                : { backgroundStyle: {} as React.CSSProperties, overlay: undefined as any };
+            const accordionWrapperStyle: React.CSSProperties = {
+                color: safeStyle.color || theme?.textColor || '#D1D5DB',
+                ...accResolvedBg.backgroundStyle,
+                padding: accWantsWrapperBg ? ((renderStyle as any).wrapperPadding || '1rem') : undefined,
+                borderRadius: accWantsWrapperBg ? ((renderStyle as any).wrapperBorderRadius || '0.75rem') : undefined,
+                position: accResolvedBg.overlay ? 'relative' : undefined,
+                overflow: accResolvedBg.overlay ? 'hidden' : undefined,
+            };
             const items = content.items && content.items.length > 0 ? content.items : [
                 { title: 'Sample Question 1', content: 'Sample answer 1.' },
                 { title: 'Sample Question 2', content: 'Sample answer 2.' }
             ];
-            return (
-                <div key={id} className={`space-y-3 w-full ${selectedClass}`} onClick={!readOnly ? (e) => handleClick(e, el) : undefined} style={accordionStyle}>
-                    {items.map((item: any, idx: number) => (
-                        <details key={idx} className="group bg-white/5 border border-white/10 rounded-xl open:bg-white/10 transition-colors w-full overflow-hidden">
-                            <summary className="flex items-center justify-between p-5 cursor-pointer list-none select-none">
-                                <span className="font-bold text-lg" style={{ color: theme?.titleColor || '#F8FAFC' }}>{item.title || item.question}</span>
-                                <div className="shrink-0 w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-open:rotate-180 transition-transform group-open:bg-white/10">
-                                    <i className="fa-solid fa-chevron-down text-sm" style={{ color: theme?.accentColor || '#3b82f6' }}></i>
-                                </div>
-                            </summary>
-                            <div className="p-5 pt-0 text-base opacity-80 leading-relaxed border-t border-white/5 mt-2">
-                                {item.content || item.answer}
-                            </div>
-                        </details>
-                    ))}
-                </div>
-            );
+            const exclusiveMode: boolean = !!(content as any).exclusive;
+            const detailsGroupName = exclusiveMode ? `acc-${id}` : undefined;
 
-        case 'toggle':
-            // Use theme textColor if element color is not explicitly set
-            const toggleStyle = {
-                ...safeStyle,
-                color: safeStyle.color || theme?.textColor || '#D1D5DB'
-            };
-            return (
-                <div key={id} className={`bg-white/5 border border-white/10 rounded-lg ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={toggleStyle}>
-                     <details className="group">
-                        <summary className="flex items-center gap-3 p-4 cursor-pointer font-bold list-none" style={{ color: theme?.titleColor }}>
-                             <div className="w-10 h-6 bg-white/10 rounded-full relative group-open:bg-green-500 transition-colors">
-                                 <div className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-all group-open:left-5"></div>
-                             </div>
-                             <span>{content.text || 'Toggle Title'}</span>
-                        </summary>
-                        <div className="p-4 pt-0 text-sm opacity-80">
-                            {content.subText || 'Toggle Content goes here...'}
-                        </div>
-                     </details>
-                </div>
-            );
+            // ── New style keys (all optional) ────────────────────────────
+            // Icon: type (chevron/plus/arrow/caret/none) + position + size + colors.
+            const accIconType: string = (renderStyle as any).iconType || 'chevron';
+            const accIconPos:  string = (renderStyle as any).iconPosition || 'right';
+            const accIconSize: string = (renderStyle as any).iconSize || '0.875rem';
+            const accIconColor: string = (renderStyle as any).iconColor || theme?.accentColor || '#3b82f6';
+            const accIconBg: string = (renderStyle as any).iconBackgroundColor || 'rgba(255,255,255,0.05)';
+            const accIconShape: string = (renderStyle as any).iconShape || 'circle'; // circle | square | none
+            // Active state — colors when an item is open.
+            const accActiveBg: string = (renderStyle as any).activeBackgroundColor || '';
+            const accActiveBorder: string = (renderStyle as any).activeBorderColor || '';
+            const accActiveTitleCol: string = (renderStyle as any).activeTitleColor || '';
+            // Spacing + borders
+            const accItemGap: string = (renderStyle as any).itemGap || '0.75rem';
+            const accBorderWidth: string = (renderStyle as any).borderWidth || '1px';
+            const accBorderStyle: string = (renderStyle as any).borderStyle || 'solid';
+            // Question + answer typography
+            const accQuestionFontSize: string = (renderStyle as any).questionFontSize || '1.125rem';
+            const accQuestionFontWeight: string = (renderStyle as any).questionFontWeight || '700';
+            const accAnswerFontSize: string = (renderStyle as any).answerFontSize || '1rem';
+            const accAnswerLineHeight: string = (renderStyle as any).answerLineHeight || '1.65';
+            // Divider between question and answer
+            const accDividerColor: string = (renderStyle as any).dividerColor || '';
+            // Hover behavior
+            const accHoverBg: string = (renderStyle as any).hoverBackgroundColor || '';
 
-        case 'tabs':
-            const currentTab = activeTabs[id] || 0;
-            // Use theme accentColor and textColor if element colors are not explicitly set
-            const tabsAccentColor = renderStyle?.accentColor || theme?.accentColor || '#3b82f6';
-            const tabsStyle = {
-                ...safeStyle,
-                color: safeStyle.color || theme?.textColor || '#D1D5DB'
+            // Pick the icon font-awesome class for closed/open states.
+            // For most icons we just rotate; for plus/minus we swap glyphs.
+            const iconForClosed = (() => {
+                if (accIconType === 'none')    return null;
+                if (accIconType === 'plus')    return 'fa-plus';
+                if (accIconType === 'arrow')   return 'fa-arrow-down';
+                if (accIconType === 'caret')   return 'fa-caret-down';
+                return 'fa-chevron-down';
+            })();
+            const iconForOpen = accIconType === 'plus' ? 'fa-minus' : iconForClosed;
+            const iconShouldRotate = accIconType !== 'plus' && accIconType !== 'none';
+
+            // Resolved colors with theme fallback
+            const itemBg = (safeStyle.backgroundColor && safeStyle.backgroundColor !== 'transparent')
+                ? safeStyle.backgroundColor
+                : (theme?.accordionBackgroundColor || theme?.cardBackgroundColor || '#FFFFFF');
+            const itemBorder = (safeStyle.borderColor && safeStyle.borderColor !== 'transparent')
+                ? safeStyle.borderColor
+                : (theme?.accordionBorderColor || theme?.cardBorderColor || '#E5E7EB');
+            const itemRadius = safeStyle.borderRadius || '0.75rem';
+            const itemPadding = safeStyle.padding || '1.25rem';
+
+            // Per-item icon side helpers
+            const safeAccId = `acc-${id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const scopedCss = `
+                #${safeAccId} > details { transition: background-color 0.2s ease, border-color 0.2s ease; }
+                ${accHoverBg ? `#${safeAccId} > details:hover { background-color: ${accHoverBg} !important; }` : ''}
+                ${accActiveBg ? `#${safeAccId} > details[open] { background-color: ${accActiveBg} !important; }` : ''}
+                ${accActiveBorder ? `#${safeAccId} > details[open] { border-color: ${accActiveBorder} !important; }` : ''}
+                ${accActiveTitleCol ? `#${safeAccId} > details[open] .acc-q { color: ${accActiveTitleCol} !important; }` : ''}
+            `;
+
+            const renderIconChip = (isOpen: boolean) => {
+                if (!iconForClosed) return null;
+                const glyph = isOpen && accIconType === 'plus' ? iconForOpen : iconForClosed;
+                const wrapperBase: React.CSSProperties = accIconShape === 'none'
+                    ? { color: accIconColor }
+                    : {
+                        width: '2rem', height: '2rem',
+                        backgroundColor: accIconBg,
+                        borderRadius: accIconShape === 'square' ? '0.5rem' : '9999px',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0,
+                    };
+                return (
+                    <div className={`shrink-0 ${iconShouldRotate ? 'group-open:rotate-180 transition-transform' : ''}`}
+                        style={wrapperBase}
+                    >
+                        <i className={`fa-solid ${glyph}`} style={{ color: accIconColor, fontSize: accIconSize }} />
+                    </div>
+                );
             };
+
             return (
-                <div key={id} className={`${selectedClass}`} onClick={(e) => handleClick(e, el)} style={tabsStyle}>
-                    <div className="flex border-b border-white/10 mb-4 overflow-x-auto">
-                        {content.items?.map((item, idx) => (
-                            <button 
+                <div key={id} id={safeAccId} className={`w-full ${selectedClass}`} onClick={!readOnly ? (e) => handleClick(e, el) : undefined} style={{ ...accordionWrapperStyle, display: 'flex', flexDirection: 'column', gap: accItemGap }}>
+                    {scopedCss && <style>{scopedCss}</style>}
+                    {accResolvedBg.overlay && (
+                        <div aria-hidden className="absolute inset-0 pointer-events-none"
+                            style={{
+                                backgroundColor: accResolvedBg.overlay.color,
+                                opacity: accResolvedBg.overlay.opacity,
+                                mixBlendMode: accResolvedBg.overlay.blendMode as any,
+                                zIndex: 0,
+                            }} />
+                    )}
+                    {items.map((item: any, idx: number) => {
+                        const openByDefault = !!item.openByDefault;
+                        return (
+                            <details
                                 key={idx}
-                                onClick={(e) => { e.stopPropagation(); setActiveTabs({...activeTabs, [id]: idx}); }}
-                                className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${currentTab === idx ? 'border-blue-500 text-white' : 'border-transparent text-white/50 hover:text-white'}`}
-                                style={{ borderColor: currentTab === idx ? tabsAccentColor : 'transparent' }}
+                                name={detailsGroupName}
+                                open={openByDefault || undefined}
+                                className="group w-full overflow-hidden"
+                                style={{
+                                    backgroundColor: itemBg,
+                                    borderColor: itemBorder,
+                                    borderWidth: accBorderWidth,
+                                    borderStyle: accBorderStyle,
+                                    borderRadius: itemRadius,
+                                }}
                             >
-                                {item.title}
-                            </button>
-                        ))}
-                    </div>
-                    <div className="p-4 bg-white/5 rounded-lg border border-white/10 min-h-[100px]">
-                        {content.items?.[currentTab]?.content}
-                    </div>
+                                <summary
+                                    className="flex items-center justify-between gap-3 cursor-pointer list-none select-none"
+                                    style={{ padding: itemPadding, flexDirection: accIconPos === 'left' ? 'row-reverse' : 'row' }}
+                                >
+                                    <span
+                                        className="acc-q outline-none flex-1"
+                                        style={{
+                                            color: (safeStyle as Record<string, string>).titleColor || theme?.accordionQuestionColor || theme?.titleColor || safeStyle.color || '#F8FAFC',
+                                            fontFamily: (renderStyle as any).questionFontFamily || (renderStyle as any).fontFamily || theme?.titleFontFamily,
+                                            fontSize: accQuestionFontSize,
+                                            fontWeight: accQuestionFontWeight as any,
+                                            lineHeight: 1.4,
+                                            textAlign: 'left',
+                                        }}
+                                        ref={bindHtml(`${id}-acc-${idx}-q`, item.title || item.question || '')}
+                                        contentEditable={!readOnly}
+                                        {...editHandlers(`${id}-acc-${idx}-q`, (html) =>
+                                          handleArrayContentUpdate(id, 'items', idx, item.title !== undefined ? 'title' : 'question', html)
+                                        )}
+                                    />
+                                    {renderIconChip(false)}
+                                </summary>
+                                <div
+                                    className="outline-none"
+                                    style={{
+                                        padding: itemPadding,
+                                        paddingTop: accDividerColor ? itemPadding : 0,
+                                        borderTop: accDividerColor ? `1px solid ${accDividerColor}` : 'none',
+                                        marginTop: accDividerColor ? '0' : '-0.5rem',
+                                        color: safeStyle.color ?? theme?.accordionAnswerColor ?? theme?.textColor ?? '#D1D5DB',
+                                        fontFamily: (renderStyle as any).answerFontFamily || (renderStyle as any).fontFamily || theme?.descriptionFontFamily,
+                                        fontSize: accAnswerFontSize,
+                                        lineHeight: accAnswerLineHeight,
+                                    }}
+                                    ref={bindHtml(`${id}-acc-${idx}-a`, item.content || item.answer || '')}
+                                    contentEditable={!readOnly}
+                                    {...editHandlers(`${id}-acc-${idx}-a`, (html) =>
+                                      handleArrayContentUpdate(id, 'items', idx, item.content !== undefined ? 'content' : 'answer', html)
+                                    )}
+                                />
+                            </details>
+                        );
+                    })}
                 </div>
             );
+        }
 
-        case 'progress-bar':
-            // Use theme accentColor and textColor if element colors are not explicitly set
-            const progressBarColor = renderStyle?.accentColor || theme?.accentColor || '#3b82f6';
-            const progressBarStyle = {
-                ...safeStyle,
-                color: safeStyle.color || theme?.textColor || '#D1D5DB'
-            };
-            return (
-                <div key={id} className={`${selectedClass}`} onClick={(e) => handleClick(e, id)} style={progressBarStyle}>
-                    <div className="flex justify-between mb-1 text-xs font-bold uppercase tracking-wider">
-                        <span>{content.text}</span>
-                        <span>{content.percentage}%</span>
-                    </div>
-                    <div className="w-full bg-white/10 rounded-full h-2.5">
-                        <div 
-                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-1000" 
-                            style={{ width: `${content.percentage}%`, backgroundColor: progressBarColor }}
-                        ></div>
-                    </div>
-                </div>
-            );
+        case 'toggle': {
+            // Switch geometry — pill (default) | square | ios (rounded square w/ inner indicator)
+            const switchShape: string = (renderStyle as any).switchShape || 'pill';
+            const switchSize: string = (renderStyle as any).switchSize || 'md'; // sm | md | lg
+            const labelPos: string = (renderStyle as any).labelPosition || 'right'; // left | right
+            const onColor  = (renderStyle as any).switchOnColor  || theme?.accentColor || '#22c55e';
+            const offColor = (renderStyle as any).switchOffColor || 'rgba(255,255,255,0.15)';
+            const knobColor = (renderStyle as any).switchKnobColor || '#FFFFFF';
+            const titleCol = (renderStyle as any).titleColor || theme?.titleColor || '#F8FAFC';
+            const descCol  = (renderStyle as any).descriptionColor || safeStyle.color || theme?.textColor || '#D1D5DB';
 
-        case 'counter':
-            // Use theme accentColor and textColor if element colors are not explicitly set
-            const counterAccentColor = renderStyle?.accentColor || theme?.accentColor || '#ffffff';
-            const counterStyle = {
+            // Size dimensions per preset
+            const dim = switchSize === 'sm'
+                ? { w: 32, h: 18, knob: 14, off: 2, on: 16 }
+                : switchSize === 'lg'
+                    ? { w: 56, h: 32, knob: 26, off: 3, on: 27 }
+                    : { w: 44, h: 24, knob: 18, off: 3, on: 23 };
+
+            const switchRadius = switchShape === 'square' ? '4px' : switchShape === 'pill' ? '9999px' : '8px';
+            const knobRadius   = switchShape === 'square' ? '2px' : switchShape === 'pill' ? '9999px' : '6px';
+
+            const toggleWrapStyle: React.CSSProperties = {
                 ...safeStyle,
-                color: safeStyle.color || theme?.textColor || '#D1D5DB'
+                color: descCol,
+                backgroundColor: safeStyle.backgroundColor || 'rgba(255,255,255,0.05)',
+                borderColor: safeStyle.borderColor || 'rgba(255,255,255,0.1)',
+                borderWidth: safeStyle.borderWidth || '1px',
+                borderStyle: safeStyle.borderStyle || 'solid',
+                borderRadius: safeStyle.borderRadius || '0.5rem',
+                padding: safeStyle.padding || '0',
             };
-            return (
-                <div key={id} className={`text-center p-6 border border-white/10 bg-white/5 rounded-xl ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={counterStyle}>
-                    <div className="text-4xl md:text-5xl font-bold mb-2" style={{ color: counterAccentColor }}>
-                        {content.prefix}{content.targetNumber}{content.suffix}
-                    </div>
-                    <div className="text-sm font-bold uppercase tracking-widest opacity-60">
-                        {content.text}
-                    </div>
-                </div>
-            );
-        
-        case 'alert-box':
-            const alertColors = {
-                success: 'rgba(34, 197, 94, 0.1)',
-                warning: 'rgba(234, 179, 8, 0.1)',
-                error: 'rgba(239, 68, 68, 0.1)',
-                info: 'rgba(59, 130, 246, 0.1)'
-            };
-            const alertBorder = {
-                success: '#22c55e',
-                warning: '#eab308',
-                error: '#ef4444',
-                info: '#3b82f6'
-            };
-            const alertBoxType = content.alertType || 'info';
-            
-            return (
-                <div key={id} className={`p-4 rounded-lg border-l-4 flex gap-4 ${selectedClass}`} onClick={(e) => handleClick(e, el)} 
-                    style={{ 
-                        backgroundColor: alertColors[alertBoxType],
-                        borderColor: alertBorder[alertBoxType],
-                        ...safeStyle
+
+            // Switch markup (reused for both label positions). Uses inline keyframe-free
+            // CSS via per-element style scope for the open state.
+            const toggleId = `tg-${id}`;
+            const switchEl = (
+                <div
+                    aria-hidden="true"
+                    className={`flex-shrink-0 relative transition-colors duration-200 ${toggleId}-track`}
+                    style={{
+                        width: `${dim.w}px`,
+                        height: `${dim.h}px`,
+                        backgroundColor: offColor,
+                        borderRadius: switchRadius,
                     }}
                 >
-                     <div style={{ color: alertBorder[alertBoxType] }}><i className={`fa-solid ${content.icon || 'fa-circle-info'}`}></i></div>
-                     <div>
-                         <strong className="block font-bold mb-1" contentEditable={!readOnly} suppressContentEditableWarning={!readOnly} onBlur={!readOnly ? (e) => handleContentUpdate(id, 'text', e.currentTarget.textContent) : undefined}>{content.text || 'Alert Title'}</strong>
-                         <p className="text-sm opacity-80" contentEditable={!readOnly} suppressContentEditableWarning={!readOnly} onBlur={!readOnly ? (e) => handleContentUpdate(id, 'subText', e.currentTarget.textContent) : undefined}>{content.subText || 'Alert description.'}</p>
-                     </div>
+                    <div
+                        className={`absolute top-1/2 transition-all duration-200 ${toggleId}-knob`}
+                        style={{
+                            width: `${dim.knob}px`,
+                            height: `${dim.knob}px`,
+                            backgroundColor: knobColor,
+                            borderRadius: knobRadius,
+                            left: `${dim.off}px`,
+                            transform: 'translateY(-50%)',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                        }}
+                    />
                 </div>
             );
+
+            // Inline scoped CSS handles the [open] state of <details> without arbitrary Tailwind classes.
+            const scopedCss = `
+                details[data-toggle="${toggleId}"][open] .${toggleId}-track { background-color: ${onColor} !important; }
+                details[data-toggle="${toggleId}"][open] .${toggleId}-knob  { left: ${dim.on}px !important; }
+            `;
+
+            const labelEl = (
+                <span
+                    className="font-bold outline-none flex-1"
+                    style={{ color: titleCol, fontSize: (renderStyle as any).titleFontSize || '0.95rem' }}
+                    ref={bindHtml(id, content.text || 'Toggle Title')}
+                    contentEditable={!readOnly}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                />
+            );
+
+            return (
+                <div key={id} className={`${selectedClass}`} onClick={(e) => handleClick(e, el)} style={toggleWrapStyle}>
+                    <style>{scopedCss}</style>
+                    <details data-toggle={toggleId}>
+                        <summary className="flex items-center gap-3 cursor-pointer list-none" style={{ padding: safeStyle.padding ? '0' : '1rem' }}>
+                            {labelPos === 'left' ? <>{labelEl}{switchEl}</> : <>{switchEl}{labelEl}</>}
+                        </summary>
+                        <div
+                            className="text-sm opacity-90 outline-none"
+                            style={{
+                                color: descCol,
+                                fontSize: (renderStyle as any).descriptionFontSize || '0.875rem',
+                                padding: safeStyle.padding ? '0 0 1rem' : '0 1rem 1rem',
+                            }}
+                            ref={bindHtml(id, content.subText || 'Toggle Content goes here...')}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))}
+                        />
+                    </details>
+                </div>
+            );
+        }
+
+        case 'tabs': {
+            const currentTab = activeTabs[id] || 0;
+            const tabsAccentColor = (renderStyle as any).activeColor || renderStyle?.accentColor || theme?.accentColor || '#3b82f6';
+            const inactiveColor = (renderStyle as any).inactiveColor || (safeStyle.color ? `${safeStyle.color}80` : 'rgba(255,255,255,0.5)');
+            const activeTextColor = (renderStyle as any).activeTextColor || (theme?.titleColor || '#FFFFFF');
+            const tabsStyle = { ...safeStyle, color: safeStyle.color || theme?.textColor || '#D1D5DB' };
+            const tabsAlign = resolveTextAlign(renderStyle);
+            // Tab style variant — underline (default) | pills | box | segmented
+            const tabStyle: string = (renderStyle as any).tabStyle || 'underline';
+            const showPanel: boolean = (content as any).showPanel !== false;
+            const items: any[] = content.items?.length > 0 ? content.items : [{ title: 'Tab 1', content: 'Content 1' }, { title: 'Tab 2', content: 'Content 2' }];
+
+            // Per-style helpers
+            const buildTabBtn = (item: any, idx: number) => {
+                const isActive = currentTab === idx;
+                let btnClass = 'px-4 py-2 text-sm font-bold transition-all whitespace-nowrap cursor-pointer outline-none';
+                let btnStyle: React.CSSProperties = {};
+
+                if (tabStyle === 'underline') {
+                    btnClass += ' border-b-2';
+                    btnStyle = {
+                        borderBottomColor: isActive ? tabsAccentColor : 'transparent',
+                        color: isActive ? activeTextColor : inactiveColor,
+                    };
+                } else if (tabStyle === 'pills') {
+                    btnClass += ' rounded-full';
+                    btnStyle = {
+                        backgroundColor: isActive ? tabsAccentColor : 'transparent',
+                        color: isActive ? '#FFFFFF' : inactiveColor,
+                    };
+                } else if (tabStyle === 'box') {
+                    btnClass += ' rounded-t-lg border border-b-0';
+                    btnStyle = {
+                        backgroundColor: isActive ? ((renderStyle as any).panelBackground || 'rgba(255,255,255,0.05)') : 'transparent',
+                        borderColor: isActive ? ((renderStyle as any).panelBorder || 'rgba(255,255,255,0.1)') : 'transparent',
+                        color: isActive ? activeTextColor : inactiveColor,
+                        marginBottom: '-1px',
+                        position: 'relative',
+                        zIndex: 1,
+                    };
+                } else if (tabStyle === 'segmented') {
+                    btnClass += '';
+                    btnStyle = {
+                        backgroundColor: isActive ? tabsAccentColor : 'transparent',
+                        color: isActive ? '#FFFFFF' : inactiveColor,
+                    };
+                }
+
+                return (
+                    <button
+                        key={idx}
+                        onClick={(e) => { e.stopPropagation(); setActiveTabs({ ...activeTabs, [id]: idx }); }}
+                        className={btnClass}
+                        style={btnStyle}
+                    >
+                        <span
+                            className="outline-none"
+                            ref={bindHtml(`${id}-tab-${idx}`, item.title || '')}
+                            contentEditable={!readOnly}
+                            {...editHandlers(`${id}-tab-${idx}`, (html) =>
+                              handleArrayContentUpdate(id, 'items', idx, 'title', html)
+                            )}
+                        />
+                    </button>
+                );
+            };
+
+            // Header wrapper class per style
+            const headerClass = tabStyle === 'underline'
+                ? `flex border-b border-white/10 mb-4 overflow-x-auto ${tabsAlign.justifyClass}`
+                : tabStyle === 'pills'
+                    ? `flex gap-2 mb-4 overflow-x-auto ${tabsAlign.justifyClass}`
+                    : tabStyle === 'box'
+                        ? `flex gap-1 mb-0 overflow-x-auto ${tabsAlign.justifyClass}`
+                        : /* segmented */ `inline-flex p-1 rounded-lg mb-4 overflow-x-auto`;
+
+            const headerStyle: React.CSSProperties = tabStyle === 'segmented'
+                ? { backgroundColor: (renderStyle as any).segmentedBg || 'rgba(255,255,255,0.05)', borderRadius: '0.5rem' }
+                : {};
+
+            // Panel style per variant
+            const panelStyle: React.CSSProperties = {
+                backgroundColor: (renderStyle as any).panelBackground || (tabStyle === 'box' || showPanel ? 'rgba(255,255,255,0.05)' : 'transparent'),
+                borderColor: (renderStyle as any).panelBorder || 'rgba(255,255,255,0.1)',
+                borderWidth: showPanel ? '1px' : '0px',
+                borderStyle: showPanel ? 'solid' : 'none',
+                borderRadius: tabStyle === 'box' ? '0 0.5rem 0.5rem 0.5rem' : '0.5rem',
+                padding: showPanel ? ((renderStyle as any).panelPadding || '1rem') : '0',
+                minHeight: showPanel ? '100px' : 'auto',
+            };
+
+            return (
+                <div key={id} className={`${selectedClass}`} onClick={(e) => handleClick(e, el)} style={tabsStyle}>
+                    {tabStyle === 'segmented' ? (
+                        <div className={tabsAlign.justifyClass + ' flex w-full mb-4'}>
+                            <div className={headerClass} style={headerStyle}>
+                                {items.map((item: any, idx: number) => buildTabBtn(item, idx))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className={headerClass} style={headerStyle}>
+                            {items.map((item: any, idx: number) => buildTabBtn(item, idx))}
+                        </div>
+                    )}
+                    <div
+                        className="outline-none"
+                        style={panelStyle}
+                        ref={bindHtml(`${id}-tab-panel-${currentTab}`, items[currentTab]?.content || '')}
+                        contentEditable={!readOnly}
+                        {...editHandlers(`${id}-tab-panel-${currentTab}`, (html) =>
+                          handleArrayContentUpdate(id, 'items', currentTab, 'content', html)
+                        )}
+                    />
+                </div>
+            );
+        }
+
+        case 'progress-bar': {
+            const progressBarColor = (renderStyle as any).fillColor || renderStyle?.accentColor || theme?.accentColor || '#3b82f6';
+            const trackColor = (renderStyle as any).trackColor || 'rgba(255,255,255,0.1)';
+            const barShape: string = (renderStyle as any).barShape || 'pill';
+            const barHeight = (renderStyle as any).barHeight || '10px';
+            const showLabel: boolean = (content as any).showLabel !== false;
+            const showPercent: boolean = (content as any).showPercent !== false;
+            const isStriped: boolean = (renderStyle as any).striped === true;
+            const isAnimated: boolean = (renderStyle as any).striped === true && (renderStyle as any).animatedStripes !== false;
+            const labelPos: string = (renderStyle as any).labelPosition || 'top'; // top | bottom | inside
+
+            const radius = barShape === 'pill' ? '9999px' : barShape === 'square' ? '0px' : '0.375rem';
+            const labelColor = (renderStyle as any).labelColor || safeStyle.color || theme?.textColor || '#D1D5DB';
+
+            const progressBarStyle: React.CSSProperties = {
+                ...safeStyle,
+                color: labelColor,
+            };
+            const pct = Math.max(0, Math.min(100, parseFloat(String(content.percentage ?? 0)) || 0));
+
+            const stripedBg = isStriped
+                ? `repeating-linear-gradient(45deg, ${progressBarColor}, ${progressBarColor} 10px, ${progressBarColor}cc 10px, ${progressBarColor}cc 20px)`
+                : undefined;
+
+            const labelRow = (showLabel || showPercent) ? (
+                <div className="flex justify-between mb-1.5 text-xs font-bold uppercase tracking-wider" style={{ color: labelColor }}>
+                    {showLabel ? (
+                        <span
+                            className="outline-none"
+                            ref={bindHtml(id, content.text || 'Progress')}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                        />
+                    ) : <span />}
+                    {showPercent && (
+                        <span
+                            className="outline-none"
+                            contentEditable={!readOnly}
+                            suppressContentEditableWarning={!readOnly}
+                            onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'percentage', e.currentTarget.textContent?.replace('%', '') || '') : undefined}
+                        >{pct}%</span>
+                    )}
+                </div>
+            ) : null;
+
+            return (
+                <div key={id} className={`${selectedClass}`} onClick={(e) => handleClick(e, el)} style={progressBarStyle}>
+                    <style>{`@keyframes pbStripes { from { background-position: 0 0; } to { background-position: 40px 0; } }`}</style>
+                    {labelPos === 'top' && labelRow}
+                    <div
+                        className="w-full overflow-hidden relative"
+                        style={{ backgroundColor: trackColor, height: barHeight, borderRadius: radius }}
+                    >
+                        <div
+                            className="h-full transition-all duration-1000"
+                            style={{
+                                width: `${pct}%`,
+                                backgroundColor: isStriped ? undefined : progressBarColor,
+                                backgroundImage: stripedBg,
+                                backgroundSize: isStriped ? '40px 40px' : undefined,
+                                animation: isAnimated && isStriped ? 'pbStripes 1s linear infinite' : undefined,
+                                borderRadius: radius,
+                            }}
+                        />
+                        {labelPos === 'inside' && (showLabel || showPercent) && (
+                            <div
+                                className="absolute inset-0 flex items-center justify-center text-[10px] font-bold uppercase tracking-wider"
+                                style={{ color: (renderStyle as any).insideLabelColor || '#FFFFFF' }}
+                            >
+                                {showLabel && (content.text || 'Progress')}{showLabel && showPercent ? ' · ' : ''}{showPercent && `${pct}%`}
+                            </div>
+                        )}
+                    </div>
+                    {labelPos === 'bottom' && labelRow}
+                </div>
+            );
+        }
+
+        case 'counter': {
+            const counterAccentColor = renderStyle.numberColor || renderStyle?.accentColor || theme?.accentColor || '#ffffff';
+            const counterMode: string = (renderStyle as any).counterMode || 'card';
+            const labelPosition: string = (renderStyle as any).labelPosition || 'below';
+            const counterStyle: React.CSSProperties = {
+                ...safeStyle,
+                color: safeStyle.color || theme?.textColor || '#D1D5DB',
+            };
+            const counterAlign = resolveTextAlign(renderStyle);
+
+            // Mode-specific class composition
+            let modeClass = '';
+            if (counterMode === 'card') {
+                modeClass = 'p-6 border border-white/10 bg-white/5 rounded-xl';
+            } else if (counterMode === 'huge') {
+                modeClass = 'py-4';
+            } else if (counterMode === 'minimal') {
+                modeClass = 'py-2';
+            } else if (counterMode === 'inline') {
+                modeClass = 'inline-flex items-baseline gap-2';
+            }
+
+            const numberFontSize = (renderStyle as any).numberFontSize ||
+                (counterMode === 'huge' ? 'clamp(3rem, 8vw, 6rem)' : counterMode === 'inline' ? '1.5rem' : 'clamp(2.5rem, 5vw, 3.5rem)');
+            const labelFontSize = (renderStyle as any).labelFontSize || '0.875rem';
+            const labelColor = (renderStyle as any).subheadingColor || (renderStyle as any).labelColor || theme?.subheadingColor || theme?.textColor || '#C7CDD6';
+
+            const numberEl = (
+                <div
+                    className="font-bold outline-none"
+                    style={{
+                        color: counterAccentColor,
+                        fontSize: numberFontSize,
+                        fontWeight: (renderStyle as any).numberFontWeight || '800',
+                        lineHeight: '1.05',
+                    }}
+                    contentEditable={!readOnly}
+                    suppressContentEditableWarning={!readOnly}
+                    onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'targetNumber', e.currentTarget.textContent || '') : undefined}
+                >
+                    {content.prefix}{content.targetNumber}{content.suffix}
+                </div>
+            );
+
+            const labelEl = (
+                <div
+                    className="font-bold uppercase tracking-widest outline-none"
+                    style={{
+                        color: labelColor,
+                        fontSize: labelFontSize,
+                        opacity: theme?.subheadingColor ? 1 : 0.7,
+                        marginTop: counterMode === 'inline' ? 0 : '0.5rem',
+                    }}
+                    contentEditable={!readOnly}
+                    suppressContentEditableWarning={!readOnly}
+                    onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'text', e.currentTarget.textContent || '') : undefined}
+                >
+                    {content.text}
+                </div>
+            );
+
+            return (
+                <div key={id} className={`${counterAlign.textAlignClass} ${modeClass} ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={counterStyle}>
+                    {labelPosition === 'above' ? <>{labelEl}{numberEl}</> : <>{numberEl}{labelEl}</>}
+                </div>
+            );
+        }
+        
+        case 'alert-box': {
+            // Variant palette (used as fallbacks; user can override every color via style props).
+            const VARIANT_PALETTE: Record<string, { bg: string; border: string; text: string; icon: string }> = {
+                info:    { bg: 'rgba(59, 130, 246, 0.1)',  border: '#3b82f6', text: '#1e40af', icon: 'circle-info' },
+                success: { bg: 'rgba(34, 197, 94, 0.1)',   border: '#22c55e', text: '#166534', icon: 'circle-check' },
+                warning: { bg: 'rgba(234, 179, 8, 0.1)',   border: '#eab308', text: '#854d0e', icon: 'triangle-exclamation' },
+                error:   { bg: 'rgba(239, 68, 68, 0.1)',   border: '#ef4444', text: '#991b1b', icon: 'circle-exclamation' },
+                neutral: { bg: 'rgba(148, 163, 184, 0.1)', border: '#94a3b8', text: '#334155', icon: 'circle-info' },
+            };
+            const alertVariant = (content.alertType || 'info') as keyof typeof VARIANT_PALETTE;
+            const palette = VARIANT_PALETTE[alertVariant] || VARIANT_PALETTE.info;
+
+            // Style preset (controls border placement). Stored on style for editor parity.
+            //   bar-left  → vertical accent bar on the left (default classic)
+            //   bar-top   → horizontal accent bar on top
+            //   full      → border on all sides
+            //   soft      → no border, just tinted bg + colored icon
+            const stylePreset: string = (renderStyle as any).alertStyle || 'bar-left';
+            const iconPosition: string = (content as any).iconPosition || 'left';
+            const dismissible: boolean = !!(content as any).dismissible;
+
+            // Resolved colors — user style wins, else palette
+            const bgCol     = (renderStyle as any).backgroundColor || palette.bg;
+            const borderCol = (renderStyle as any).borderColor     || palette.border;
+            const textCol   = (renderStyle as any).color           || palette.text;
+            const iconCol   = (renderStyle as any).iconColor       || borderCol;
+            const iconName  = content.icon || palette.icon;
+
+            // Border placement based on preset
+            const borderStyles: React.CSSProperties = (() => {
+                if (stylePreset === 'bar-top')  return { borderTopWidth: '4px', borderTopStyle: 'solid', borderTopColor: borderCol };
+                if (stylePreset === 'full')     return { borderWidth: '1px', borderStyle: 'solid', borderColor: borderCol };
+                if (stylePreset === 'soft')     return { border: 'none' };
+                /* bar-left default */ return { borderLeftWidth: '4px', borderLeftStyle: 'solid', borderLeftColor: borderCol };
+            })();
+
+            const abResolvedBg = resolveElementBackground(renderStyle);
+            const isReverseLayout = iconPosition === 'right';
+
+            return (
+                <div key={id} className={`p-4 rounded-lg flex gap-4 relative overflow-hidden ${selectedClass} ${isReverseLayout ? 'flex-row-reverse' : ''}`}
+                    onClick={(e) => handleClick(e, el)}
+                    style={{
+                        backgroundColor: bgCol,
+                        ...borderStyles,
+                        // safeStyle spread — user-set padding/radius/etc. win over our defaults
+                        // but we re-apply borderStyles after to keep preset working.
+                        ...safeStyle,
+                        ...borderStyles,
+                        ...abResolvedBg.backgroundStyle,
+                    }}
+                >
+                    {abResolvedBg.overlay && (
+                        <div aria-hidden className="absolute inset-0 pointer-events-none"
+                            style={{
+                                backgroundColor: abResolvedBg.overlay.color,
+                                opacity: abResolvedBg.overlay.opacity,
+                                mixBlendMode: abResolvedBg.overlay.blendMode as any,
+                                zIndex: 0,
+                            }} />
+                    )}
+                    {iconName !== 'none' && (
+                        <div className="relative flex-shrink-0" style={{ zIndex: 1, color: iconCol }}>
+                            <IconRenderer
+                                icon={iconName}
+                                size={(renderStyle as any).iconSize || '1.25rem'}
+                                style={{ color: iconCol }}
+                            />
+                        </div>
+                    )}
+                    <div className="relative flex-1 min-w-0" style={{ zIndex: 1, color: textCol }}>
+                        <strong className="block font-bold mb-1" ref={bindHtml(id, content.text || 'Alert Title')} contentEditable={!readOnly} {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))} />
+                        <p className="text-sm opacity-80" ref={bindHtml(id, content.subText || 'Alert description.')} contentEditable={!readOnly} {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))} />
+                    </div>
+                    {dismissible && (
+                        <button
+                            type="button"
+                            aria-label="Dismiss alert"
+                            className="relative flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity p-1"
+                            style={{ zIndex: 1, color: textCol, pointerEvents: readOnly ? 'auto' : 'none' }}
+                            onClick={(e) => { e.stopPropagation(); }}
+                        >
+                            <i className="fa-solid fa-xmark text-sm" aria-hidden="true"></i>
+                        </button>
+                    )}
+                </div>
+            );
+        }
 
         case 'testimonial':
             // Use theme textColor if element color is not explicitly set
@@ -904,119 +4576,1314 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
                 ...safeStyle,
                 color: safeStyle.color || theme?.textColor || '#D1D5DB'
             };
+            const testimonialItems = content.items || [{ author: 'John Doe', role: 'Customer', content: 'Great service!', avatar: 'https://via.placeholder.com/50' }];
             return (
-                 <div key={id} className={`p-6 rounded-xl bg-white/5 border border-white/10 ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={testimonialStyle}>
-                     <div className="flex items-center gap-4 mb-4">
-                         <img src={content.items?.[0]?.avatar || 'https://via.placeholder.com/50'} className="w-12 h-12 rounded-full object-cover" alt="Avatar" />
-                         <div>
-                             <div className="font-bold" style={{ color: theme?.titleColor }}>{content.items?.[0]?.author || 'John Doe'}</div>
-                             <div className="text-xs opacity-50">{content.items?.[0]?.role || 'Customer'}</div>
-                         </div>
-                         <div className="ml-auto text-yellow-500 text-sm">
-                             <i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i>
-                         </div>
-                     </div>
-                     <p className="italic opacity-80">"{content.items?.[0]?.content || 'Great service!'}"</p>
-                 </div>
+                <div key={id} className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full ${selectedClass}`} onClick={(e) => handleClick(e, el)}>
+                    {testimonialItems.map((item: any, idx: number) => (
+                        <div key={idx} className="p-6 rounded-xl flex flex-col h-full" style={{ ...testimonialStyle, backgroundColor: testimonialStyle.backgroundColor || theme?.cardBackgroundColor || 'rgba(255,255,255,0.05)', borderColor: testimonialStyle.borderColor || theme?.cardBorderColor || 'rgba(255,255,255,0.08)', borderWidth: '1px', borderStyle: 'solid' }}>
+                            <div className="flex items-center gap-4 mb-4">
+                                <img
+                                  src={toDisplayImageUrl(
+                                    resolveSectionImageUrl(section, {
+                                      elementId: `${id}-avatar-${idx}`,
+                                      elementImageUrl:
+                                        item.avatar || item.image || item.imageUrl || '',
+                                    })
+                                  )}
+                                  className="w-12 h-12 rounded-full object-cover"
+                                  alt="Avatar"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = SECTION_IMAGE_PLACEHOLDER;
+                                  }}
+                                />
+                                <div>
+                                    <div 
+                                        className="font-bold outline-none" 
+                                        style={{ color: theme?.titleColor }}
+                                        ref={bindHtml(`${id}-rev-${idx}-author`, item.author || 'John Doe')}
+                                        contentEditable={!readOnly}
+                                        {...editHandlers(`${id}-rev-${idx}-author`, (html) =>
+                                          handleArrayContentUpdate(id, 'items', idx, 'author', html)
+                                        )}
+                                    />
+                                    <div 
+                                        className="text-xs outline-none" 
+                                        style={{ color: renderStyle.subheadingColor || theme?.subheadingColor || theme?.textColor || '#C7CDD6', opacity: theme?.subheadingColor ? 1 : 0.5 }}
+                                        ref={bindHtml(`${id}-rev-${idx}-role`, item.role || 'Customer')}
+                                        contentEditable={!readOnly}
+                                        {...editHandlers(`${id}-rev-${idx}-role`, (html) =>
+                                          handleArrayContentUpdate(id, 'items', idx, 'role', html)
+                                        )}
+                                    />
+                                </div>
+                                <div className="ml-auto text-yellow-500 text-sm">
+                                    <i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i>
+                                </div>
+                            </div>
+                            <p 
+                                className="italic opacity-80 flex-grow outline-none" 
+                                style={{ color: theme?.textColor }}
+                                ref={bindHtml(`${id}-rev-${idx}-content`, `"${item.content || 'Great service!'}"`)}
+                                contentEditable={!readOnly}
+                                {...editHandlers(`${id}-rev-${idx}-content`, (html) =>
+                                  handleArrayContentUpdate(id, 'items', idx, 'content', html)
+                                )}
+                            />
+                        </div>
+                    ))}
+                </div>
             );
 
-        case 'pricing-table':
-            // Use theme accentColor and textColor if element colors are not explicitly set
-            const pricingBorderColor = renderStyle?.borderColor || renderStyle?.accentColor || theme?.accentColor || '#3b82f6';
-            const pricingStyle = {
-                ...safeStyle,
-                color: safeStyle.color || theme?.textColor || '#D1D5DB',
-                borderColor: pricingBorderColor
-            };
-             return (
-                 <div key={id} className={`p-8 rounded-2xl bg-white/5 border border-white/10 flex flex-col items-center text-center ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={pricingStyle}>
-                     <h3 className="text-xl font-bold mb-2" style={{ color: theme?.titleColor }}>{content.text || 'Plan Name'}</h3>
-                     <div className="text-4xl font-bold mb-1" style={{ color: theme?.accentColor }}>{content.price || '$99'}</div>
-                     <div className="text-sm opacity-50 mb-6">{content.period || 'per month'}</div>
-                     <ul className="space-y-3 mb-8 w-full text-left">
-                         {content.items?.map((feature, i) => (
-                             <li key={i} className="flex gap-2 text-sm opacity-80">
-                                 <i className="fa-solid fa-check text-green-500 mt-1"></i> {feature.title}
-                             </li>
-                         ))}
-                     </ul>
-                     <button className={`${buttonClass} w-full`}>{content.link || 'Choose Plan'}</button>
-                 </div>
-             );
+        case 'logo-cloud': {
+            const logos = content.items || [];
+            const grayscale: boolean = (content as any).grayscale !== false; // default true
+            const marquee: boolean = !!(content as any).marquee;
+            const marqueeSpeed: string = String((content as any).marqueeSpeed || '30s');
 
-        case 'flip-box':
-            const directionClass = {
-                left: 'group-hover:rotate-y-180',
-                right: 'group-hover:-rotate-y-180',
-                top: 'group-hover:rotate-x-180',
-                bottom: 'group-hover:-rotate-x-180'
+            // Style overrides
+            const logoHeight = (renderStyle as any).logoHeight || '40px';
+            const logoGap    = (renderStyle as any).logoGap || '48px';
+            const logoOpacity = typeof (renderStyle as any).logoOpacity === 'number'
+                ? (renderStyle as any).logoOpacity
+                : (grayscale ? 0.5 : 0.9);
+            const hoverOpacity = typeof (renderStyle as any).logoHoverOpacity === 'number'
+                ? (renderStyle as any).logoHoverOpacity
+                : 1;
+            const justify: string = (renderStyle as any).justifyContent || 'center';
+            const justifyClass = justify === 'flex-start' ? 'justify-start'
+                : justify === 'flex-end' ? 'justify-end'
+                : justify === 'space-between' ? 'justify-between'
+                : 'justify-center';
+            const padY = (renderStyle as any).logoPaddingY || '32px';
+            const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+            const logoImgClass = `lc-${safeId}-img w-auto transition-all duration-300 flex-shrink-0 ${grayscale ? 'grayscale hover:grayscale-0' : ''}`;
+            // Scoped CSS — height + opacity + hover opacity (custom values, not Tailwind classes).
+            const scopedCss = `
+                .lc-${safeId}-img { height: ${logoHeight}; opacity: ${logoOpacity}; }
+                .lc-${safeId}-img:hover { opacity: ${hoverOpacity}; }
+            `;
+
+            const renderLogo = (logo: any, idx: number, keyPrefix = '') => {
+              const img = (
+                <img
+                  key={`${keyPrefix}${idx}`}
+                  src={logo.src}
+                  alt={logo.alt || 'Logo'}
+                  className={logoImgClass}
+                  referrerPolicy="no-referrer"
+                />
+              );
+              // Optional per-logo link (wraps image). No-op in edit mode so
+              // the canvas still routes clicks to the element selector.
+              if (logo.link && readOnly) {
+                return (
+                  <a key={`${keyPrefix}${idx}-link`} href={logo.link} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+                    {img}
+                  </a>
+                );
+              }
+              return img;
+            };
+
+            if (marquee) {
+              // Duplicate the list so the scroll loops seamlessly
+              return (
+                <div
+                  key={id}
+                  className={`relative overflow-hidden ${selectedClass}`}
+                  onClick={(e) => handleClick(e, el)}
+                  style={{ paddingTop: padY, paddingBottom: padY, ...safeStyle }}
+                >
+                  <style>{scopedCss}</style>
+                  <div
+                    className="flex items-center animate-[marquee_var(--speed)_linear_infinite] whitespace-nowrap"
+                    style={{ '--speed': marqueeSpeed, width: 'max-content', gap: logoGap } as React.CSSProperties}
+                  >
+                    {logos.map((l: any, i: number) => renderLogo(l, i, 'a-'))}
+                    {logos.map((l: any, i: number) => renderLogo(l, i, 'b-'))}
+                  </div>
+                  <style>{`@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }`}</style>
+                </div>
+              );
+            }
+
+            return (
+                <div
+                    key={id}
+                    className={`flex flex-wrap items-center ${justifyClass} ${selectedClass}`}
+                    onClick={(e) => handleClick(e, el)}
+                    style={{ gap: logoGap, paddingTop: padY, paddingBottom: padY, ...safeStyle }}
+                >
+                    <style>{scopedCss}</style>
+                    {logos.map((logo: any, idx: number) => renderLogo(logo, idx))}
+                </div>
+            );
+        }
+
+        case 'trust-strip': {
+            // Horizontal row of trust badges — each item: { icon, label }.
+            // Editable via sidebar (TrustStripContentForm). Style controls cover icon + label.
+            const items: Array<{ icon?: string; label?: string }> = Array.isArray((content as any).items)
+              ? (content as any).items
+              : [];
+            const tsIconColor = renderStyle.iconColor || theme?.iconColor || theme?.accentColor || '#E11D48';
+            const tsIconBg    = renderStyle.iconBackgroundColor || renderStyle.iconBgColor || `${tsIconColor}25`;
+            const tsLabelColor = renderStyle.titleColor || renderStyle.color || theme?.titleColor || '#F8FAFC';
+            const tsContainerSize = renderStyle.iconContainerSize || '32px';
+            const tsIconSize      = renderStyle.iconSize || '14px';
+            const tsAlign: string = (renderStyle as any).justifyContent || 'center';
+            const justifyClass = tsAlign === 'flex-start' ? 'justify-start'
+              : tsAlign === 'flex-end' ? 'justify-end'
+              : tsAlign === 'space-between' ? 'justify-between'
+              : 'justify-center';
+            return (
+                <div
+                  key={id}
+                  className={`flex flex-wrap items-center ${justifyClass} ${selectedClass}`}
+                  onClick={(e) => handleClick(e, el)}
+                  style={{
+                    gap: renderStyle.gap || '24px',
+                    padding: safeStyle.padding || '12px 0',
+                    backgroundColor: safeStyle.backgroundColor,
+                    borderColor: safeStyle.borderColor,
+                    borderWidth: safeStyle.borderWidth,
+                    borderStyle: safeStyle.borderStyle,
+                    borderRadius: safeStyle.borderRadius,
+                  }}
+                >
+                  {items.map((item, idx) => {
+                    const itemLink = String((item as { link?: string }).link || '').trim();
+                    const itemNewTab =
+                      (item as { linkNewTab?: boolean }).linkNewTab === undefined
+                        ? true
+                        : !!(item as { linkNewTab?: boolean }).linkNewTab;
+                    const chip = (
+                      <>
+                        <span
+                          className="flex-shrink-0 flex items-center justify-center"
+                          style={{
+                            width: tsContainerSize,
+                            height: tsContainerSize,
+                            backgroundColor: tsIconBg,
+                            color: tsIconColor,
+                            borderRadius: renderStyle.iconBorderRadius || '9999px',
+                            border:
+                              renderStyle.iconBorderStyle && renderStyle.iconBorderStyle !== 'none'
+                                ? `${renderStyle.iconBorderWidth || '1px'} ${renderStyle.iconBorderStyle} ${renderStyle.iconBorderColor || tsIconColor}`
+                                : 'none',
+                          }}
+                        >
+                          <IconRenderer icon={item.icon || 'fa-check'} size={tsIconSize} style={{ color: tsIconColor }} />
+                        </span>
+                        <span
+                          style={{
+                            color: tsLabelColor,
+                            fontSize: renderStyle.titleFontSize || '13px',
+                            fontWeight: (renderStyle.titleFontWeight as any) || 600,
+                            fontFamily:
+                              renderStyle.titleFontFamily || renderStyle.fontFamily || theme?.titleFontFamily,
+                            letterSpacing: renderStyle.titleLetterSpacing || 'normal',
+                          }}
+                        >
+                          {item.label || 'Social'}
+                        </span>
+                      </>
+                    );
+                    return (
+                      <div key={idx} className="flex items-center gap-2.5">
+                        {itemLink && readOnly ? (
+                          <a
+                            href={itemLink}
+                            target={itemNewTab ? '_blank' : undefined}
+                            rel={itemNewTab ? 'noopener noreferrer' : undefined}
+                            className="flex items-center gap-2.5 no-underline text-inherit hover:opacity-90"
+                            aria-label={item.label || 'Social link'}
+                          >
+                            {chip}
+                          </a>
+                        ) : (
+                          chip
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+            );
+        }
+
+        case 'nav-menu': {
+            // Single editable navigation menu element. Holds an array of items:
+            //   {
+            //     label, link, icon?, linkNewTab?, active?,
+            //     dropdown?:    [...],          // hand-curated sub-items
+            //     selectSource?: 'services'…,   // OR auto-populated source (backend later)
+            //     viewAllLabel?, viewAllLink?,  // optional "View all" footer in the dropdown
+            //   }
+            //
+            // Visual options:
+            //   • orientation, alignment, indicator, mobileBreakpoint
+            //   • hover/active colors, item gap, padding, font, weight
+            const items: Array<any> = Array.isArray((content as any).items)
+                ? (content as any).items
+                : [];
+
+            // Static MOCK data for `selectSource` items — keyed by source name.
+            // Replace `resolveSourceChildren` with an API call to wire to backend.
+            const SOURCE_MOCK: Record<string, Array<{ label: string; link: string; icon?: string }>> = {
+                locations: [
+                    { label: 'Austin, TX',      link: '/areas/austin' },
+                    { label: 'Dallas, TX',      link: '/areas/dallas' },
+                    { label: 'Houston, TX',     link: '/areas/houston' },
+                    { label: 'San Antonio, TX', link: '/areas/san-antonio' },
+                    { label: 'Fort Worth, TX',  link: '/areas/fort-worth' },
+                ],
+                services: [
+                    { label: 'Drain Cleaning',    link: '/services/drain-cleaning' },
+                    { label: 'Water Heaters',     link: '/services/water-heaters' },
+                    { label: 'Pipe Repair',       link: '/services/pipe-repair' },
+                    { label: 'Bathroom Plumbing', link: '/services/bathroom' },
+                    { label: 'Emergency Repairs', link: '/services/emergency' },
+                ],
+                categories: [
+                    { label: 'Residential', link: '/categories/residential' },
+                    { label: 'Commercial',  link: '/categories/commercial' },
+                    { label: 'Industrial',  link: '/categories/industrial' },
+                ],
+            };
+            const navSources = (content as any).navSources || {};
+            const livePathname =
+              readOnly && sitePathname
+                ? sitePathname
+                : readOnly && typeof window !== 'undefined'
+                  ? window.location.pathname || '/'
+                  : '';
+            const resolveSourceChildren = (source: string | undefined) => {
+                if (!source) return [] as Array<{ label: string; link: string; icon?: string }>;
+                const key = String(source).toLowerCase();
+                const live =
+                    key === 'services'
+                        ? navSources.services
+                        : key === 'locations'
+                          ? navSources.locations
+                          : null;
+                if (Array.isArray(live) && live.length) {
+                    return live.map((row: any) => ({
+                        label: row.label || row.name || '',
+                        link: row.link || row.url || '#',
+                        icon: row.icon,
+                    }));
+                }
+                return SOURCE_MOCK[key] || [];
+            };
+
+            // Final list — same as input. Per-item dropdown comes from either
+            // explicit `dropdown` array OR `selectSource` mock.
+            const renderedItems: Array<any> = items;
+
+            const navOrient: 'horizontal' | 'vertical' = (renderStyle as any).orientation === 'vertical' ? 'vertical' : 'horizontal';
+            const navAlign: string = (renderStyle as any).justifyContent || 'flex-start';
+            const indicator: string = (renderStyle as any).indicator || 'underline';
+            const mobileBreak: string = (renderStyle as any).mobileBreakpoint || 'lg';
+            const itemColor   = (renderStyle as any).color || theme?.titleColor || '#111827';
+            const hoverColor  = (renderStyle as any).hoverColor || theme?.accentColor || '#E11D48';
+            const activeColor = (renderStyle as any).activeColor || hoverColor;
+            const fontSize    = (renderStyle as any).fontSize || '0.9375rem';
+            const fontWeight  = (renderStyle as any).fontWeight || '600';
+            const itemGap     = (renderStyle as any).itemGap || '1.75rem';
+            const itemPadding = (renderStyle as any).itemPadding || '0.5rem 0.25rem';
+
+            // Dropdown-panel styling — pure white card with neutral border by
+            // default. Theme tokens often tint cardBackgroundColor with the
+            // accent (e.g. Crimson Jet → pink wash), which doesn't read as a
+            // clean menu surface, so we hardcode neutral defaults here. Users
+            // can override via `dropdownBackgroundColor` / `dropdownBorderColor`.
+            const dropdownBg     = (renderStyle as any).dropdownBackgroundColor || '#FFFFFF';
+            const dropdownBorder = (renderStyle as any).dropdownBorderColor     || 'rgba(15,23,42,0.08)';
+
+            // Mobile menu open state (read-only mode). Edit mode keeps everything visible.
+            const safeNavId = `gb-nav-${id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const breakClass = mobileBreak === 'sm' ? 'sm' : mobileBreak === 'md' ? 'md' : 'lg';
+
+            // Indicator CSS — applied to the link's hover and active states.
+            // Active items get the same visual as hover but persistent.
+            const indicatorCss = (() => {
+                const base = `#${safeNavId} .gb-nav-link { color: ${itemColor}; transition: color 0.18s ease, background-color 0.18s ease; position: relative; }`;
+                if (indicator === 'underline') {
+                    return base + `
+                        #${safeNavId} .gb-nav-link::after {
+                            content: ''; position: absolute; left: 0.5rem; right: 0.5rem; bottom: 0;
+                            height: 2px; background: ${activeColor};
+                            transform: scaleX(0); transform-origin: center;
+                            transition: transform 0.2s ease;
+                        }
+                        #${safeNavId} .gb-nav-link:hover { color: ${hoverColor}; }
+                        #${safeNavId} .gb-nav-link:hover::after { transform: scaleX(1); }
+                        #${safeNavId} .gb-nav-link.is-active { color: ${activeColor}; }
+                        #${safeNavId} .gb-nav-link.is-active::after { transform: scaleX(1); }
+                    `;
+                }
+                if (indicator === 'pill') {
+                    return base + `
+                        #${safeNavId} .gb-nav-link { border-radius: 9999px; }
+                        #${safeNavId} .gb-nav-link:hover { color: ${hoverColor}; background-color: ${hoverColor}15; }
+                        #${safeNavId} .gb-nav-link.is-active { color: ${activeColor}; background-color: ${activeColor}1F; }
+                    `;
+                }
+                if (indicator === 'bg') {
+                    return base + `
+                        #${safeNavId} .gb-nav-link { border-radius: 0.5rem; }
+                        #${safeNavId} .gb-nav-link:hover { color: ${hoverColor}; background-color: ${hoverColor}10; }
+                        #${safeNavId} .gb-nav-link.is-active { color: ${activeColor}; background-color: ${activeColor}15; }
+                    `;
+                }
+                return base + `
+                    #${safeNavId} .gb-nav-link:hover { color: ${hoverColor}; }
+                    #${safeNavId} .gb-nav-link.is-active { color: ${activeColor}; }
+                `;
+            })();
+
+            // Dropdown sub-item + view-all CSS — accent-tinted hover + arrow slide.
+            const dropdownCss = `
+                #${safeNavId} .gb-nav-sub:hover { background-color: ${hoverColor}10; color: ${hoverColor}; }
+                #${safeNavId} .gb-nav-viewall:hover { background-color: ${hoverColor}1F; }
+                #${safeNavId} .gb-nav-viewall:hover i { transform: translateX(3px); }
+            `;
+
+            // Hamburger CSS — uses :checked on a hidden checkbox so JS isn't required.
+            const hamburgerCss = `
+                #${safeNavId} .gb-nav-toggle { display: none; }
+                #${safeNavId} .gb-nav-burger { display: none; }
+                @media (max-width: ${breakClass === 'sm' ? '639px' : breakClass === 'md' ? '767px' : '1023px'}) {
+                    #${safeNavId} .gb-nav-burger { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; cursor: pointer; color: ${itemColor}; }
+                    #${safeNavId} .gb-nav-list {
+                        display: none;
+                        position: absolute; top: 100%; left: 0; right: 0;
+                        flex-direction: column;
+                        background: ${(safeStyle.backgroundColor as string) || theme?.cardBackgroundColor || '#FFFFFF'};
+                        border: 1px solid ${(safeStyle.borderColor as string) || 'rgba(0,0,0,0.08)'};
+                        border-radius: 0.75rem;
+                        padding: 0.5rem;
+                        gap: 0;
+                        margin-top: 0.5rem;
+                        box-shadow: 0 12px 32px -16px rgba(0,0,0,0.18);
+                        z-index: 50;
+                    }
+                    #${safeNavId} .gb-nav-toggle:checked ~ .gb-nav-list { display: flex; }
+                    #${safeNavId} .gb-nav-list .gb-nav-link { padding: 0.625rem 0.875rem; }
+                }
+            `;
+
+            const renderIcon = (icon: string | undefined, side: 'left' | 'right') =>
+                icon && icon !== 'none'
+                    ? <i className={`fa-solid ${icon} text-[0.875em] opacity-90 ${side === 'left' ? 'mr-2' : 'ml-1.5'}`} aria-hidden />
+                    : null;
+
+            const renderLink = (
+                label: string,
+                link: string,
+                newTabPref: boolean | undefined,
+                key: string | number,
+                icon?: string,
+                isActive?: boolean,
+            ) => {
+                const trimmed = (link || '').trim();
+                const newTab = newTabPref === undefined ? true : !!newTabPref;
+                const target = trimmed && newTab ? '_blank' : undefined;
+                const rel = target === '_blank' ? 'noopener noreferrer' : undefined;
+                const activeClass = isActive ? 'is-active' : '';
+                const inner = (
+                    <>
+                        {renderIcon(icon, 'left')}
+                        {label || 'Link'}
+                    </>
+                );
+                // Edit mode: render as <span> (clicking shouldn't navigate). Preview: <a>.
+                if (!readOnly) {
+                    return (
+                        <span key={key} className={`gb-nav-link ${activeClass} inline-flex items-center cursor-default`} style={{ padding: itemPadding, fontSize, fontWeight: fontWeight as any }}>
+                            {inner}
+                        </span>
+                    );
+                }
+                return (
+                    <a key={key} href={trimmed || '#'} target={target} rel={rel}
+                        className={`gb-nav-link ${activeClass} inline-flex items-center no-underline`}
+                        style={{ padding: itemPadding, fontSize, fontWeight: fontWeight as any, color: itemColor }}
+                    >
+                        {inner}
+                    </a>
+                );
+            };
+
+            return (
+                <nav
+                    key={id}
+                    id={safeNavId}
+                    className={`relative ${selectedClass}`}
+                    onClick={!readOnly ? (e) => handleClick(e, el) : undefined}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: navAlign,
+                        gap: itemGap,
+                        padding: safeStyle.padding,
+                        backgroundColor: safeStyle.backgroundColor,
+                        borderColor: safeStyle.borderColor,
+                        borderWidth: safeStyle.borderWidth,
+                        borderStyle: safeStyle.borderStyle,
+                        borderRadius: safeStyle.borderRadius,
+                    }}
+                >
+                    <style>{indicatorCss}{hamburgerCss}{dropdownCss}</style>
+                    {/* Hamburger toggle — only shows below mobileBreak */}
+                    <input type="checkbox" id={`${safeNavId}-toggle`} className="gb-nav-toggle" aria-hidden="true" />
+                    <label htmlFor={`${safeNavId}-toggle`} className="gb-nav-burger ml-auto" aria-label="Toggle menu">
+                        <i className="fa-solid fa-bars text-lg" />
+                    </label>
+
+                    <div className="gb-nav-list" style={{
+                        display: 'flex',
+                        flexDirection: navOrient === 'vertical' ? 'column' : 'row',
+                        alignItems: navOrient === 'vertical' ? 'flex-start' : 'center',
+                        gap: navOrient === 'vertical' ? '0.25rem' : itemGap,
+                    }}>
+                        {renderedItems.length === 0 ? (
+                            <span className="text-sm opacity-50" style={{ color: itemColor, padding: itemPadding }}>Add nav items in the sidebar</span>
+                        ) : renderedItems.map((item: any, idx: number) => {
+                            const itemIcon: string | undefined = item.icon;
+                            const isActive: boolean = readOnly
+                                ? isNavItemActive(item, livePathname || '/', navSources, sitePageType)
+                                : !!item.active;
+                            // Dropdown: explicit `dropdown` array OR auto-resolved from `selectSource`.
+                            const explicitDropdown: Array<any> = Array.isArray(item.dropdown) ? item.dropdown : [];
+                            const sourceDropdown = explicitDropdown.length === 0 && item.selectSource
+                                ? resolveSourceChildren(item.selectSource)
+                                : [];
+                            const dropdownItems = explicitDropdown.length > 0 ? explicitDropdown : sourceDropdown;
+                            const hasDropdown = dropdownItems.length > 0;
+                            const viewAllLabel: string = item.viewAllLabel || '';
+                            const viewAllLink: string  = item.viewAllLink  || '';
+                            if (!hasDropdown) {
+                                return renderLink(item.label || '', item.link || '', item.linkNewTab, idx, itemIcon, isActive);
+                            }
+                            return (
+                                <div key={idx} className="relative group/nav inline-flex items-center">
+                                    {renderLink(item.label || '', item.link || '', item.linkNewTab, `link-${idx}`, itemIcon, isActive)}
+                                    <i className="fa-solid fa-chevron-down text-[10px] ml-1 opacity-60" style={{ color: itemColor }} aria-hidden />
+                                    {/* Dropdown panel — preview-mode only (edit mode keeps it hidden so it doesn't block selection) */}
+                                    {readOnly && (
+                                        <div
+                                            className="absolute top-full left-0 mt-3 min-w-[240px] rounded-xl py-2 opacity-0 invisible translate-y-1 group-hover/nav:opacity-100 group-hover/nav:visible group-hover/nav:translate-y-0 transition-all duration-200 z-[60] backdrop-blur-sm"
+                                            style={{
+                                                backgroundColor: dropdownBg,
+                                                border: `1px solid ${dropdownBorder}`,
+                                                boxShadow: `0 12px 32px -8px rgba(15, 23, 42, 0.12), 0 4px 12px -4px rgba(15, 23, 42, 0.08)`,
+                                            }}
+                                        >
+                                            {/* Tiny arrow caret pointing up at the parent link */}
+                                            <div
+                                                aria-hidden
+                                                className="absolute -top-1.5 left-6 w-3 h-3 rotate-45"
+                                                style={{
+                                                    backgroundColor: dropdownBg,
+                                                    borderLeft: `1px solid ${dropdownBorder}`,
+                                                    borderTop: `1px solid ${dropdownBorder}`,
+                                                }}
+                                            />
+                                            {dropdownItems.map((sub: any, j: number) => {
+                                                const subLink = (sub.link || '').trim();
+                                                const subNewTab = sub.linkNewTab === undefined ? true : !!sub.linkNewTab;
+                                                return (
+                                                    <a key={j} href={subLink || '#'}
+                                                        target={subLink && subNewTab ? '_blank' : undefined}
+                                                        rel={subLink && subNewTab ? 'noopener noreferrer' : undefined}
+                                                        className="gb-nav-sub flex items-center gap-2.5 mx-1.5 px-3 py-2 rounded-lg text-sm no-underline transition-colors"
+                                                        style={{ color: itemColor }}
+                                                    >
+                                                        {sub.icon && sub.icon !== 'none' && (
+                                                            <span
+                                                                className="inline-flex items-center justify-center w-7 h-7 rounded-md flex-shrink-0"
+                                                                style={{ backgroundColor: `${hoverColor}12`, color: hoverColor }}
+                                                            >
+                                                                <i className={`fa-solid ${sub.icon} text-[11px]`} />
+                                                            </span>
+                                                        )}
+                                                        <span>{sub.label || 'Link'}</span>
+                                                    </a>
+                                                );
+                                            })}
+                                            {viewAllLabel && (
+                                                <>
+                                                    <div className="my-1.5 mx-3 h-px" style={{ backgroundColor: dropdownBorder }} />
+                                                    <a href={(viewAllLink || '#').trim() || '#'}
+                                                        className="gb-nav-viewall flex items-center justify-between mx-1.5 px-3 py-2 rounded-lg text-sm font-bold no-underline transition-colors"
+                                                        style={{ color: hoverColor, backgroundColor: `${hoverColor}10` }}
+                                                    >
+                                                        <span>{viewAllLabel}</span>
+                                                        <i className="fa-solid fa-arrow-right text-[11px] transition-transform" aria-hidden />
+                                                    </a>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </nav>
+            );
+        }
+
+        case 'stat-card':
+            const statIconColor = renderStyle.iconColor || theme?.iconColor || theme?.accentColor || '#3b82f6';
+            const statIconBg = renderStyle.iconBackgroundColor || renderStyle.iconBgColor || theme?.iconBgColor || (statIconColor + '1A');
+            
+            return (
+                <div
+                    key={id}
+                    className={`p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm hover:bg-white/10 transition-all duration-300 group ${selectedClass}`}
+                    onClick={(e) => handleClick(e, el)}
+                    style={style as React.CSSProperties}
+                >
+                    <div className="flex items-center gap-4 mb-3">
+                        {content.icon && (
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform"
+                                style={{ 
+                                    backgroundColor: statIconBg, 
+                                    color: statIconColor,
+                                    border: renderStyle.iconBorderStyle && renderStyle.iconBorderStyle !== 'none' 
+                                        ? `${renderStyle.iconBorderWidth || '1px'} ${renderStyle.iconBorderStyle} ${renderStyle.iconBorderColor || statIconColor}`
+                                        : (renderStyle.iconBorder || 'none'),
+                                    borderRadius: renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0.5rem',
+                                    borderTopLeftRadius: renderStyle.iconBorderTopLeftRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0.5rem'),
+                                    borderTopRightRadius: renderStyle.iconBorderTopRightRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0.5rem'),
+                                    borderBottomRightRadius: renderStyle.iconBorderBottomRightRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0.5rem'),
+                                    borderBottomLeftRadius: renderStyle.iconBorderBottomLeftRadius || renderStyle.iconBorderRadius || (renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0.5rem'),
+                                    boxShadow: renderStyle.iconShadow || 'none'
+                                }}
+                            >
+                                <IconRenderer icon={content.icon} size="1.125rem" style={{ color: statIconColor }} />
+                            </div>
+                        )}
+                        <StatCardValue
+                            raw={String(content.value ?? content.targetNumber ?? '0')}
+                            readOnly={!!readOnly}
+                            color={renderStyle.titleColor || theme?.titleColor || '#F8FAFC'}
+                            className="text-3xl font-bold tracking-tight outline-none"
+                            onBlur={(v) => handleContentUpdate(id, content.value !== undefined ? 'value' : 'targetNumber', v)}
+                        />
+                    </div>
+                    <div 
+                        className="text-sm font-semibold uppercase tracking-wider mb-1 outline-none" 
+                        style={{ color: renderStyle.subheadingColor || theme?.subheadingColor || theme?.textColor || '#C7CDD6', opacity: theme?.subheadingColor ? 1 : 0.6 }}
+                        ref={bindHtml(id, content.text || 'Label')}
+                        contentEditable={!readOnly}
+                        {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                    />
+                    {content.subText && (
+                        <div 
+                            className="text-xs opacity-40 leading-relaxed outline-none" 
+                            style={{ color: renderStyle.textColor || theme?.textColor || '#C7CDD6' }}
+                            ref={bindHtml(id, content.subText)}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))}
+                        />
+                    )}
+                </div>
+            );
+
+        case 'user-avatars': {
+            const avatars = content.items || [];
+            const avatarSize = (renderStyle as any).avatarSize || '40px';
+            const overlap   = (renderStyle as any).avatarOverlap || '12px';
+            const ringColor = (renderStyle as any).ringColor || theme?.cardBackgroundColor || '#0F172A';
+            const ringWidth = (renderStyle as any).ringWidth || '2px';
+            const showCount: boolean = (content as any).showCount !== false;
+            const labelBefore: string = (content as any).labelBefore || 'Join';
+            const labelAfter:  string = (content as any).labelAfter  || 'others';
+            const labelColor = (renderStyle as any).labelColor || safeStyle.color || theme?.textColor || '#D1D5DB';
+            const numberColor = (renderStyle as any).numberColor || theme?.accentColor || '#60A5FA';
+            const labelFontSize = (renderStyle as any).labelFontSize || '0.875rem';
+            const justify: string = (renderStyle as any).justifyContent || 'flex-start';
+            const justifyClass = justify === 'flex-start' ? 'justify-start'
+                : justify === 'center' ? 'justify-center'
+                : justify === 'flex-end' ? 'justify-end'
+                : 'justify-start';
+
+            return (
+                <div
+                    key={id}
+                    className={`flex items-center ${justifyClass} ${selectedClass}`}
+                    onClick={(e) => handleClick(e, el)}
+                    style={{ ...safeStyle, color: labelColor }}
+                >
+                    <div className="flex overflow-hidden mr-4" style={{ marginRight: showCount ? '1rem' : 0 }}>
+                        {avatars.map((avatar: any, idx: number) => (
+                            <img
+                                key={idx}
+                                className="inline-block rounded-full object-cover"
+                                src={avatar.src}
+                                alt={(avatar.alt as string) || `User ${idx + 1}`}
+                                referrerPolicy="no-referrer"
+                                style={{
+                                    width: avatarSize,
+                                    height: avatarSize,
+                                    boxShadow: `0 0 0 ${ringWidth} ${ringColor}`,
+                                    marginLeft: idx === 0 ? 0 : `-${overlap}`,
+                                    position: 'relative',
+                                    zIndex: avatars.length - idx,
+                                }}
+                            />
+                        ))}
+                    </div>
+                    {showCount && content.targetNumber && (
+                        <div className="font-medium" style={{ color: labelColor, fontSize: labelFontSize }}>
+                            <span
+                                className="outline-none"
+                                contentEditable={!readOnly}
+                                suppressContentEditableWarning={!readOnly}
+                                onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'labelBefore', e.currentTarget.textContent || '') : undefined}
+                            >{labelBefore}</span>
+                            {' '}
+                            <span
+                                className="font-bold outline-none"
+                                style={{ color: numberColor }}
+                                ref={bindHtml(id, content.targetNumber)}
+                                contentEditable={!readOnly}
+                                {...editHandlers(id, (html) => handleContentUpdate(id, 'targetNumber', html))}
+                            />
+                            {' '}
+                            <span
+                                className="outline-none"
+                                contentEditable={!readOnly}
+                                suppressContentEditableWarning={!readOnly}
+                                onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'labelAfter', e.currentTarget.textContent || '') : undefined}
+                            >{labelAfter}</span>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        case 'pricing-table': {
+            const accent = renderStyle?.accentColor || theme?.accentColor || '#3b82f6';
+            const isPopular: boolean = !!(content as any).popular;
+            const popularBadgeText: string = (content as any).popularBadgeText || 'Most Popular';
+            const checkColor = (renderStyle as any).checkColor || accent;
+            const featureSeparator: boolean = (renderStyle as any).featureSeparator === true;
+            const ctaText: string = (content as any).ctaText || (content.link as string) || 'Choose Plan';
+            const ctaLink: string = (content as any).ctaLink || '#';
+            const ctaBgColor = (renderStyle as any).ctaBgColor || accent;
+            const ctaTextColor = (renderStyle as any).ctaTextColor || '#FFFFFF';
+            const planTitleColor = (renderStyle as any).planTitleColor || theme?.titleColor || '#F8FAFC';
+            const priceColor = (renderStyle as any).priceColor || accent;
+            const featureColor = (renderStyle as any).featureColor || safeStyle.color || theme?.textColor || '#D1D5DB';
+
+            const pricingStyle: React.CSSProperties = {
+                ...safeStyle,
+                color: featureColor,
+                backgroundColor: safeStyle.backgroundColor || theme?.cardBackgroundColor || 'rgba(255,255,255,0.05)',
+                borderColor: isPopular ? accent : (safeStyle.borderColor || theme?.cardBorderColor || 'rgba(255,255,255,0.08)'),
+                borderWidth: isPopular ? '2px' : (safeStyle.borderWidth || '1px'),
+                borderStyle: 'solid',
+                padding: safeStyle.padding || '2rem',
+                borderRadius: safeStyle.borderRadius || '1rem',
+                position: 'relative',
+            };
+
+            return (
+                <div key={id} className={`flex flex-col items-center text-center ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={pricingStyle}>
+                    {isPopular && (
+                        <span
+                            className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full"
+                            style={{ backgroundColor: accent, color: '#FFFFFF' }}
+                        >
+                            {popularBadgeText}
+                        </span>
+                    )}
+                    <h3
+                        className="text-xl font-bold mb-2 outline-none"
+                        style={{ color: planTitleColor }}
+                        ref={bindHtml(id, content.text || 'Plan Name')}
+                        contentEditable={!readOnly}
+                        {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                    />
+                    <div
+                        className="text-4xl font-bold mb-1 outline-none"
+                        style={{ color: priceColor }}
+                        ref={bindHtml(id, content.price || '$99')}
+                        contentEditable={!readOnly}
+                        {...editHandlers(id, (html) => handleContentUpdate(id, 'price', html))}
+                    />
+                    <div
+                        className="text-sm mb-6 outline-none"
+                        style={{
+                            color: renderStyle.subheadingColor || theme?.subheadingColor || theme?.textColor || '#C7CDD6',
+                            opacity: theme?.subheadingColor ? 1 : 0.7,
+                        }}
+                        ref={bindHtml(id, content.period || 'per month')}
+                        contentEditable={!readOnly}
+                        {...editHandlers(id, (html) => handleContentUpdate(id, 'period', html))}
+                    />
+                    <ul className="space-y-3 mb-8 w-full text-left">
+                        {(content.items || [{ title: 'Feature 1' }, { title: 'Feature 2' }, { title: 'Feature 3' }]).map((feature: any, i: number) => (
+                            <li
+                                key={i}
+                                className="flex gap-2 text-sm"
+                                style={{
+                                    color: featureColor,
+                                    paddingBottom: featureSeparator ? '0.75rem' : 0,
+                                    borderBottom: featureSeparator ? '1px solid rgba(255,255,255,0.08)' : 'none',
+                                }}
+                            >
+                                <i className="fa-solid fa-check mt-1 flex-shrink-0" style={{ color: checkColor }} />
+                                <span
+                                    className="outline-none flex-1"
+                                    ref={bindHtml(`${id}-item-${i}`, feature.title || '')}
+                                    contentEditable={!readOnly}
+                                    {...editHandlers(`${id}-item-${i}`, (html) => handleArrayContentUpdate(id, 'items', i, 'title', html))}
+                                />
+                            </li>
+                        ))}
+                    </ul>
+                    <a
+                        href={ctaLink}
+                        onClick={(e) => { if (!readOnly) e.preventDefault(); }}
+                        className="w-full py-3 px-6 rounded-lg font-bold text-sm transition-opacity hover:opacity-90 outline-none cursor-pointer block text-center"
+                        style={{ backgroundColor: ctaBgColor, color: ctaTextColor }}
+                    >
+                        <span
+                            contentEditable={!readOnly}
+                            suppressContentEditableWarning={!readOnly}
+                            onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'ctaText', e.currentTarget.textContent || '') : undefined}
+                        >
+                            {ctaText}
+                        </span>
+                    </a>
+                </div>
+            );
+        }
+
+        case 'flip-box': {
+            const directionClass: Record<string, string> = {
+                left:   'group-hover:[transform:rotateY(180deg)]',
+                right:  'group-hover:[transform:rotateY(-180deg)]',
+                top:    'group-hover:[transform:rotateX(180deg)]',
+                bottom: 'group-hover:[transform:rotateX(-180deg)]',
             };
             const dir = content.flipDirection || 'left';
             const rotateClass = directionClass[dir] || directionClass.left;
-            
-            const backRotate = (dir === 'top' || dir === 'bottom') ? 'rotate-x-180' : 'rotate-y-180';
-            
-            // Use theme accentColor if element color is not explicitly set
-            const flipBoxAccentColor = renderStyle?.accentColor || theme?.accentColor || '#3b82f6';
-            const flipBoxStyle = {
+            const isVertical = dir === 'top' || dir === 'bottom';
+            const backInitialTransform = isVertical ? 'rotateX(180deg)' : 'rotateY(180deg)';
+
+            // Per-face colors (renderStyle override → theme fallback)
+            const accent          = (renderStyle as any).accentColor   || theme?.accentColor || '#3b82f6';
+            const frontBg         = (renderStyle as any).frontBg       || 'rgba(255,255,255,0.05)';
+            const frontBorderCol  = (renderStyle as any).frontBorderColor || 'rgba(255,255,255,0.1)';
+            const frontTitleCol   = (renderStyle as any).frontTitleColor   || theme?.titleColor || '#F8FAFC';
+            const frontDescCol    = (renderStyle as any).frontDescColor    || safeStyle.color || theme?.textColor || '#D1D5DB';
+            const frontIconCol    = (renderStyle as any).frontIconColor    || accent;
+            const backBg          = (renderStyle as any).backBg        || accent;
+            const backTitleCol    = (renderStyle as any).backTitleColor    || '#FFFFFF';
+            const backDescCol     = (renderStyle as any).backDescColor     || 'rgba(255,255,255,0.9)';
+            const backBtnBg       = (renderStyle as any).backBtnBg     || '#FFFFFF';
+            const backBtnText     = (renderStyle as any).backBtnText   || '#000000';
+
+            // Layout
+            const flipHeight = (renderStyle as any).flipBoxHeight || '16rem';
+            const flipRadius = (renderStyle as any).borderRadius   || '0.75rem';
+            const flipDuration = (renderStyle as any).flipDuration || '700ms';
+            const showFrontIcon: boolean = (content as any).showFrontIcon !== false;
+            const frontIcon: string = content.icon || 'star';
+            const frontIconSize = (renderStyle as any).frontIconSize || '2.25rem';
+            const showBackBtn: boolean = (content as any).showBackBtn !== false;
+            const backBtnText_str: string = (content as any).backBtnText || 'Learn More';
+            const backBtnLink: string = (content as any).backBtnLink || '#';
+
+            const flipBoxStyle: React.CSSProperties = {
                 ...safeStyle,
-                color: safeStyle.color || theme?.textColor || '#D1D5DB'
+                color: safeStyle.color || theme?.textColor || '#D1D5DB',
+                height: flipHeight,
+                perspective: '1000px',
+            };
+
+            const faceStyle: React.CSSProperties = {
+                position: 'absolute',
+                inset: 0,
+                backfaceVisibility: 'hidden',
+                WebkitBackfaceVisibility: 'hidden' as any,
+                borderRadius: flipRadius,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: safeStyle.padding || '1.5rem',
+                textAlign: 'center',
             };
 
             return (
-                 <div key={id} className={`group h-64 perspective-1000 ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={flipBoxStyle}>
-                     <div className={`relative w-full h-full transition-transform duration-700 transform-style-3d ${rotateClass}`}>
-                         <div className="absolute inset-0 backface-hidden bg-white/10 border border-white/10 rounded-xl flex flex-col items-center justify-center p-6 text-center">
-                              <i className={`fa-solid ${content.icon || 'fa-star'} text-4xl mb-4`} style={{color: flipBoxAccentColor}}></i>
-                              <h3 className="font-bold text-xl" style={{ color: theme?.titleColor }}>{content.frontTitle || 'Front Title'}</h3>
-                              <p className="text-sm opacity-70 mt-2">{content.frontDesc || 'Hover to flip'}</p>
-                         </div>
-                         <div className={`absolute inset-0 backface-hidden ${backRotate} bg-blue-600 rounded-xl flex flex-col items-center justify-center p-6 text-center`} style={{ backgroundColor: flipBoxAccentColor }}>
-                              <h3 className="font-bold text-xl">{content.backTitle || 'Back Title'}</h3>
-                              <p className="text-sm opacity-90 mt-2 mb-4">{content.backDesc || 'Hidden details revealed.'}</p>
-                              <button className="px-4 py-2 bg-white text-black text-xs font-bold rounded-full">Action</button>
-                         </div>
-                     </div>
-                 </div>
+                <div key={id} className={`group ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={flipBoxStyle}>
+                    <div
+                        className={`relative w-full h-full transition-transform [transform-style:preserve-3d] ${rotateClass}`}
+                        style={{ transitionDuration: flipDuration }}
+                    >
+                        {/* Front face */}
+                        <div style={{ ...faceStyle, backgroundColor: frontBg, border: `1px solid ${frontBorderCol}` }}>
+                            {showFrontIcon && (
+                                <div style={{ marginBottom: '1rem' }}>
+                                    <IconRenderer icon={frontIcon} size={frontIconSize} style={{ color: frontIconCol }} />
+                                </div>
+                            )}
+                            <h3
+                                className="font-bold text-xl outline-none"
+                                style={{ color: frontTitleCol }}
+                                ref={bindHtml(id, content.frontTitle || 'Front Title')}
+                                contentEditable={!readOnly}
+                                {...editHandlers(id, (html) => handleContentUpdate(id, 'frontTitle', html))}
+                            />
+                            <p
+                                className="text-sm mt-2 outline-none"
+                                style={{ color: frontDescCol, opacity: 0.85 }}
+                                ref={bindHtml(id, content.frontDesc || 'Hover to flip')}
+                                contentEditable={!readOnly}
+                                {...editHandlers(id, (html) => handleContentUpdate(id, 'frontDesc', html))}
+                            />
+                        </div>
+                        {/* Back face */}
+                        <div style={{ ...faceStyle, backgroundColor: backBg, transform: backInitialTransform }}>
+                            <h3
+                                className="font-bold text-xl outline-none"
+                                style={{ color: backTitleCol }}
+                                ref={bindHtml(id, content.backTitle || 'Back Title')}
+                                contentEditable={!readOnly}
+                                {...editHandlers(id, (html) => handleContentUpdate(id, 'backTitle', html))}
+                            />
+                            <p
+                                className="text-sm mt-2 mb-4 outline-none"
+                                style={{ color: backDescCol }}
+                                ref={bindHtml(id, content.backDesc || 'Hidden details revealed.')}
+                                contentEditable={!readOnly}
+                                {...editHandlers(id, (html) => handleContentUpdate(id, 'backDesc', html))}
+                            />
+                            {showBackBtn && (
+                                <a
+                                    href={backBtnLink}
+                                    onClick={(e) => { if (!readOnly) e.preventDefault(); }}
+                                    className="px-4 py-2 text-xs font-bold rounded-full transition-opacity hover:opacity-90 outline-none cursor-pointer"
+                                    style={{ backgroundColor: backBtnBg, color: backBtnText }}
+                                >
+                                    <span
+                                        contentEditable={!readOnly}
+                                        suppressContentEditableWarning={!readOnly}
+                                        onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'backBtnText', e.currentTarget.textContent || '') : undefined}
+                                    >
+                                        {backBtnText_str}
+                                    </span>
+                                </a>
+                            )}
+                        </div>
+                    </div>
+                </div>
             );
+        }
 
-        case 'countdown-timer':
-            // Use theme accentColor and textColor if element colors are not explicitly set
-            const countdownAccentColor = renderStyle?.accentColor || theme?.accentColor || '#F59E0B';
-            const countdownStyle = {
+        case 'countdown-timer': {
+            const countdownAccentColor = (renderStyle as any).accentColor || theme?.accentColor || '#F59E0B';
+            const countdownStyle: React.CSSProperties = {
                 ...safeStyle,
-                color: safeStyle.color || theme?.textColor || '#D1D5DB'
+                color: safeStyle.color || theme?.textColor || '#D1D5DB',
             };
-             return (
-                 <div key={id} className={`${selectedClass}`} onClick={(e) => handleClick(e, el)} style={countdownStyle}>
-                     <h4 className="font-bold mb-4 uppercase tracking-widest text-xs opacity-50" style={{textAlign: safeStyle.textAlign}}>{content.text || 'Offer Ends In'}</h4>
-                     <CountdownTimer targetDate={content.targetDate || new Date(Date.now() + 86400000).toISOString()} style={{ ...style, accentColor: countdownAccentColor }} />
-                 </div>
-             );
-
-        case 'review-carousel':
-            // Use theme textColor if element color is not explicitly set
-            // Fallback hierarchy: Element Style -> Section Style -> Theme Default
-            const reviewCarouselStyle = {
-                ...safeStyle,
-                color: safeStyle.color || theme?.textColor || themeData?.description || '#D1D5DB'
-            };
-            // Use themeData.trust for author name (like website multicolor theme)
-            const authorColor = theme?.titleColor || themeData?.heading || '#F8FAFC';
-            const reviewTextColor = themeData?.description || theme?.textColor || '#D1D5DB';
+            const showHeading: boolean = (content as any).showHeading !== false;
             return (
-                 <div key={id} className={`p-6 bg-white/5 border border-white/10 rounded-xl ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={reviewCarouselStyle}>
-                     <div className="flex gap-4 overflow-hidden mask-linear-gradient">
-                         {(content.items || [{title: 'Review 1'}, {title: 'Review 2'}]).map((item, i) => (
-                             <div key={i} className="min-w-[250px] p-4 bg-black/20 rounded border border-white/5">
-                                 <div className="text-yellow-500 text-xs mb-2"><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i><i className="fa-solid fa-star"></i></div>
-                                 <p className="text-sm italic opacity-80 mb-2" style={{ color: reviewTextColor }}>"{item.content || 'Excellent product.'}"</p>
-                                 <div className="font-bold text-xs" style={{ color: authorColor }}>{item.author || 'User'}</div>
-                             </div>
-                         ))}
-                     </div>
-                 </div>
+                <div key={id} className={`${selectedClass}`} onClick={(e) => handleClick(e, el)} style={countdownStyle}>
+                    {showHeading && (
+                        <h4
+                            className="font-bold mb-4 uppercase tracking-widest outline-none"
+                            style={{
+                                textAlign: safeStyle.textAlign,
+                                color: (renderStyle as any).subheadingColor || theme?.subheadingColor || theme?.textColor || '#C7CDD6',
+                                opacity: theme?.subheadingColor ? 1 : 0.7,
+                                fontSize: (renderStyle as any).headingFontSize || '0.75rem',
+                            }}
+                            ref={bindHtml(id, content.text || 'Offer Ends In')}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                        />
+                    )}
+                    <CountdownTimer
+                        targetDate={content.targetDate || new Date(Date.now() + 86400000).toISOString()}
+                        style={{ ...renderStyle, accentColor: countdownAccentColor, textAlign: safeStyle.textAlign }}
+                        content={content}
+                    />
+                </div>
             );
+        }
+
+        case 'review-carousel': {
+            const items = content.items || [{ author: 'Sarah K.', content: 'Excellent product, exceeded expectations.', rating: 5 },
+                                            { author: 'Mike T.', content: 'Great value for the price. Highly recommend.', rating: 5 }];
+            const wrapBg     = (renderStyle as any).wrapBg     || safeStyle.backgroundColor || 'rgba(255,255,255,0.05)';
+            const wrapBorder = (renderStyle as any).wrapBorder || safeStyle.borderColor || 'rgba(255,255,255,0.1)';
+            const wrapPadding = (renderStyle as any).wrapPadding || safeStyle.padding || '1.5rem';
+            const wrapRadius = (renderStyle as any).wrapRadius || safeStyle.borderRadius || '0.75rem';
+            const cardBg     = (renderStyle as any).reviewCardBg     || 'rgba(0,0,0,0.2)';
+            const cardBorder = (renderStyle as any).reviewCardBorder || 'rgba(255,255,255,0.05)';
+            const cardWidth  = (renderStyle as any).reviewCardWidth  || '260px';
+            const cardGap    = (renderStyle as any).reviewCardGap    || '1rem';
+            const cardRadius = (renderStyle as any).reviewCardRadius || '0.5rem';
+            const starColor  = (renderStyle as any).starColor  || '#F59E0B';
+            const reviewTextColor = (renderStyle as any).reviewTextColor || safeStyle.color || theme?.textColor || themeData?.description || '#D1D5DB';
+            const authorColor = (renderStyle as any).authorColor || theme?.titleColor || themeData?.heading || '#F8FAFC';
+            const reviewFontSize = (renderStyle as any).reviewFontSize || '0.875rem';
+            const authorFontSize = (renderStyle as any).authorFontSize || '0.75rem';
+            const isMarquee: boolean = !!(content as any).marquee;
+            const marqueeSpeed: string = String((content as any).marqueeSpeed || '40s');
+            const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+            const renderRating = (rating: number) => {
+                const r = Math.max(0, Math.min(5, rating));
+                return Array.from({ length: 5 }).map((_, k) => (
+                    <i
+                        key={k}
+                        className="fa-solid fa-star text-xs"
+                        style={{ color: k < r ? starColor : 'rgba(255,255,255,0.18)' }}
+                        aria-hidden="true"
+                    />
+                ));
+            };
+
+            const renderReviewCard = (item: any, i: number, keyPrefix = '') => (
+                <div
+                    key={`${keyPrefix}${i}`}
+                    className="flex-shrink-0"
+                    style={{
+                        minWidth: cardWidth,
+                        width: cardWidth,
+                        backgroundColor: cardBg,
+                        border: `1px solid ${cardBorder}`,
+                        borderRadius: cardRadius,
+                        padding: '1rem',
+                    }}
+                >
+                    <div className="mb-2 flex gap-0.5">{renderRating(typeof item.rating === 'number' ? item.rating : 5)}</div>
+                    <p
+                        className="italic mb-3 outline-none"
+                        style={{ color: reviewTextColor, fontSize: reviewFontSize, opacity: 0.9 }}
+                        ref={bindHtml(`${id}-item-${i}`, item.content || 'Excellent product.')}
+                        contentEditable={!readOnly}
+                        {...editHandlers(`${id}-item-${i}`, (html) => handleArrayContentUpdate(id, 'items', i, 'content', html))}
+                    />
+                    <div
+                        className="font-bold outline-none"
+                        style={{ color: authorColor, fontSize: authorFontSize }}
+                        ref={bindHtml(`${id}-item-${i}`, item.author || 'User')}
+                        contentEditable={!readOnly}
+                        {...editHandlers(`${id}-item-${i}`, (html) => handleArrayContentUpdate(id, 'items', i, 'author', html))}
+                    />
+                </div>
+            );
+
+            const wrapStyle: React.CSSProperties = {
+                ...safeStyle,
+                backgroundColor: wrapBg,
+                borderColor: wrapBorder,
+                borderWidth: safeStyle.borderWidth || '1px',
+                borderStyle: safeStyle.borderStyle || 'solid',
+                borderRadius: wrapRadius,
+                padding: wrapPadding,
+            };
+
+            if (isMarquee) {
+                return (
+                    <div key={id} className={`relative overflow-hidden ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={wrapStyle}>
+                        <style>{`@keyframes rc-${safeId}-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }`}</style>
+                        <div
+                            className="flex whitespace-nowrap"
+                            style={{
+                                gap: cardGap,
+                                width: 'max-content',
+                                animation: `rc-${safeId}-scroll ${marqueeSpeed} linear infinite`,
+                            }}
+                        >
+                            {items.map((item: any, i: number) => renderReviewCard(item, i, 'a-'))}
+                            {items.map((item: any, i: number) => renderReviewCard(item, i, 'b-'))}
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div key={id} className={`${selectedClass}`} onClick={(e) => handleClick(e, el)} style={wrapStyle}>
+                    <div className="flex overflow-x-auto" style={{ gap: cardGap }}>
+                        {items.map((item: any, i: number) => renderReviewCard(item, i))}
+                    </div>
+                </div>
+            );
+        }
+
+        case 'card': {
+            const cardBg = (safeStyle.backgroundColor && safeStyle.backgroundColor !== 'transparent')
+                ? safeStyle.backgroundColor
+                : (theme?.cardBackgroundColor || '#FFFFFF');
+            const cardBorder = (safeStyle.borderColor && safeStyle.borderColor !== 'transparent')
+                ? safeStyle.borderColor
+                : (theme?.cardBorderColor || '#E5E7EB');
+            const cardImgUrl = content.imageUrl || content.src || '';
+            const resolvedCardImg = cardImgUrl
+                ? toDisplayImageUrl(cardImgUrl)
+                : null;
+            return (
+                <div
+                    key={id}
+                    className={`rounded-2xl overflow-hidden flex flex-col transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${selectedClass}`}
+                    style={{
+                        ...safeStyle,
+                        backgroundColor: cardBg,
+                        borderColor: cardBorder,
+                        borderWidth: safeStyle.borderWidth || '1px',
+                        borderStyle: safeStyle.borderStyle || 'solid',
+                        borderRadius: safeStyle.borderRadius || '1rem',
+                    }}
+                    onClick={(e) => handleClick(e, el)}
+                >
+                    {resolvedCardImg && (
+                        <div className="overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                            <img
+                                src={resolvedCardImg}
+                                alt={content.text || 'Card image'}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                                onError={(e) => { (e.target as HTMLImageElement).src = SECTION_IMAGE_PLACEHOLDER; }}
+                            />
+                        </div>
+                    )}
+                    <div className="flex flex-col flex-1 p-6 gap-3">
+                        {(content.badge || content.badgeText) && (
+                            <span
+                                className="self-start text-xs font-bold px-3 py-1 rounded-full"
+                                style={{ backgroundColor: (theme as any)?.badge?.background || ((theme?.accentColor || '') + '22') || 'rgba(99,102,241,0.12)', color: theme?.accentColor || '#6366f1' }}
+                            >
+                                {content.badge || content.badgeText}
+                            </span>
+                        )}
+                        <div
+                            className="font-bold text-lg leading-snug outline-none"
+                            style={{ color: renderStyle.titleColor || theme?.titleColor || '#111827' }}
+                            ref={bindHtml(id, content.text || 'Card Title')}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                        />
+                        {(content.subText || content.description) && (
+                            <div
+                                className="text-sm leading-relaxed opacity-80 flex-1 outline-none"
+                                style={{ color: safeStyle.color || theme?.textColor || '#4B5563' }}
+                                ref={bindHtml(`${id}-card-desc`, content.subText || content.description || '')}
+                                contentEditable={!readOnly}
+                                {...editHandlers(`${id}-card-desc`, (html) =>
+                                  handleContentUpdate(id, content.subText !== undefined ? 'subText' : 'description', html)
+                                )}
+                            />
+                        )}
+                        {content.link && (
+                            <a
+                                href={readOnly ? (content.link || '#') : undefined}
+                                className="mt-auto inline-flex items-center gap-1 text-sm font-semibold"
+                                style={{ color: theme?.accentColor || theme?.secondaryHeadingColor || '#6366f1' }}
+                            >
+                                {content.linkText || 'Learn more'} <i className="fa-solid fa-arrow-right text-xs"></i>
+                            </a>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        case 'pricing-item': {
+            const accentCol = (renderStyle as any).accentColor || theme?.accentColor || '#6366f1';
+            const isFeatured = content.featured === true || content.featured === 'true';
+            const liftFeatured: boolean = (renderStyle as any).liftFeatured !== false; // default on
+            const features: any[] = content.items || (Array.isArray(content.features) ? content.features.map((f: string) => ({ title: f })) : []);
+            const planBg = (safeStyle.backgroundColor && safeStyle.backgroundColor !== 'transparent')
+                ? safeStyle.backgroundColor
+                : (theme?.cardBackgroundColor || '#FFFFFF');
+            const planBorder = (safeStyle.borderColor && safeStyle.borderColor !== 'transparent')
+                ? safeStyle.borderColor
+                : (theme?.cardBorderColor || '#E5E7EB');
+
+            // Per-element color overrides
+            const planTitleCol  = (renderStyle as any).planTitleColor  || (renderStyle as any).titleColor || theme?.titleColor || '#111827';
+            const priceCol      = (renderStyle as any).priceColor      || accentCol;
+            const periodCol     = (renderStyle as any).periodColor     || safeStyle.color || theme?.textColor || '#6B7280';
+            const descCol       = (renderStyle as any).descriptionColor || safeStyle.color || theme?.textColor || '#6B7280';
+            const featureCol    = (renderStyle as any).featureColor    || safeStyle.color || theme?.textColor || '#4B5563';
+            const checkCol      = (renderStyle as any).checkColor      || accentCol;
+            const ctaBgCol      = (renderStyle as any).ctaBgColor      || accentCol;
+            const ctaTextCol    = (renderStyle as any).ctaTextColor    || '#FFFFFF';
+            const badgeBgCol    = (renderStyle as any).badgeBgColor    || accentCol;
+            const badgeTextCol  = (renderStyle as any).badgeTextColor  || '#FFFFFF';
+
+            return (
+                <div
+                    key={id}
+                    className={`relative overflow-hidden flex flex-col transition-all duration-300 ${isFeatured && liftFeatured ? 'shadow-xl scale-105' : ''} ${selectedClass}`}
+                    style={{
+                        ...safeStyle,
+                        backgroundColor: planBg,
+                        borderColor: isFeatured ? accentCol : planBorder,
+                        borderWidth: isFeatured ? '2px' : (safeStyle.borderWidth || '1px'),
+                        borderStyle: safeStyle.borderStyle || 'solid',
+                        borderRadius: safeStyle.borderRadius || '1rem',
+                    }}
+                    onClick={(e) => handleClick(e, el)}
+                >
+                    {isFeatured && (
+                        <div
+                            className="text-center text-xs font-bold py-2 tracking-widest uppercase"
+                            style={{ backgroundColor: badgeBgCol, color: badgeTextCol }}
+                        >
+                            <span
+                                className="outline-none"
+                                contentEditable={!readOnly}
+                                suppressContentEditableWarning={!readOnly}
+                                onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'badge', e.currentTarget.textContent || '') : undefined}
+                            >{content.badge || 'Most Popular'}</span>
+                        </div>
+                    )}
+                    <div className="flex flex-col flex-1 gap-4" style={{ padding: safeStyle.padding || '2rem' }}>
+                        <div
+                            className="font-bold outline-none"
+                            style={{ color: planTitleCol, fontSize: (renderStyle as any).planTitleFontSize || '1.25rem' }}
+                            ref={bindHtml(id, content.text || content.planName || 'Starter')}
+                            contentEditable={!readOnly}
+                            {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                        />
+                        <div className="flex items-end gap-1">
+                            <span
+                                className="font-extrabold outline-none"
+                                style={{ color: priceCol, fontSize: (renderStyle as any).priceFontSize || '3rem', lineHeight: 1 }}
+                                ref={bindHtml(id, content.price || '$29')}
+                                contentEditable={!readOnly}
+                                {...editHandlers(id, (html) => handleContentUpdate(id, 'price', html))}
+                            />
+                            <span
+                                className="mb-2 text-sm outline-none"
+                                style={{ color: periodCol, opacity: 0.7 }}
+                                ref={bindHtml(id, content.period || '/month')}
+                                contentEditable={!readOnly}
+                                {...editHandlers(id, (html) => handleContentUpdate(id, 'period', html))}
+                            />
+                        </div>
+                        {content.subText && (
+                            <p
+                                className="text-sm outline-none"
+                                style={{ color: descCol, opacity: 0.85 }}
+                                ref={bindHtml(id, content.subText)}
+                                contentEditable={!readOnly}
+                                {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))}
+                            />
+                        )}
+                        {features.length > 0 && (
+                            <ul className="space-y-2 flex-1 my-2">
+                                {features.map((feat: any, fi: number) => (
+                                    <li key={fi} className="flex items-start gap-2 text-sm">
+                                        <i
+                                            className="fa-solid fa-circle-check mt-0.5 flex-shrink-0"
+                                            style={{ color: checkCol }}
+                                        />
+                                        <span
+                                            className="outline-none flex-1"
+                                            style={{ color: featureCol }}
+                                            ref={bindHtml(`${id}-feat-${fi}`, String(feat.title || feat.text || feat))}
+                                            contentEditable={!readOnly}
+                                            {...editHandlers(`${id}-feat-${fi}`, (html) =>
+                                              handleArrayContentUpdate(id, 'items', fi, 'title', html)
+                                            )}
+                                        />
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        <a
+                            href={(content as any).ctaLink || (content.link as string) || '#'}
+                            onClick={(e) => { if (!readOnly) e.preventDefault(); }}
+                            className="mt-auto w-full py-3 rounded-xl font-bold text-sm transition-opacity hover:opacity-90 outline-none cursor-pointer block text-center"
+                            style={{ backgroundColor: ctaBgCol, color: ctaTextCol }}
+                        >
+                            <span
+                                contentEditable={!readOnly}
+                                suppressContentEditableWarning={!readOnly}
+                                onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'ctaText', e.currentTarget.textContent || '') : undefined}
+                            >
+                                {content.ctaText || content.link || 'Get Started'}
+                            </span>
+                        </a>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'divider': {
+            // Divider styles: solid / dashed / dotted / double / icon-centered.
+            // Line color follows theme borderColor unless user overrides via renderStyle.borderColor.
+            const divStyle: 'solid' | 'dashed' | 'dotted' | 'double' | 'icon' = ((content as any).dividerStyle || 'solid');
+            const divColor = renderStyle.borderColor || (theme as any)?.borderColor || 'rgba(255,255,255,0.15)';
+            // thickness / marginY can come from either the Design tab (style) or Content tab (legacy).
+            const divThickness = String((renderStyle as any).dividerThickness || (content as any).thickness || '1px');
+            const divMarginY = String((renderStyle as any).dividerMarginY || (content as any).marginY || '24px');
+
+            if (divStyle === 'icon') {
+                const divIcon = (content as any).icon && (content as any).icon !== 'none' ? (content as any).icon : 'star';
+                return (
+                    <div
+                        key={id}
+                        className={`flex items-center gap-4 w-full ${selectedClass}`}
+                        style={{ margin: `${divMarginY} 0` }}
+                        onClick={(e) => handleClick(e, el)}
+                    >
+                        <div className="flex-1" style={{ borderTop: `${divThickness} solid ${divColor}` }} aria-hidden="true" />
+                        <IconRenderer icon={divIcon} size={(renderStyle as any).fontSize || '1.25rem'} style={{ color: renderStyle.color || (theme as any)?.accentColor || divColor }} />
+                        <div className="flex-1" style={{ borderTop: `${divThickness} solid ${divColor}` }} aria-hidden="true" />
+                    </div>
+                );
+            }
+
+            // Divider is visually a 1px line, but in edit mode we wrap it in a
+            // taller hit-area so it's actually clickable in the canvas.
+            return (
+                <div
+                    key={id}
+                    role="separator"
+                    aria-orientation="horizontal"
+                    className={`w-full ${!readOnly ? 'cursor-pointer py-3' : ''} ${selectedClass}`}
+                    style={{
+                        margin: `${divMarginY} 0`,
+                    }}
+                    onClick={(e) => handleClick(e, el)}
+                >
+                    <div
+                        className="w-full"
+                        style={{ borderTop: `${divThickness} ${divStyle} ${divColor}` }}
+                        aria-hidden="true"
+                    />
+                </div>
+            );
+        }
+
+        case 'spacer': {
+            const height = String((content as any).height || '40px');
+            return (
+                <div
+                    key={id}
+                    aria-hidden="true"
+                    className={`w-full ${selectedClass} ${!readOnly ? 'bg-white/[0.02] border border-dashed border-white/10' : ''}`}
+                    style={{ height, minHeight: height }}
+                    onClick={(e) => handleClick(e, el)}
+                    title={!readOnly ? `Spacer — ${height}` : undefined}
+                />
+            );
+        }
 
         default:
              return (
@@ -1027,16 +5894,47 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({ section, onEle
     }
   };
 
+  // Wrap an element's output with an anchor tag if content.link is set and the element
+  // doesn't natively handle links (buttons and CTAs do their own <a> rendering).
+  const wrapWithLink = (el: WebsiteElement, node: React.ReactNode): React.ReactNode => {
+    const rawLink = (el.content as any)?.link;
+    if (!rawLink || typeof rawLink !== 'string' || !rawLink.trim()) return node;
+    // Types that handle their own link rendering — don't double-wrap
+    if (
+      el.type === 'button' ||
+      el.type === 'call-to-action' ||
+      el.type === 'image-box' ||
+      el.type === 'badge' ||
+      el.type === 'image' ||
+      el.type === 'feature-box'
+    ) {
+      return node;
+    }
+    const isExternal = /^https?:\/\//i.test(rawLink);
+    return (
+      <a
+        key={`lnk-${el.id}`}
+        href={rawLink}
+        target={isExternal ? '_blank' : undefined}
+        rel={isExternal ? 'noopener noreferrer' : undefined}
+        className="block no-underline text-inherit"
+        onClick={(e) => { if (!readOnly) e.preventDefault(); }}
+      >
+        {node}
+      </a>
+    );
+  };
+
+  const renderElementWithLink = (el: WebsiteElement) => wrapWithLink(el, renderElement(el));
+
   // Render elements
-  // When isWrapped is false, render elements directly without grid wrapper (for custom layouts)
-  // When isWrapped is true, wrap in grid for standard sections
   const elementsContent = isWrapped ? (
     <div className="grid gap-8">
-      {elements.map(renderElement)}
+      {elements.map(renderElementWithLink)}
     </div>
   ) : (
     <>
-      {elements.map(renderElement)}
+      {elements.map(renderElementWithLink)}
     </>
   );
 

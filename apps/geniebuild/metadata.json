@@ -1,6 +1,6 @@
 {
-  "name": "GenieBuild AI Website Builder",
-  "description": "A powerful, AI-driven website builder that allows you to create and edit templates using natural language or direct manipulation.",
+  "name": "Modern Dental Clinic",
+  "description": "A professional and modern dental clinic website template featuring a clean hero section, expert services, and easy appointment booking.",
   "requestFramePermissions": [
     "camera",
     "microphone"

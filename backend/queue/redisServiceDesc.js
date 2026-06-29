@@ -7,7 +7,7 @@ const { getResponseFromOpenAI } = require('../openAi/openAi');
 const slugify = require("../additional/slugify");
 const WebsiteSection = require('../models/websiteSections');
 const AreaServicesData = require('../models/AreaServicesData');
-const SeoSettings = require('../models/seoSettings');
+const { upsertSeoByPageUrl } = require('../services/pageSeoService');
 const Country = require("../models/adminCountires");
 const State = require("../models/adminStates");
 const City = require("../models/adminCities");
@@ -125,7 +125,12 @@ async function fetchFreepikImages(serviceName, serviceType) {
   }
 
   const folderPath = `public/images/${projectId}`;
-  const QUALITY = 78;
+  const WEBP_OPTS = {
+    quality: 93,
+    alphaQuality: 100,
+    effort: 6,
+    smartSubsample: true,
+  };
 
   const uploaded = await Promise.all(
     items.map(async (item) => {
@@ -146,7 +151,7 @@ async function fetchFreepikImages(serviceName, serviceType) {
         // Convert to WebP using sharp (async/await with proper error handling)
         const webpBuf = await sharp(origBuf, { failOnError: false })
           .rotate()
-          .webp({ quality: QUALITY, effort: 5 })
+          .webp(WEBP_OPTS)
           .toBuffer();
 
         // Verify WebP conversion was successful
@@ -678,16 +683,15 @@ Each object must follow this format:
                 .join(", ")
               : "");
 
-          const seoData = new SeoSettings({
-            page_url: page_url,
+          await upsertSeoByPageUrl(projectId, page_url, {
             meta_title: seoContent.meta_title,
             meta_description: seoContent.meta_description,
             meta_keywords: metaKeywordsStr || (seoContent.meta_title || ""),
             meta_image: '',
-            canonical_url: '',
-            projectId: projectId,
-          });
-          await seoData.save();
+            canonical_url: page_url,
+            og_title: seoContent.meta_title,
+            og_description: seoContent.meta_description,
+          }, 'ai');
         }
 
         buildUrls(areaType, areaId, service_name);

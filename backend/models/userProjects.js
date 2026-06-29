@@ -189,6 +189,12 @@ const userProjectsSchema = new mongoose.Schema(
       enum: [0, 1], //  1 - yes, 0 - no
       default: 1, // Always default to 1 (yes)
     },
+    /** 1 = Freepik stock search, 2 = Gemini (nano) AI images — used when images_mode env is 1 */
+    sectionImageOrigin: {
+      type: Number,
+      enum: [1, 2],
+      default: 1,
+    },
     isCountry: {
       type: Number,
       enum: [0, 1], // 0 - Inactive, 1 - Active
@@ -332,15 +338,21 @@ const userProjectsSchema = new mongoose.Schema(
       required: false,
       trim: true
     },
-    coverImagePrompt: {
+    ai_image_prompt: {
       type: String,
       required: false,
       trim: true
     },
-    otherImagesPrompt: {
+    non_ai_image_prompt: {
       type: String,
       required: false,
       trim: true
+    },
+    image_count: {
+      type: Number,
+      required: false,
+      min: 0,
+      max: 20
     },
     // 2) Commitment
     commitment: { type: String }, // ~80 words (two 40-word paragraphs)

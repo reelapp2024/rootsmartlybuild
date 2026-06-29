@@ -22,7 +22,8 @@ const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY;
 const {
     fetchJSONFromOpenAI,
     fetchStringFromOpenAI,
-    fetchSeoContentForPage
+    fetchSeoContentForPage,
+    trackCreditsUsage
 } = require('../additional/openaiHelpers');
 module.exports = {
     // CREATE (owned)
@@ -806,7 +807,7 @@ module.exports = {
 
             const staticSlugs = ["/", "/privacy-policy", "/about", "/contact", "/terms-conditions", "/services", "/areas"];
 
-            const rawServiceNames = await Service.distinct("service_name", { projectId });
+            const rawServiceNames = await Service.distinct("name", { projectId });
             const serviceSlugs = rawServiceNames.map(clean).filter(Boolean).map(normDash).filter(Boolean);
             const servicePageSlugs = serviceSlugs.map(s => `/services/${s}`);
             const locationServiceSlugs = locationSlugs.flatMap(loc => serviceSlugs.map(s => `${loc.replace(/\/$/, "")}/services/${s}`));
@@ -815,8 +816,8 @@ module.exports = {
             const siteLinks = allSlugs.map(slug => new URL(slug.replace(/^\/*/, "/"), domain + "/").href);
 
             // ---- services main (once) ----
-            const servicesMain = await Service.find({ projectId, is_main: true }).select("service_name").limit(30).lean();
-            const topServicesList = servicesMain.map((s, i) => `  ${i + 1}. ${clean(s.service_name)}`).join("\n");
+            const servicesMain = await Service.find({ projectId }).select("name").limit(30).lean();
+            const topServicesList = servicesMain.map((s, i) => `  ${i + 1}. ${clean(s.name)}`).join("\n");
 
             // ---- shared style rule ----
             const styleText = clean(type);
@@ -943,7 +944,7 @@ module.exports = {
                 // 2) Build relevance signals for this title
                 const titleTokens = new Set(tokensFrom(blogTitle));
 
-                const serviceSeedsText = [...new Set([serviceType, ...servicesMain.map(s => clean(s.service_name))].filter(Boolean))];
+                const serviceSeedsText = [...new Set([serviceType, ...servicesMain.map(s => clean(s.name))].filter(Boolean))];
                 const serviceVariants = new Set();
                 for (const s of serviceSeedsText) {
                     const spaced = slugifyText(s);
@@ -1158,7 +1159,7 @@ Output Rules:
                         selected_links: selectedLinks,
                         used_links: usedLinks,
                         used_images: usedImagesFinal,
-                        services_used: servicesMain.map(s => clean(s.service_name)),
+                        services_used: servicesMain.map(s => clean(s.name)),
                         location_hints: locationHints
                     }
                 };
@@ -1255,14 +1256,18 @@ Output Rules:
 
             const { prompt, projectId: bodyProjectId, limit: bodyLimit, quality: bodyQuality } = req.body;
             if (!prompt || !String(prompt).trim()) return res.status(400).json({ message: "prompt is required" });
+            if (!bodyProjectId || !String(bodyProjectId).trim()) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
 
 
             console.log(prompt, "Prompt for fetch_and_save_images");
             if (!FREEPIK_API_KEY) return res.status(500).json({ message: "Image provider API key not configured" });
 
-            const projectId = String(bodyProjectId || "blogs").trim();
+            const projectId = String(bodyProjectId).trim();
             const limit = Math.max(1, Math.min(10, Number(bodyLimit) || 5));     // 1..10
             const quality = Math.max(50, Math.min(95, Number(bodyQuality) || 78)); // 50..95
+            const userId = req.user?.userId ? String(req.user.userId) : null;
 
             // simple retry helper
             async function retry(fn, attempts = 3, label = "") {
@@ -1377,6 +1382,23 @@ Output Rules:
             // run and respond
             const urls = await fetchFreepikImages(prompt, projectId, limit, quality);
 
+            if (userId && projectId) {
+                await trackCreditsUsage({
+                    userId,
+                    projectId,
+                    usageType: 1, // FreePik
+                    promptFrom: "BlogsController",
+                    promptFor: "fetch_and_save_images",
+                    pageId: projectId,
+                    inputTokens: 1,
+                    outputTokens: urls.length,
+                    imagesCount: urls.length,
+                    pricing: 0,
+                    status: urls.length > 0 ? 1 : 0,
+                    is_retried: 0
+                });
+            }
+
             return res.status(200).json({
                 message: "Images fetched successfully",
                 data: urls, // <-- array of URLs
@@ -1384,6 +1406,22 @@ Output Rules:
             });
         } catch (err) {
             console.error("fetch_and_save_images error:", err);
+            if (req.user?.userId && req.body?.projectId) {
+                await trackCreditsUsage({
+                    userId: String(req.user.userId),
+                    projectId: String(req.body.projectId),
+                    usageType: 1,
+                    promptFrom: "BlogsController",
+                    promptFor: "fetch_and_save_images",
+                    pageId: String(req.body.projectId),
+                    inputTokens: 1,
+                    outputTokens: 0,
+                    imagesCount: 0,
+                    pricing: 0,
+                    status: 0,
+                    is_retried: 0
+                });
+            }
             return res.status(500).json({ message: "Failed to fetch/host images" });
         }
     },

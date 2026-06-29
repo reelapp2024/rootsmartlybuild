@@ -62,31 +62,6 @@ const userSchema = new mongoose.Schema({
   //     default: 'active'
   //   },
   // }],
-  wallet: {
-    balance: {
-      type: Number,
-      default: 0,
-    },
-    transactions: [{
-      amount: {
-        type: Number,
-        required: false,
-      },
-      date: {
-        type: Date,
-        default: Date.now
-      },
-      type: {
-        type: String,
-        enum: ['credit', 'debit'],
-        required: false
-      },
-      description: {
-        type: String,
-        required: false
-      }
-    }]
-  },
   type: {
     type: Number,
     enum: [0, 1, 2], // 0 = App User, 1 = Admin, 2 = Reviewer

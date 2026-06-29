@@ -8,7 +8,7 @@ const sharp = require("sharp");
 const axios = require("axios");
 const path = require("path");
 const fs = require("fs");
-const { fetchJSONFromOpenAI } = require('../additional/openaiHelpers');
+const { fetchJSONFromOpenAI, trackCreditsUsage } = require('../additional/openaiHelpers');
 const fetchFreepikImages = require('../additional/freePik');
 const { generateNanoBananaImages, generateWithRetry } = require('../additional/nanoBanana');
 
@@ -850,12 +850,28 @@ Return ONLY a JSON array of exactly ${imageCount} objects with this structure:
              console.log(`[Pinterest Blogs] Fetching 2 images for: "${imageTitle}"`);
 
              // Fetch 2 images specifically for this title
-             const specificImages = await fetchFreepikImages(imageTitle, pinterestProjectId, 2);
+            const specificImages = await fetchFreepikImages(
+              imageTitle,
+              pinterestProjectId,
+              2,
+              userId.toString(),
+              pinterestProjectId,
+              'PinterestController',
+              `FreePik Image Fetch - ${imageTitle}`
+            );
 
              if (!specificImages || specificImages.length === 0) {
                console.warn(`[Pinterest Blogs] No images found for "${imageTitle}", trying with main title...`);
                // Fallback: try with main title
-               const fallbackImages = await fetchFreepikImages(title, pinterestProjectId, 2);
+              const fallbackImages = await fetchFreepikImages(
+                title,
+                pinterestProjectId,
+                2,
+                userId.toString(),
+                pinterestProjectId,
+                'PinterestController',
+                `FreePik Image Fetch - ${title}`
+              );
                if (fallbackImages && fallbackImages.length > 0) {
                  specificImages.push(...fallbackImages);
                }
@@ -1033,7 +1049,8 @@ Return ONLY a JSON array of exactly ${imageCount} objects with this structure:
       console.log(`[Nano Banana API] Parsed prompts:`, JSON.stringify(promptArray, null, 2));
 
        // Parse generation options
-       const generationOptions = options || {};
+      const generationOptions = options || {};
+      generationOptions.userId = userId.toString();
        const imagesPerPrompt = Math.min(Math.max(parseInt(count) || 2, 1), 4); // 1-4 images per prompt
 
        const results = [];
@@ -1066,14 +1083,60 @@ Return ONLY a JSON array of exactly ${imageCount} objects with this structure:
                images: generatedImages,
                count: generatedImages.length
              });
+
+             await trackCreditsUsage({
+               userId: userId.toString(),
+               projectId: pinterestProjectId,
+               usageType: 2, // 2 for Nano Banana images
+               promptFrom: 'PinterestController',
+               promptFor: `Nano Banana Image Generation - ${prompt}`,
+               pageId: pinterestProjectId,
+               inputTokens: 1,
+               outputTokens: generatedImages.length,
+               imagesCount: generatedImages.length,
+               pricing: 0,
+               status: 1,
+               is_retried: 0
+             });
+
              console.log(`[Nano Banana API] ✅ Generated ${generatedImages.length} image(s) for: "${prompt}"`);
            } else {
              errors.push({ prompt, error: 'No images generated' });
+
+             await trackCreditsUsage({
+               userId: userId.toString(),
+               projectId: pinterestProjectId,
+               usageType: 2, // 2 for Nano Banana images
+               promptFrom: 'PinterestController',
+               promptFor: `Nano Banana Image Generation - ${prompt}`,
+               pageId: pinterestProjectId,
+               inputTokens: 1,
+               outputTokens: 0,
+               imagesCount: 0,
+               pricing: 0,
+               status: 0,
+               is_retried: 0
+             });
            }
 
          } catch (error) {
            console.error(`[Nano Banana API] Failed to generate images for "${prompt}":`, error.message);
            errors.push({ prompt, error: error.message });
+
+          await trackCreditsUsage({
+            userId: userId.toString(),
+            projectId: pinterestProjectId,
+            usageType: 2, // 2 for Nano Banana images
+            promptFrom: 'PinterestController',
+            promptFor: `Nano Banana Image Generation - ${prompt}`,
+            pageId: pinterestProjectId,
+            inputTokens: 1,
+            outputTokens: 0,
+            imagesCount: 0,
+            pricing: 0,
+            status: 0,
+            is_retried: 0
+          });
          }
        }
 

@@ -4,6 +4,7 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const logger = require('morgan');
 const http = require('http');
+require('dotenv').config();
 const indexRouter = require('./routes/index');
 const usersRouter = require('./routes/users');
 const aiGeneratorRouter = require('./routes/ai_generator');
@@ -11,7 +12,7 @@ const adminV1Router = require('./routes/admin_v1');
 const webappV1Router = require('./routes/webapp_v1');
 const customSiteV1Router = require('./routes/custom_site_v1');
 const monorepoRouter = require('./routes/monorepo');
-require('dotenv').config();
+const sitenextjsRouter = require('./routes/sitenextjs_routes');
 const app = express();
 const fileUpload = require('express-fileupload');
 const cors = require('cors');
@@ -21,7 +22,8 @@ const mongoose = require('mongoose');
 
 // After DB connection and before starting the server
 require('./crons/scheduler');
-
+// ✅ ADD THIS LINE
+require('./queue/sectionGeneration.queue');
 const socketIo = require('socket.io');
 const server = http.createServer(app);
 const io = socketIo(server, {
@@ -39,6 +41,13 @@ io.on('connection', (socket) => {
   socket.on('leaveProject', (projectId) => {
     const room = `project_${projectId}`;
     socket.leave(room);
+  });
+  // Legacy admin clients used joinRoom with full room name
+  socket.on('joinRoom', (room) => {
+    if (room) socket.join(String(room));
+  });
+  socket.on('leaveRoom', (room) => {
+    if (room) socket.leave(String(room));
   });
 });
 
@@ -100,6 +109,7 @@ app.use('/admin/v1', adminV1Router);
 app.use('/webapp/v1', webappV1Router);
 app.use('/api/monorepo', monorepoRouter);
 app.use('/custom/v1', customSiteV1Router);
+app.use('/sitenextjs/v1', sitenextjsRouter);
 
 // Queue management endpoints
 app.get('/api/queues', async (req, res) => {

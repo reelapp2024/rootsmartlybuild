@@ -39,10 +39,14 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/about" element={<About />} />
               <Route path="/services" element={<Services />} />
-              <Route path="/services/drain-cleaning" element={<DrainCleaning />} />
+              <Route path="/services/:serviceName" element={<DrainCleaning />} />
               <Route path="/areas" element={<Areas />} />
               <Route path="/areas/:areaName" element={<AreaDetail />} />
               <Route path="/contact" element={<Contact />} />
+              {/* Location-based routes */}
+              <Route path="/:locationSlug" element={<AreaDetail />} />
+              <Route path="/:locationSlug/services" element={<Services />} />
+              <Route path="/:locationSlug/services/:serviceName" element={<DrainCleaning />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

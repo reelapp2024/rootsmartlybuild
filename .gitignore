@@ -1,29 +1,28 @@
-# 1. Block EVERYTHING in the root folder by default
-/*
-
-# 2. Allow the .gitignore file itself to be saved
-!/.gitignore
-
-# 3. Allow the backend folder
-!/backend/
-
-# 4. Allow the apps folder, but block everything inside it by default
-!/apps/
-/apps/*
-
-# 5. Allow ONLY your three specific apps
-!/apps/customSites/
-!/apps/geniebuild/
-!/apps/website/
-
-# 6. ALWAYS block node_modules, env files, and nested git folders everywhere
+# Dependencies
 node_modules/
+
+# Environment
 .env
 .env.*
-**/.git/
 
-# 7. NEW: Ignore large backend asset directories
+# Backend large/generated assets
 backend/public/files/
 backend/fonts/allfonts/
 backend/uploads/
 backend/sitemaps/
+
+# Build outputs
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# Logs and OS
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/

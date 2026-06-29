@@ -4,12 +4,17 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const helper = require('./addon');
-const { trackCreditsUsage } = require('./openaiHelpers');
+const { trackCreditsUsage, ensureSufficientCredits } = require('./openaiHelpers');
 
 async function fetchFreepikImages(prompt, projectId, limit = 5, userId = null, pageId = null, promptFrom = 'freePik', promptFor = 'imageFetch') {
   const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY; // Ensure API key is set in environment
   const FREEPIK_HOSTS_ALLOW = new Set(['img.freepik.com', 'images.freepik.com']);
-  const QUALITY = 78;
+  const WEBP_OPTS = {
+    quality: 93,
+    alphaQuality: 100,
+    effort: 6,
+    smartSubsample: true,
+  };
   const folderPath = `public/images/${projectId}`;
   // BASE_URL for images - must be apis.smartlybuild.dev
   const BASE_URL = process.env.BASE_URL || 'https://apis.smartlybuild.dev';
@@ -67,6 +72,16 @@ async function fetchFreepikImages(prompt, projectId, limit = 5, userId = null, p
   }
 
   try {
+    if (userId) {
+      await ensureSufficientCredits({
+        userId,
+        usageType: 1,
+        imagesCount: Math.max(1, Number(limit) || 1),
+        minCredits: 1,
+        reason: 'Freepik image fetch'
+      });
+    }
+
     // Fetch images from Freepik API
     const res = await axios.get('https://api.freepik.com/v1/resources', {
       headers: { 'x-freepik-api-key': FREEPIK_API_KEY },
@@ -101,7 +116,7 @@ async function fetchFreepikImages(prompt, projectId, limit = 5, userId = null, p
           // Convert to WebP using sharp (async/await with proper error handling)
           const webpBuf = await sharp(origBuf, { failOnError: false })
             .rotate()
-            .webp({ quality: QUALITY, effort: 5 })
+            .webp(WEBP_OPTS)
             .toBuffer();
 
           // Verify WebP conversion was successful
@@ -159,6 +174,7 @@ async function fetchFreepikImages(prompt, projectId, limit = 5, userId = null, p
         pageId: pageId || projectId,
         inputTokens: 1, // Count as 1 API call
         outputTokens: result.length, // Number of images fetched
+        imagesCount: result.length,
         pricing: 0, // FreePik pricing can be calculated based on API plan
         status: result.length > 0 ? 1 : 0,
         is_retried: 0
@@ -180,6 +196,7 @@ async function fetchFreepikImages(prompt, projectId, limit = 5, userId = null, p
         pageId: pageId || projectId,
         inputTokens: 1,
         outputTokens: 0,
+        imagesCount: 0,
         pricing: 0,
         status: 0, // Failed
         is_retried: 0

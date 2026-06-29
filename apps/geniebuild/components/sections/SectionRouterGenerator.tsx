@@ -5,6 +5,7 @@
  * This makes it easy to add new variants - just update the registry!
  */
 
+import React from 'react';
 import { SECTIONS_REGISTRY, getDefaultVariant } from '../SectionsAndVariantRegistry';
 
 /**

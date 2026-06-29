@@ -201,13 +201,10 @@ function extractServicesDataFromElements(elementIds) {
  */
 async function getDefaultServicesData(projectId, res) {
     try {
-        // Get all main services for the project
+        // Get all services for the project (minimal schema)
         const services = await Service.find({ 
-            projectId: projectId,
-            is_main: true 
-        })
-        // .select('service_name service_description fas_fa_icon images')
-        .lean();
+            projectId: projectId
+        }).lean();
 
         console.log(`[getDefaultServicesData] Found ${services ? services.length : 0} services for projectId: ${projectId}`);
 
@@ -222,30 +219,11 @@ async function getDefaultServicesData(projectId, res) {
 
         // Format services data - ensure we only include services with actual data
         const formattedServices = services
-            .filter(service => service.service_name && service.service_name.trim() !== '')
-            .map(service => {
-                // Get image URLs - check multiple possible formats
-                let images = [];
-                if (service.images && Array.isArray(service.images)) {
-                    images = service.images
-                        .map(img => {
-                            const url = img.url || img.imageUrl || img.src || '';
-                            return {
-                                url: url,
-                                description: img.description || img.alt || img.imageAlt || ''
-                            };
-                        })
-                        .filter(img => img.url && img.url.trim() !== '');
-                }
-
-                return {
-                    service_name: service.service_name || '',
-                    service_description: service.service_description || '',
-                    fas_fa_icon: service.fas_fa_icon || 'fas fa-circle',
-                    images: images
-                };
-            })
-            .filter(service => service.service_name && service.service_name.trim() !== ''); // Final filter
+            .filter(service => service.name && String(service.name).trim() !== '')
+            .map(service => ({
+                service_name: service.name || '',
+                slug: service.slug || ''
+            }));
 
         console.log(`[getDefaultServicesData] Final data being sent (from Service table):`, JSON.stringify(formattedServices, null, 2));
         console.log(`[getDefaultServicesData] Data summary: ${formattedServices.length} services from database for projectId: ${projectId}`);

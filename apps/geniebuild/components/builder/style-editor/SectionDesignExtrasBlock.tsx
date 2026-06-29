@@ -1,0 +1,144 @@
+import React from 'react';
+import { AccordionGroup, RangeInput, SelectInput } from '../inputs';
+
+interface SectionDesignExtrasBlockProps {
+  styles: any;
+  onUpdate: (key: string, val: any) => void;
+  onBatchUpdate?: (updates: Record<string, any>) => void;
+}
+
+/**
+ * Section Design-tab extras:
+ *   • Minimum Height — Auto / Half / Full screen / Custom
+ *   • Reveal Animation — fade-in / slide-up / etc. on scroll into view
+ *
+ * Style keys written:
+ *   minHeight                — '0' | '50vh' | '100vh' | 'XXXpx'
+ *   revealAnimation          — 'none' | 'fade-up' | 'slide-left' | 'slide-right' | 'blur-in' | 'scale-in' | 'zoom'
+ *   revealDelay              — number (seconds)
+ */
+
+const MIN_HEIGHT_PRESETS = [
+  { key: 'auto', label: 'Auto',        value: '',       icon: 'fa-arrows-up-down-left-right' },
+  { key: 'half', label: 'Half-screen', value: '50vh',   icon: 'fa-arrows-up-to-line' },
+  { key: 'full', label: 'Full-screen', value: '100vh',  icon: 'fa-expand' },
+];
+
+export const SectionDesignExtrasBlock: React.FC<SectionDesignExtrasBlockProps> = ({
+  styles, onUpdate,
+}) => {
+  const currentMinHeight = String(styles.minHeight || '').trim();
+  const activeMinHeightPreset = MIN_HEIGHT_PRESETS.find(p => p.value === currentMinHeight)?.key
+    || (currentMinHeight && currentMinHeight !== '' ? 'custom' : 'auto');
+
+  const customMinHeightPx = (() => {
+    const m = currentMinHeight.match(/^(\d+)\s*px$/);
+    return m ? parseInt(m[1], 10) : 400;
+  })();
+
+  const animation = styles.revealAnimation || 'none';
+  const animationDelay = Number(styles.revealDelay) || 0;
+
+  return (
+    <>
+      {/* ─────────── MINIMUM HEIGHT ─────────── */}
+      <AccordionGroup title="Minimum Height" defaultOpen={false}>
+        <div className="space-y-3">
+          <p className="text-[10px] text-white/40 leading-relaxed">
+            Forces the section to be at least this tall. Useful for hero sections.
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {MIN_HEIGHT_PRESETS.map(p => {
+              const active = activeMinHeightPreset === p.key;
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdate('minHeight', p.value); }}
+                  className={`py-2.5 text-[9px] font-bold uppercase tracking-widest rounded border transition-all flex flex-col items-center gap-1 ${
+                    active
+                      ? 'bg-blue-500/20 border-blue-500 text-blue-400'
+                      : 'bg-[#151515] border-[#333] text-white/40 hover:border-[#444]'
+                  }`}
+                >
+                  <i className={`fa-solid ${p.icon} text-sm`} />
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+          <RangeInput
+            label="Custom Height (px)"
+            value={customMinHeightPx}
+            min={100}
+            max={1200}
+            step={20}
+            unit="px"
+            onChange={(v) => onUpdate('minHeight', `${v}px`)}
+          />
+        </div>
+      </AccordionGroup>
+
+      {/* ─────────── GRID COLUMNS ─────────── */}
+      <AccordionGroup title="Grid Columns" defaultOpen={false}>
+        <div className="space-y-3">
+          <p className="text-[10px] text-white/40 leading-relaxed">
+            How many cards per row on desktop. Mobile is always 1 col, tablet caps at 2.
+            Only sections with a card grid (Services, Features, etc.) honor this.
+          </p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {[1, 2, 3, 4].map(n => {
+              const active = (parseInt(String(styles.columns), 10) || 3) === n;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdate('columns', n); }}
+                  className={`py-2.5 text-xs font-bold rounded border transition-all ${
+                    active
+                      ? 'bg-blue-500/20 border-blue-500 text-blue-400'
+                      : 'bg-[#151515] border-[#333] text-white/40 hover:border-[#444]'
+                  }`}
+                >
+                  {n}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </AccordionGroup>
+
+      {/* ─────────── REVEAL ANIMATION ─────────── */}
+      <AccordionGroup title="Reveal Animation" defaultOpen={false}>
+        <div className="space-y-3">
+          <p className="text-[10px] text-white/40 leading-relaxed">
+            Animates the section in when it scrolls into view. Subtle by default.
+          </p>
+          <SelectInput
+            label="Preset"
+            value={animation}
+            options={[
+              { label: 'None',          value: 'none' },
+              { label: 'Fade Up',       value: 'fade-up' },
+              { label: 'Slide Left',    value: 'slide-left' },
+              { label: 'Slide Right',   value: 'slide-right' },
+              { label: 'Blur In',       value: 'blur-in' },
+              { label: 'Scale In',      value: 'scale-in' },
+              { label: 'Zoom',          value: 'zoom' },
+            ]}
+            onChange={(v) => onUpdate('revealAnimation', v === 'none' ? '' : v)}
+          />
+          {animation && animation !== 'none' && (
+            <RangeInput
+              label="Delay (seconds)"
+              value={animationDelay}
+              min={0} max={2} step={0.1}
+              unit="s"
+              onChange={(v) => onUpdate('revealDelay', v)}
+            />
+          )}
+        </div>
+      </AccordionGroup>
+    </>
+  );
+};
