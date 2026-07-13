@@ -187,16 +187,16 @@ export function buildLocalAboutDemoWebsiteData(): WebsiteData {
   const header = base.sections.find((s) => s.type === 'header');
   const footer = base.sections.find((s) => s.type === 'footer');
 
-  // About page: header + 7 About sections + footer.
-  // why-choose-us / cta / faq reuse the existing homepage variants.
+  // About page: header + 7 About sections + footer. All sections are the About
+  // page's OWN components so its content/variants are independent.
   const aboutTypes = [
     'abouthero',
     'missionvision',
     'corevalues',
     'usp',
-    'why-choose-us',
-    'cta',
-    'faq',
+    'aboutwhychoose',
+    'aboutcta',
+    'aboutfaq',
   ];
   const sections: Section[] = [];
   if (header) sections.push({ ...cloneDeep(header), id: 'demo-header-1' });
@@ -220,14 +220,13 @@ export function buildLocalContactDemoWebsiteData(): WebsiteData {
   const header = base.sections.find((s) => s.type === 'header');
   const footer = base.sections.find((s) => s.type === 'footer');
 
-  // Contact page: hero + info methods + form + cta + faq.
-  // cta / faq reuse existing homepage variants.
+  // Contact page: hero + info methods + form + cta + faq. All own components.
   const contactTypes = [
     'contacthero',
     'contactinfo',
     'contactform',
-    'cta',
-    'faq',
+    'contactcta',
+    'contactfaq',
   ];
   const sections: Section[] = [];
   if (header) sections.push({ ...cloneDeep(header), id: 'demo-header-1' });
@@ -333,24 +332,24 @@ export function buildLocalLocationDemoWebsiteData(): WebsiteData {
   const header = base.sections.find((s) => s.type === 'header');
   const footer = base.sections.find((s) => s.type === 'footer');
 
-  // Full Location page (all combined). Most sections reuse existing variants;
-  // `sublocations` + `locationmap` are the new ones. CTA appears twice.
-  // [type, idSuffix, variantOverride?]
+  // Full Location page (all combined) — now uses the Location page's OWN section
+  // components so its content is independent and its variants don't collide with
+  // Home / Service pages.
   const locationPlan: Array<[string, string, string?]> = [
-    ['servicehero',     'locationhero', 'ServiceHeroConsistent'],   // Location hero (theme dark)
-    ['aboutservice',    'about', 'AboutServiceConsistent'],         // About (location/service)
-    ['services',        'services', 'ServicesPlumbing2'],           // Services grid
-    ['sublocations',    'sublocations'],                            // Sub-locations
-    ['why-choose-us',   'whychoose'],
-    ['process',         'process'],
-    ['cta',             'cta1', 'CTAPlumbing2'],                    // mid CTA
-    ['guarantee',       'guarantee'],
-    ['promise',         'promise'],
-    ['testimonials',    'testimonials'],
-    ['areas',           'areas'],                                   // Service areas
-    ['locationmap',     'map'],                                     // Map
-    ['cta',             'cta2', 'CTAPlumbing1'],                    // end CTA
-    ['faq',             'faq'],
+    ['locationhero',         'hero'],
+    ['locationabout',        'about'],
+    ['locationservices',     'services'],
+    ['sublocations',         'sublocations'],
+    ['locationwhychoose',    'whychoose'],
+    ['locationprocess',      'process'],
+    ['locationcta',          'cta1'],
+    ['locationguarantee',    'guarantee'],
+    ['locationpromise',      'promise'],
+    ['locationtestimonials', 'testimonials'],
+    ['locationareas',        'areas'],
+    ['locationmap',          'map'],
+    ['locationcta',          'cta2'],
+    ['locationfaq',          'faq'],
   ];
 
   const sections: Section[] = [];
@@ -383,17 +382,17 @@ export function buildLocalServiceDetailDemoWebsiteData(): WebsiteData {
   // → Promise → Related Services → Testimonials → CTA → FAQ
   // [type, idSuffix, variantOverride?]
   const servicesPlan: Array<[string, string, string?]> = [
-    ['servicehero',     'servicehero', 'ServiceHeroConsistent'],   // theme-consistent dark hero
-    ['aboutservice',    'aboutservice', 'AboutServiceConsistent'], // theme-consistent light split
-    ['services',        'subservices'],        // Sub-services grid/list
-    ['process',         'process'],
-    ['cta',             'cta1', 'CTAPlumbing2'], // mid-page CTA
-    ['why-choose-us',   'whychoose'],
-    ['guarantee',       'guarantee'],
-    ['relatedservices', 'related'],
-    ['testimonials',    'testimonials'],
-    ['cta',             'cta2', 'CTAPlumbing1'], // end CTA
-    ['faq',             'faq'],
+    ['servicedetailhero',         'hero'],
+    ['servicedetailabout',        'about'],
+    ['servicedetailservices',     'subservices'],
+    ['servicedetailprocess',      'process'],
+    ['servicedetailcta',          'cta1'],
+    ['servicedetailwhychoose',    'whychoose'],
+    ['servicedetailguarantee',    'guarantee'],
+    ['relatedservices',           'related'],
+    ['servicedetailtestimonials', 'testimonials'],
+    ['servicedetailcta',          'cta2'],
+    ['servicedetailfaq',          'faq'],
   ];
 
   const sections: Section[] = [];
@@ -418,19 +417,16 @@ export function buildLocalServicesListDemoWebsiteData(): WebsiteData {
   const header = base.sections.find((s) => s.type === 'header');
   const footer = base.sections.find((s) => s.type === 'footer');
 
-  // Services LISTING page (/services). All sections reuse existing variants.
-  // `services` type has two variants — force ServicesPlumbing2 (the grid) here,
-  // not RelatedServicesDefault.
-  // [type, idSuffix, variantOverride?]
+  // Services LISTING page (/services) — all its OWN components.
   const listingPlan: Array<[string, string, string?]> = [
-    ['servicehero',   'servicehero', 'ServiceHeroConsistent'], // theme-consistent dark hero
-    ['services',      'grid', 'ServicesPlumbing2'],            // services list/grid
-    ['why-choose-us', 'whychoose'],
-    ['cta',           'cta', 'CTAPlumbing1'],
-    ['guarantee',     'guarantee'],
-    ['process',       'process'],
-    ['areas',         'areas'],
-    ['faq',           'faq'],
+    ['serviceslisthero',      'hero'],
+    ['serviceslistgrid',      'grid'],
+    ['serviceslistwhychoose', 'whychoose'],
+    ['serviceslistcta',       'cta'],
+    ['serviceslistguarantee', 'guarantee'],
+    ['serviceslistprocess',   'process'],
+    ['serviceslistareas',     'areas'],
+    ['serviceslistfaq',       'faq'],
   ];
 
   const sections: Section[] = [];

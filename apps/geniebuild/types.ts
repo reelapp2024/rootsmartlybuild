@@ -1,5 +1,11 @@
 
-export type SectionType = 'navbar' | 'header' | 'hero' | 'about' | 'features' | 'services' | 'cta' | 'process' | 'footer' | 'testimonials' | 'pricing' | 'image-banner' | 'elements' | 'allelementsTest' | 'faq' | 'why-choose-us' | 'guarantee' | 'areas' | 'aboutservice' | 'servicehero' | 'abouthero' | 'missionvision' | 'corevalues' | 'usp' | 'promise' | 'relatedservices' | 'contacthero' | 'contactinfo' | 'contactform' | 'blogshero' | 'blogssearch' | 'blogslist' | 'blogarticlehero' | 'blogcontent' | 'blogauthor' | 'blogcomments' | 'blogrelated' | 'legalhero' | 'legalcontent' | 'sublocations' | 'locationmap';
+export type SectionType = 'navbar' | 'header' | 'hero' | 'about' | 'features' | 'services' | 'cta' | 'process' | 'footer' | 'testimonials' | 'pricing' | 'image-banner' | 'elements' | 'allelementsTest' | 'faq' | 'why-choose-us' | 'guarantee' | 'areas' | 'aboutservice' | 'servicehero' | 'abouthero' | 'missionvision' | 'corevalues' | 'usp' | 'promise' | 'relatedservices' | 'contacthero' | 'contactinfo' | 'contactform' | 'blogshero' | 'blogssearch' | 'blogslist' | 'blogarticlehero' | 'blogcontent' | 'blogauthor' | 'blogcomments' | 'blogrelated' | 'legalhero' | 'legalcontent' | 'sublocations' | 'locationmap'
+ | 'locationhero' | 'locationabout' | 'locationservices' | 'locationwhychoose' | 'locationprocess'
+ | 'locationcta' | 'locationguarantee' | 'locationpromise' | 'locationtestimonials' | 'locationareas' | 'locationfaq'
+ | 'aboutwhychoose' | 'aboutcta' | 'aboutfaq'
+ | 'contactcta' | 'contactfaq'
+ | 'serviceslisthero' | 'serviceslistgrid' | 'serviceslistwhychoose' | 'serviceslistcta' | 'serviceslistguarantee' | 'serviceslistprocess' | 'serviceslistareas' | 'serviceslistfaq'
+ | 'servicedetailhero' | 'servicedetailabout' | 'servicedetailservices' | 'servicedetailprocess' | 'servicedetailcta' | 'servicedetailwhychoose' | 'servicedetailguarantee' | 'servicedetailtestimonials' | 'servicedetailfaq';
 
 export type ElementType = 
   // Basic

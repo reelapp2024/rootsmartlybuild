@@ -485,8 +485,22 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
     'BlogContentDefault', 'BlogAuthorDefault', 'BlogCommentsDefault', 'BlogRelatedDefault',
     // Legal page light section
     'LegalContentDefault',
-    // Location page light sections
+    // Location page light sections (hero + cta are dark, so not listed)
     'SubLocationsDefault', 'LocationMapDefault',
+    'LocationAboutDefault', 'LocationServicesDefault', 'LocationWhyChooseDefault',
+    'LocationProcessDefault', 'LocationGuaranteeDefault', 'LocationPromiseDefault',
+    'LocationTestimonialsDefault', 'LocationAreasDefault', 'LocationFaqDefault',
+    // About page own light sections (cta is dark)
+    'AboutWhyChooseDefault', 'AboutFaqDefault',
+    // Contact page own light section (cta is dark)
+    'ContactFaqDefault',
+    // Services listing own light sections (hero + cta dark)
+    'ServicesListGridDefault', 'ServicesListWhyChooseDefault', 'ServicesListGuaranteeDefault',
+    'ServicesListProcessDefault', 'ServicesListAreasDefault', 'ServicesListFaqDefault',
+    // Service Detail own light sections (hero + cta dark)
+    'ServiceDetailAboutDefault', 'ServiceDetailServicesDefault', 'ServiceDetailProcessDefault',
+    'ServiceDetailWhyChooseDefault', 'ServiceDetailGuaranteeDefault', 'ServiceDetailTestimonialsDefault',
+    'ServiceDetailFaqDefault',
   ]);
   const isLight = styles.themeMode === 'light' || ALWAYS_LIGHT_VARIANTS.has((styles as any).variant || '');
 

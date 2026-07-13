@@ -1915,6 +1915,245 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
     styles: { paddingTop: 'pt-14 lg:pt-20', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'left', variant: 'LegalContentDefault' }
   },
 
+  /** About page — own why-choose. */
+  aboutwhychoose: {
+    type: 'aboutwhychoose',
+    content: { badgeText: 'Why Choose Us', title: 'Why Homeowners Trust Us', subtitle: 'We combine experience, honesty and care to deliver a service you can rely on.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'AboutWhyChooseDefault' }
+  },
+  /** About page — own CTA. */
+  aboutcta: {
+    type: 'aboutcta',
+    content: { title: 'Ready to Work With Us?', subtitle: 'Get in touch today and let our team take care of the rest.', ctaText: 'Get in Touch' },
+    styles: { paddingTop: 'pt-20 lg:pt-28', paddingBottom: 'pb-20 lg:pb-28', paddingX: 'px-6', textAlign: 'center', variant: 'AboutCtaDefault' }
+  },
+  /** About page — own FAQ. */
+  aboutfaq: {
+    type: 'aboutfaq',
+    content: { title: 'Frequently Asked Questions', subtitle: 'Everything you might want to know about our company and team.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'AboutFaqDefault' }
+  },
+
+  /** Contact page — own CTA. */
+  contactcta: {
+    type: 'contactcta',
+    content: { title: 'Prefer to Talk Right Now?', subtitle: 'Our friendly team is a phone call away and ready to help.', ctaText: 'Call Us Today' },
+    styles: { paddingTop: 'pt-20 lg:pt-28', paddingBottom: 'pb-20 lg:pb-28', paddingX: 'px-6', textAlign: 'center', variant: 'ContactCtaDefault' }
+  },
+  /** Contact page — own FAQ. */
+  contactfaq: {
+    type: 'contactfaq',
+    content: { title: 'Contact FAQs', subtitle: 'Answers to common questions about getting in touch.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ContactFaqDefault' }
+  },
+
+  /** Services listing page — own sections. */
+  serviceslisthero: {
+    type: 'serviceslisthero',
+    content: { badgeText: 'Our Services', serviceHeroBadge: 'Our Services', serviceHeroTitle: 'Everything We Offer', serviceHeroSubtitle: 'Explore our full range of professional services — quality work, fair pricing, done right.' },
+    styles: { paddingTop: 'pt-24 lg:pt-32', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServicesListHeroDefault' }
+  },
+  serviceslistgrid: {
+    type: 'serviceslistgrid',
+    content: { badgeText: 'What We Do', title: 'Our Services', subtitle: 'A complete range of solutions for your home and business.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServicesListGridDefault' }
+  },
+  serviceslistwhychoose: {
+    type: 'serviceslistwhychoose',
+    content: { badgeText: 'Why Us', title: 'Why Choose Our Services', subtitle: 'The reasons customers pick us again and again.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServicesListWhyChooseDefault' }
+  },
+  serviceslistcta: {
+    type: 'serviceslistcta',
+    content: { title: 'Need One of These Services?', subtitle: 'Request a free quote and we\'ll get right back to you.', ctaText: 'Request a Quote' },
+    styles: { paddingTop: 'pt-20 lg:pt-28', paddingBottom: 'pb-20 lg:pb-28', paddingX: 'px-6', textAlign: 'center', variant: 'ServicesListCtaDefault' }
+  },
+  serviceslistguarantee: {
+    type: 'serviceslistguarantee',
+    content: { badgeText: 'Our Promise', title: 'Our Service Guarantee', subtitle: 'Every service is backed by our satisfaction guarantee.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'left', variant: 'ServicesListGuaranteeDefault' }
+  },
+  serviceslistprocess: {
+    type: 'serviceslistprocess',
+    content: { title: 'How Our Service Works', subtitle: 'A simple, transparent process from booking to completion.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServicesListProcessDefault' }
+  },
+  serviceslistareas: {
+    type: 'serviceslistareas',
+    content: { title: 'Service Areas', subtitle: 'We provide our services across all these areas.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServicesListAreasDefault' }
+  },
+  serviceslistfaq: {
+    type: 'serviceslistfaq',
+    content: { title: 'Services FAQs', subtitle: 'Common questions about the services we offer.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServicesListFaqDefault' }
+  },
+
+  /** Service Detail page — own sections. */
+  servicedetailhero: {
+    type: 'servicedetailhero',
+    content: { badgeText: 'Our Service', serviceHeroBadge: 'Our Service', serviceHeroTitle: 'Professional Service You Can Trust', serviceHeroSubtitle: 'Expert workmanship, upfront pricing and dependable support — every step of the way.' },
+    styles: { paddingTop: 'pt-24 lg:pt-32', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServiceDetailHeroDefault' }
+  },
+  servicedetailabout: {
+    type: 'servicedetailabout',
+    content: { badgeText: 'About This Service', title: 'About This Service', service_name: 'About This Service' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'left', variant: 'ServiceDetailAboutDefault' }
+  },
+  servicedetailservices: {
+    type: 'servicedetailservices',
+    content: { badgeText: 'Sub-Services', title: 'What\'s Included', subtitle: 'Everything this service covers, at a glance.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServiceDetailServicesDefault' }
+  },
+  servicedetailprocess: {
+    type: 'servicedetailprocess',
+    content: { title: 'How This Service Works', subtitle: 'Our simple step-by-step process for this service.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServiceDetailProcessDefault' }
+  },
+  servicedetailcta: {
+    type: 'servicedetailcta',
+    content: { title: 'Ready to Book This Service?', subtitle: 'Book now and our team will take it from here.', ctaText: 'Book Now' },
+    styles: { paddingTop: 'pt-20 lg:pt-28', paddingBottom: 'pb-20 lg:pb-28', paddingX: 'px-6', textAlign: 'center', variant: 'ServiceDetailCtaDefault' }
+  },
+  servicedetailwhychoose: {
+    type: 'servicedetailwhychoose',
+    content: { badgeText: 'Why Us', title: 'Why Choose Us for This Service', subtitle: 'What makes us the right choice for this job.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServiceDetailWhyChooseDefault' }
+  },
+  servicedetailguarantee: {
+    type: 'servicedetailguarantee',
+    content: { badgeText: 'Our Promise', title: 'Service Guarantee', subtitle: 'This service is backed by our full satisfaction guarantee.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'left', variant: 'ServiceDetailGuaranteeDefault' }
+  },
+  servicedetailtestimonials: {
+    type: 'servicedetailtestimonials',
+    content: { title: 'Happy Customers', subtitle: 'Real reviews from customers who booked this service.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServiceDetailTestimonialsDefault' }
+  },
+  servicedetailfaq: {
+    type: 'servicedetailfaq',
+    content: { title: 'Service FAQs', subtitle: 'Answers to common questions about this service.' },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServiceDetailFaqDefault' }
+  },
+
+  /** Location page — hero (own component). */
+  locationhero: {
+    type: 'locationhero',
+    content: {
+        badgeText: 'Serving Your Area',
+        serviceHeroBadge: 'Serving Your Area',
+        serviceHeroTitle: 'Trusted Local Experts in Your City',
+        serviceHeroSubtitle: 'Fast, reliable and fully licensed service for homes and businesses right across your neighborhood — available 24/7.'
+    },
+    styles: { paddingTop: 'pt-24 lg:pt-32', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationHeroDefault' }
+  },
+
+  /** Location page — about (own component). */
+  locationabout: {
+    type: 'locationabout',
+    content: {
+        badgeText: 'About This Location',
+        title: 'Proudly Serving Your Community',
+        service_name: 'Proudly Serving Your Community'
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'left', variant: 'LocationAboutDefault' }
+  },
+
+  /** Location page — services grid (own component). */
+  locationservices: {
+    type: 'locationservices',
+    content: {
+        badgeText: 'Our Services',
+        title: 'Services We Offer Here',
+        subtitle: 'Full-service solutions for every home and business in your area.'
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationServicesDefault' }
+  },
+
+  /** Location page — why choose us (own component). */
+  locationwhychoose: {
+    type: 'locationwhychoose',
+    content: {
+        badgeText: 'Why Us',
+        title: 'Why Locals Choose Us',
+        subtitle: 'We\'re your trusted neighbors — here\'s what sets us apart in your area.'
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationWhyChooseDefault' }
+  },
+
+  /** Location page — process (own component). */
+  locationprocess: {
+    type: 'locationprocess',
+    content: {
+        title: 'How We Work in Your Area',
+        subtitle: 'A simple, transparent process from your first call to the finished job.'
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationProcessDefault' }
+  },
+
+  /** Location page — CTA (own component). */
+  locationcta: {
+    type: 'locationcta',
+    content: {
+        title: 'Need Service in Your Area Today?',
+        subtitle: 'Our local team is standing by. Book now and we\'ll be on our way.',
+        ctaText: 'Book Your Local Visit'
+    },
+    styles: { paddingTop: 'pt-20 lg:pt-28', paddingBottom: 'pb-20 lg:pb-28', paddingX: 'px-6', textAlign: 'center', variant: 'LocationCtaDefault' }
+  },
+
+  /** Location page — guarantee (own component). */
+  locationguarantee: {
+    type: 'locationguarantee',
+    content: {
+        badgeText: 'Our Promise',
+        title: 'Our Local Satisfaction Guarantee',
+        subtitle: 'We stand behind every job we do in your neighborhood — guaranteed.'
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'left', variant: 'LocationGuaranteeDefault' }
+  },
+
+  /** Location page — promise (own component). */
+  locationpromise: {
+    type: 'locationpromise',
+    content: {
+        badgeText: 'Our Promise',
+        title: 'A Promise to Your Neighborhood',
+        subtitle: 'Honest work, fair pricing and a job done right the first time — for every home in your area.'
+    },
+    styles: { paddingTop: 'pt-14 lg:pt-20', paddingBottom: 'pb-14 lg:pb-20', paddingX: 'px-6', textAlign: 'center', variant: 'LocationPromiseDefault' }
+  },
+
+  /** Location page — testimonials (own component). */
+  locationtestimonials: {
+    type: 'locationtestimonials',
+    content: {
+        title: 'What Your Neighbors Say',
+        subtitle: 'Real reviews from real customers right in your area.'
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationTestimonialsDefault' }
+  },
+
+  /** Location page — areas (own component). */
+  locationareas: {
+    type: 'locationareas',
+    content: {
+        title: 'Neighborhoods We Cover',
+        subtitle: 'We provide fast, reliable service across all these areas. Not sure if we cover yours? Just ask!'
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationAreasDefault' }
+  },
+
+  /** Location page — FAQ (own component). */
+  locationfaq: {
+    type: 'locationfaq',
+    content: {
+        title: 'Local Service FAQs',
+        subtitle: 'Answers to the questions we hear most from customers in your area.'
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationFaqDefault' }
+  },
+
   /** Location page — sub-locations (states / cities / areas) grid. */
   sublocations: {
     type: 'sublocations',

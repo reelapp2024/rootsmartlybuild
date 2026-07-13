@@ -1,0 +1,300 @@
+import React from 'react';
+import { Section, WebsiteElement } from '../../../../types';
+import { ElementsSection } from '../../homepage/ElementsSection';
+import { PRESET_THEMES } from '../../../../constants';
+import { motion } from 'motion/react';
+
+interface Props {
+  section: Section;
+  onTextEdit: (key: any, value: string) => void;
+  buttonClass: string;
+  onElementSelect?: (elementId: string, element?: WebsiteElement) => void;
+  onElementUpdate?: (elementId: string, updates: any) => void;
+  selectedElementId?: string | null;
+  readOnly?: boolean;
+  themeColors?: any;
+  /** Called when the user taps the "+" button in the grid — appends a new item */
+  onAddItem?: () => void;
+  /** Called when the user taps the trash icon on a card — removes the item at that index */
+  onRemoveItem?: (id: string) => void;
+  /** Full section patch — used to materialize defaults to content.items on first edit */
+  onSectionUpdate?: (sectionId: string, updates: any) => void;
+  /** Selected section flag — controls visibility of add/remove affordances */
+  isSelected?: boolean;
+}
+
+const REVIEWS = [
+  { author: 'James Harrington', role: 'Just down the street', service: 'Emergency Pipe Repair', rating: 5,   avatar: 'https://i.pravatar.cc/80?img=11', quote: "Our main pipe burst at 2am and they were at our door within 45 minutes — they're right here in the neighborhood. Fixed everything cleanly and the price was fair." },
+  { author: 'Maria Gonzalez',   role: 'Two blocks over',      service: 'Drain Cleaning',        rating: 5,   avatar: 'https://i.pravatar.cc/80?img=5',  quote: "So glad to have a trusted local team nearby. They found the root cause of my recurring drain issue in minutes and cleared it permanently." },
+  { author: 'David Chen',       role: 'Around the corner',    service: 'Water Heater Install',  rating: 5,   avatar: 'https://i.pravatar.cc/80?img=33', quote: 'Same-day install on our new water heater. Being local, they got here fast and even spotted a small gas leak — fixed it at no extra cost.' },
+  { author: 'Sarah Mitchell',   role: 'Same neighborhood',    service: 'Bathroom Remodel',      rating: 5,   avatar: 'https://i.pravatar.cc/80?img=9',  quote: "Complete bathroom overhaul done on time and on budget. It's great supporting a local business that treats you like a neighbor." },
+  { author: 'Robert Kim',       role: 'Nearby resident',      service: 'Leak Detection',        rating: 5,   avatar: 'https://i.pravatar.cc/80?img=52', quote: 'Had a mysterious water bill spike. They found a hidden leak inside the wall without destroying my drywall. Fast, local, saved me thousands.' },
+  { author: 'Emily Thompson',   role: 'Just moved in nearby', service: 'Water Heater Repair',   rating: 5,   avatar: 'https://i.pravatar.cc/80?img=16', quote: "New to the area and needed a plumber fast. These folks came same-day, were friendly and didn't try to upsell. Our go-to from now on." },
+];
+
+export const LocationTestimonialsDefault: React.FC<Props> = ({
+  section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
+  selectedElementId, readOnly = false, themeColors: tc,
+  onAddItem, onRemoveItem, onSectionUpdate, isSelected = false,
+}) => {
+  const { content, styles } = section;
+  const s = styles as any;
+  const apiBadgeText = String((content as any).badgeText || 'Customer Reviews');
+  const apiTitleText = String((content as any).title || 'What Your Neighbors Say');
+  const apiDescriptionText = String(
+    (content as any).subtitle ||
+    (content as any).description ||
+    'Real reviews from real homeowners right here in your community who trusted us with their plumbing.'
+  );
+
+  const lc = tc?.light || {};
+  const accent     = lc.accentColor || tc?.accentColor || '#E11D48';
+  const titleColor = lc.titleColor || '#111827';
+  const textColor  = lc.textColor  || '#4B5563';
+
+  // Section bg: white-lock on theme switch
+  const savedBg = s.backgroundColor;
+  const isThemeSurface = (() => {
+    if (!savedBg || typeof savedBg !== 'string') return true;
+    const norm = savedBg.trim().toLowerCase();
+    return PRESET_THEMES.some(t => {
+      const dark  = (t.elements?.surface || '').toLowerCase();
+      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
+      return norm === dark || norm === light;
+    });
+  })();
+  const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+
+  const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
+  const padT = s.paddingTop    ?? 'pt-10 sm:pt-12 lg:pt-16';
+  const padB = s.paddingBottom ?? 'pb-10 sm:pb-12 lg:pb-16';
+  const padX = s.paddingX      ?? 'px-4 sm:px-6';
+  const innerClass = `max-w-7xl mx-auto ${isCssValue(padX) ? '' : padX} ${isCssValue(padT) ? '' : padT} ${isCssValue(padB) ? '' : padB}`.trim();
+  const innerStyle: React.CSSProperties = {
+    ...(isCssValue(padX) ? { paddingLeft: padX, paddingRight: padX } : {}),
+    ...(isCssValue(padT) ? { paddingTop: padT } : {}),
+    ...(isCssValue(padB) ? { paddingBottom: padB } : {}),
+  };
+  const textAlignClass = s.textAlign === 'left' ? 'text-left' : s.textAlign === 'right' ? 'text-right' : 'text-center';
+
+  // Reviews driven by content.items length. Default to 3 local-sounding reviews.
+  const sourceItems: any[] = (content.items && content.items.length > 0) ? content.items : [];
+  const itemsAreMaterialized = sourceItems.length > 0;
+  const DEFAULTS = REVIEWS.slice(0, 3);
+  const reviews = (sourceItems.length > 0 ? sourceItems : DEFAULTS).map((item: any, i: number) => {
+    const fallback = REVIEWS[i % REVIEWS.length];
+    return {
+      id:      item?.id     || `lts-rev-${i}`,
+      author:  item?.author  || fallback.author,
+      role:    item?.role    || fallback.role,
+      service: item?.service || item?.title || fallback.service,
+      rating:  item?.rating ?? fallback.rating,
+      avatar:  item?.avatar  || fallback.avatar,
+      quote:   item?.quote   || item?.description || fallback.quote,
+    };
+  });
+
+  // Materialize defaults to content.items if user has never edited.
+  const materializeIfNeeded = (): any[] => {
+    if (itemsAreMaterialized) return sourceItems;
+    if (!onSectionUpdate) return reviews;
+    onSectionUpdate(section.id, { content: { ...content, items: reviews } });
+    return reviews;
+  };
+
+  const handleAddTestimonial = () => {
+    if (readOnly || !onSectionUpdate) return;
+    const current = materializeIfNeeded();
+    const idx = current.length;
+    const fallback = REVIEWS[idx % REVIEWS.length];
+    const newItem = {
+      id: `lts-rev-${Date.now()}`,
+      author: 'Customer Name',
+      role: 'Location',
+      service: fallback.service,
+      rating: 5,
+      avatar: fallback.avatar,
+      quote: 'Add a quote here.',
+    };
+    onSectionUpdate(section.id, { content: { ...content, items: [...current, newItem] } });
+  };
+
+  const handleRemoveTestimonial = (revId: string) => {
+    if (readOnly || !onSectionUpdate) return;
+    const current = materializeIfNeeded();
+    const next = current.filter((it: any) => it.id !== revId);
+    const elementIdToRemove = `${section.id}-lts-${revId}`;
+    const nextElements = (section.elements || []).filter((e) => e.id !== elementIdToRemove);
+    onSectionUpdate(section.id, {
+      content: { ...content, items: next },
+      elements: nextElements,
+    });
+  };
+
+  const themeColors = {
+    ...tc,
+    titleColor, textColor, accentColor: accent,
+    testimonialCardAccent: accent,
+    testimonialCardStarColor: accent,
+  };
+
+  // Section header elements
+  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-lts-badge`) || {
+    id: `${section.id}-lts-badge`, type: 'badge',
+    content: { text: content.badgeText || 'Customer Reviews', icon: 'fa-star', iconPosition: 'left', iconSize: '0.65rem' },
+    style: {
+      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+      textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
+      textAlign: 'center' as any,
+      backgroundColor: `${accent}1A`,
+      color: accent,
+    },
+  };
+  const badgeElResolved: WebsiteElement = {
+    ...badgeEl,
+    content: { ...(badgeEl.content || {}), text: apiBadgeText },
+  };
+
+  const titleEl: WebsiteElement = (() => {
+    const id = `${section.id}-lts-title`;
+    const existing = section.elements?.find(e => e.id === id);
+    const sourceText: string = apiTitleText.toString().replace(/<[^>]+>/g, '').trim();
+    const words = sourceText.split(/\s+/).filter(Boolean);
+    let textBefore = '';
+    let highlightedText = sourceText;
+    if (words.length > 1) {
+      highlightedText = words[words.length - 1];
+      textBefore = words.slice(0, -1).join(' ');
+    }
+    const base: WebsiteElement = existing || {
+      id, type: 'heading',
+      content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
+      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
+    };
+    return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
+  })();
+
+  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-lts-desc`) || {
+    id: `${section.id}-lts-desc`, type: 'text',
+    content: { text: apiDescriptionText, textSize: 'large' },
+    style: { textAlign: 'center' as any, maxWidth: '520px', margin: '0 auto', lineHeight: '1.65' },
+  };
+  const descElResolved: WebsiteElement = {
+    ...descEl,
+    content: { ...(descEl.content || {}), text: apiDescriptionText },
+  };
+
+  const getReviewCardEl = (rev: { id: string; quote: string; author: string; role: string; service: string; rating: number; avatar: string }): WebsiteElement => {
+    const id = `${section.id}-lts-${rev.id}`;
+    const existing = section.elements?.find(e => e.id === id);
+    const defaultContent: any = {
+      quote:   rev.quote,
+      author:  rev.author,
+      role:    rev.role,
+      service: rev.service,
+      rating:  rev.rating,
+      avatar:  rev.avatar,
+      showStars: true,
+      showAvatar: true,
+    };
+    if (existing) {
+      return {
+        ...existing,
+        content: { ...defaultContent, ...(existing.content || {}) },
+        style: { ...(existing.style || {}) } as any,
+      };
+    }
+    return { id, type: 'testimonial-card', content: defaultContent, style: {} as any };
+  };
+
+  const showEditAffordances = isSelected && !readOnly;
+
+  return (
+    <div className={`w-full ${textAlignClass}`} style={{ backgroundColor: bg }}>
+      <div className={innerClass} style={innerStyle}>
+
+        {/* Header */}
+        <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+          transition={{ duration: 0.6 }} className="text-center mb-4">
+          <div className="flex justify-center mb-4">
+            <ElementsSection section={{ ...section, elements: [badgeElResolved] }} onTextEdit={onTextEdit}
+              onElementUpdate={onElementUpdate || (() => {})} onElementSelect={onElementSelect}
+              selectedElementId={selectedElementId} readOnly={readOnly} isWrapped={false}
+              buttonClass={buttonClass} themeColors={themeColors} />
+          </div>
+          <ElementsSection section={{ ...section, elements: [titleEl] }} onTextEdit={onTextEdit}
+            onElementUpdate={onElementUpdate || (() => {})} onElementSelect={onElementSelect}
+            selectedElementId={selectedElementId} readOnly={readOnly} isWrapped={false}
+            buttonClass={buttonClass} themeColors={themeColors} />
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
+          transition={{ duration: 0.5, delay: 0.1 }} className="flex justify-center mb-10 sm:mb-14">
+          <ElementsSection section={{ ...section, elements: [descElResolved] }} onTextEdit={onTextEdit}
+            onElementUpdate={onElementUpdate || (() => {})} onElementSelect={onElementSelect}
+            selectedElementId={selectedElementId} readOnly={readOnly} isWrapped={false}
+            buttonClass={buttonClass} themeColors={themeColors} />
+        </motion.div>
+
+        {/* Review cards — one testimonial-card element per review */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          {reviews.map((rev, i: number) => (
+            <motion.div
+              key={rev.id}
+              className="relative group/item"
+              initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }} transition={{ duration: 0.5, delay: i * 0.08 }}>
+              <ElementsSection
+                section={{ ...section, elements: [getReviewCardEl(rev)] }}
+                onTextEdit={onTextEdit}
+                onElementUpdate={onElementUpdate || (() => {})}
+                onElementSelect={onElementSelect}
+                selectedElementId={selectedElementId}
+                readOnly={readOnly}
+                isWrapped={false}
+                buttonClass={buttonClass}
+                themeColors={themeColors}
+              />
+              {showEditAffordances && onSectionUpdate && reviews.length > 1 && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleRemoveTestimonial(rev.id); }}
+                  className="absolute -top-2.5 -right-2.5 bg-red-500 hover:bg-red-600 text-white w-7 h-7 rounded-full opacity-0 group-hover/item:opacity-100 transition-all flex items-center justify-center text-xs z-20 shadow-lg hover:scale-110"
+                  title="Remove testimonial"
+                  aria-label="Remove testimonial"
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              )}
+            </motion.div>
+          ))}
+
+          {/* Add testimonial tile — only when the section is selected */}
+          {showEditAffordances && onSectionUpdate && (
+            <motion.button
+              onClick={(e) => { e.stopPropagation(); handleAddTestimonial(); }}
+              initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }} transition={{ duration: 0.5 }}
+              className="min-h-[200px] rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-3 group/add"
+              style={{
+                borderColor: `${accent}33`,
+                backgroundColor: `${accent}05`,
+                color: accent,
+              }}
+              aria-label="Add testimonial"
+            >
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center transition-all group-hover/add:scale-110"
+                style={{ backgroundColor: `${accent}14` }}
+              >
+                <i className="fa-solid fa-plus text-lg" />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-widest">Add Testimonial</span>
+            </motion.button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default LocationTestimonialsDefault;
