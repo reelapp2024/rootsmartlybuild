@@ -71,16 +71,25 @@ export const ThemeDropdown: React.FC<ThemeDropdownProps> = ({
         <div
           role="dialog"
           aria-label="Theme preset"
-          className="absolute right-0 top-full mt-1 bg-[#0f0f0f] border border-white/10 rounded-lg shadow-2xl w-[360px] max-w-[90vw] z-50 duration-150 origin-top-right overflow-hidden"
+          className="absolute left-0 top-full mt-2 bg-[#0f0f0f] border border-white/10 rounded-xl shadow-2xl w-[min(420px,calc(100vw-2rem))] z-50 duration-150 origin-top-left overflow-hidden"
         >
-          <div className="p-3 max-h-[560px] overflow-y-auto custom-scrollbar">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {isCustomTheme && (
-                <div className="col-span-2 sm:col-span-3 p-3 rounded-lg border-2 border-violet-500/60 bg-violet-500/10 text-center">
-                  <p className="text-xs font-semibold text-violet-200">Custom theme active</p>
-                  <p className="text-[10px] text-white/40 mt-1">Saved custom colors are applied. Pick a preset below to switch, then Save.</p>
-                </div>
-              )}
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <i className="fa-solid fa-palette text-[11px] text-white/50" aria-hidden="true" />
+              <span className="text-xs font-semibold text-white/90 tracking-wide">Choose a theme</span>
+            </div>
+            <span className="text-[10px] text-white/40">{PRESET_THEMES.length} presets</span>
+          </div>
+
+          <div className="p-3 max-h-[min(60vh,520px)] overflow-y-auto custom-scrollbar">
+            {isCustomTheme && (
+              <div className="mb-3 p-3 rounded-lg border border-violet-500/50 bg-violet-500/10">
+                <p className="text-xs font-semibold text-violet-200">Custom theme active</p>
+                <p className="text-[10px] text-white/40 mt-0.5 leading-relaxed">Saved custom colors are applied. Pick a preset below to switch, then Save.</p>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2.5">
               {PRESET_THEMES.map((theme, idx) => {
                 const isActive = !isCustomTheme && selectedPresetId === idx.toString();
                 const primary = theme.elements.primaryButton?.bg || theme.elements.accent || '#E11D48';
@@ -100,38 +109,36 @@ export const ThemeDropdown: React.FC<ThemeDropdownProps> = ({
                       if (e.key === 'Enter' || e.key === ' ') onPresetSelect(theme as any, idx);
                     }}
                     aria-label={`Apply ${theme.name} theme`}
-                    className={`relative p-3 rounded-lg border-2 cursor-pointer transition-all select-none aspect-square flex flex-col ${
+                    className={`group relative p-2.5 rounded-lg border cursor-pointer transition-all select-none flex flex-col gap-2.5 ${
                       isActive
-                        ? 'border-blue-500 bg-blue-500/10 shadow-md'
-                        : 'border-white/10 bg-[#111] hover:border-white/30 hover:bg-[#1a1a1a]'
+                        ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/40'
+                        : 'border-white/10 bg-[#141414] hover:border-white/25 hover:bg-[#1c1c1c]'
                     }`}
                   >
-                    <div className="flex flex-col gap-2 mb-2">
-                      <div className="flex gap-1.5 items-center">
-                        <div
-                          className="w-5 h-5 rounded border border-white/10"
-                          style={{ backgroundColor: primary }}
-                          aria-hidden="true"
-                        />
-                        <div
-                          className="flex-1 h-5 rounded border border-white/10"
-                          style={{ backgroundColor: surface }}
-                          aria-hidden="true"
-                        />
+                    {/* Color preview swatch */}
+                    <div className="relative h-16 rounded-md overflow-hidden border border-white/10" style={{ backgroundColor: surface }}>
+                      {/* big primary block */}
+                      <div className="absolute inset-x-0 bottom-0 h-1/2 flex items-end gap-1.5 p-1.5">
+                        <div className="w-8 h-6 rounded" style={{ backgroundColor: primary }} aria-hidden="true" />
+                        <div className="flex-1 space-y-1">
+                          <div className="h-1.5 w-3/4 rounded" style={{ backgroundColor: heading }} aria-hidden="true" />
+                          <div className="h-1.5 w-1/2 rounded opacity-60" style={{ backgroundColor: heading }} aria-hidden="true" />
+                        </div>
                       </div>
-                      <div className="w-full h-1 rounded" style={{ backgroundColor: heading }} aria-hidden="true" />
                     </div>
 
-                    <div className="space-y-1">
-                      <p className={`text-xs font-semibold ${isActive ? 'text-blue-200' : 'text-white/90'}`}>
+                    <div className="min-w-0">
+                      <p className={`text-xs font-semibold truncate ${isActive ? 'text-blue-200' : 'text-white/90'}`}>
                         {theme.name}
                       </p>
-                      <p className="text-[10px] text-white/40 line-clamp-1">{description}</p>
+                      {description && (
+                        <p className="text-[10px] text-white/40 line-clamp-1 mt-0.5">{description}</p>
+                      )}
                     </div>
 
                     {isActive && (
-                      <div className="absolute top-2 right-2">
-                        <i className="fa-solid fa-check text-[10px] text-blue-300" aria-hidden="true" />
+                      <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center">
+                        <i className="fa-solid fa-check text-[8px] text-white" aria-hidden="true" />
                       </div>
                     )}
                   </div>

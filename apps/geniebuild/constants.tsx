@@ -1593,6 +1593,361 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
           variant: 'AreasPlumbing'
       }
   },
+  /** About page — clean light sub-page hero (badge + title + subtitle + breadcrumb). */
+  abouthero: {
+    type: 'abouthero',
+    content: {
+        badgeText: 'About Us',
+        title: 'About Our Plumbing Company',
+        subtitle: 'Trusted local plumbers with over 20 years of experience — get to know our story, our mission, and the values that guide everything we do.'
+    },
+    styles: {
+        paddingTop: 'pt-24 lg:pt-32',
+        paddingBottom: 'pb-16 lg:pb-24',
+        paddingX: 'px-6',
+        textAlign: 'center',
+        variant: 'AboutHeroDefault'
+    }
+  },
+
+  /** About page — Mission & Vision (2-column). */
+  missionvision: {
+    type: 'missionvision',
+    content: {
+        mission: {
+            line: 'Quality service, every time.',
+            subHeadings: ['Customer-focused solutions', 'Reliable expert workmanship', 'Honest transparent pricing']
+        },
+        vision: {
+            line: 'Setting the industry standard.',
+            subHeadings: ['Innovating for tomorrow', 'Building lasting community trust', 'Sustainable responsible growth']
+        }
+    },
+    styles: {
+        paddingTop: 'pt-16 lg:pt-24',
+        paddingBottom: 'pb-16 lg:pb-24',
+        paddingX: 'px-6',
+        textAlign: 'left',
+        variant: 'MissionVisionDefault'
+    }
+  },
+
+  /** About page — Core Values (6 cards). */
+  corevalues: {
+    type: 'corevalues',
+    content: {
+        badgeText: 'Our Values',
+        title: 'Our Core Values',
+        intro: 'The principles that guide everything we do and define who we are.',
+        items: [
+            { title: 'Customer First', iconClass: 'fa-user-check', description: 'Every decision we make starts with what is best for the customers and community we serve.' },
+            { title: 'Professional Team', iconClass: 'fa-user-tie', description: 'Skilled, certified professionals who take genuine pride in delivering exceptional workmanship.' },
+            { title: 'Eco-Friendly', iconClass: 'fa-leaf', description: 'We use sustainable practices and products that protect both your home and the environment.' },
+            { title: 'Quality Standards', iconClass: 'fa-award', description: 'We never cut corners — only the highest standards of quality and durability on every job.' },
+            { title: 'Reliability', iconClass: 'fa-clock', description: 'On time, every time. You can count on us to show up and get the job done right.' },
+            { title: 'Trust & Safety', iconClass: 'fa-shield-halved', description: 'Fully licensed, insured and background-checked for your complete peace of mind.' }
+        ]
+    },
+    styles: {
+        paddingTop: 'pt-16 lg:pt-24',
+        paddingBottom: 'pb-16 lg:pb-24',
+        paddingX: 'px-6',
+        textAlign: 'center',
+        variant: 'CoreValuesDefault'
+    }
+  },
+
+  /** About page — USP / What Makes Us Different (6 points). */
+  usp: {
+    type: 'usp',
+    content: {
+        badgeText: 'Why We\'re Different',
+        title: 'What Makes Us Different',
+        intro: 'The advantages that set us apart from everyone else in the industry.',
+        items: [
+            { title: 'Upfront Flat-Rate Pricing', iconClass: 'fa-tag', description: 'You approve the price before any work begins — no hourly surprises, no hidden fees, ever.' },
+            { title: 'Same-Day Availability', iconClass: 'fa-bolt', description: 'Most jobs are handled the very same day you call, so problems never have time to get worse.' },
+            { title: 'Master-Certified Technicians', iconClass: 'fa-user-graduate', description: 'Our team holds the highest industry certifications and trains continuously on the latest methods.' },
+            { title: 'Lifetime Workmanship Warranty', iconClass: 'fa-shield-halved', description: 'We stand behind our work for life — if anything fails, we return and make it right at no cost.' },
+            { title: 'Transparent Live Updates', iconClass: 'fa-location-dot', description: 'Track your technician in real time and get clear photo updates throughout every single job.' },
+            { title: 'Locally Owned & Trusted', iconClass: 'fa-house-chimney', description: 'A proud part of this community for years, with thousands of happy neighbours who recommend us.' }
+        ]
+    },
+    styles: {
+        paddingTop: 'pt-16 lg:pt-24',
+        paddingBottom: 'pb-16 lg:pb-24',
+        paddingX: 'px-6',
+        textAlign: 'center',
+        variant: 'USPDefault'
+    }
+  },
+
+  /** Service page — short promise / tagline band. */
+  promise: {
+    type: 'promise',
+    content: {
+        badgeText: 'Our Promise',
+        title: 'Your Satisfaction, Guaranteed',
+        subtitle: 'We promise honest work, fair pricing and a job done right the first time — every single time. If you\'re not fully satisfied, we\'ll make it right.'
+    },
+    styles: {
+        paddingTop: 'pt-14 lg:pt-20',
+        paddingBottom: 'pb-14 lg:pb-20',
+        paddingX: 'px-6',
+        textAlign: 'center',
+        variant: 'PromiseDefault'
+    }
+  },
+
+  /** Service page — related services cards grid. */
+  relatedservices: {
+    type: 'relatedservices',
+    content: {
+        badgeText: 'More Services',
+        title: 'Related Services',
+        subtitle: 'Explore other services we offer to keep your home running smoothly.',
+        items: [
+            { icon: 'fa-toilet-paper', title: 'Drain Cleaning', description: 'Professional drain cleaning using the latest hydro-jetting technology to clear blockages fast.' },
+            { icon: 'fa-fire-burner', title: 'Water Heater Services', description: 'Installation, repair and replacement of all water heater brands — tank & tankless options.' },
+            { icon: 'fa-droplet', title: 'Leak Detection & Repair', description: 'Advanced equipment to locate and fix hidden leaks before they cause costly damage.' },
+            { icon: 'fa-bath', title: 'Bathroom Plumbing', description: 'Complete bathroom plumbing installations and renovations, from faucets to full remodels.' },
+            { icon: 'fa-faucet', title: 'Faucet & Fixture Repair', description: 'Fast repair and replacement of leaky faucets, taps and fixtures throughout your home.' },
+            { icon: 'fa-house-flood-water', title: 'Emergency Plumbing', description: 'Round-the-clock emergency response for burst pipes, floods and urgent plumbing failures.' }
+        ]
+    },
+    styles: {
+        paddingTop: 'pt-16 lg:pt-24',
+        paddingBottom: 'pb-16 lg:pb-24',
+        paddingX: 'px-6',
+        textAlign: 'center',
+        variant: 'RelatedServicesDefault'
+    }
+  },
+
+  /** Contact page — clean dark sub-page hero. */
+  contacthero: {
+    type: 'contacthero',
+    content: {
+        badgeText: 'Contact Us',
+        contactHeroTitle: 'Get In Touch',
+        contactHeroSubtitle: 'Have a question or ready to book? Reach out and our friendly team will get back to you fast — usually within a few hours.'
+    },
+    styles: {
+        paddingTop: 'pt-24 lg:pt-32',
+        paddingBottom: 'pb-16 lg:pb-24',
+        paddingX: 'px-6',
+        textAlign: 'center',
+        variant: 'ContactHeroDefault'
+    }
+  },
+
+  /** Contact page — reach-us methods cards. */
+  contactinfo: {
+    type: 'contactinfo',
+    content: {
+        badgeText: 'Get In Touch',
+        title: 'Ways to Reach Us',
+        subtitle: 'Choose whatever way works best for you — we\'re always happy to help.',
+        items: [
+            { icon: 'fa-phone', title: 'Call Us', description: '(555) 123-4567 — available 24/7 for emergencies.' },
+            { icon: 'fa-envelope', title: 'Email Us', description: 'hello@yourcompany.com — we reply within a few hours.' },
+            { icon: 'fa-location-dot', title: 'Visit Us', description: '123 Main Street, Your City, ST 12345.' },
+            { icon: 'fa-clock', title: 'Office Hours', description: 'Mon–Sat: 7am – 8pm. Sunday: emergency only.' }
+        ]
+    },
+    styles: {
+        paddingTop: 'pt-16 lg:pt-24',
+        paddingBottom: 'pb-16 lg:pb-24',
+        paddingX: 'px-6',
+        textAlign: 'center',
+        variant: 'ContactInfoDefault'
+    }
+  },
+
+  /** Contact page — contact form card. */
+  contactform: {
+    type: 'contactform',
+    content: {
+        badgeText: 'Send a Message',
+        contactIntroHeading: 'Send Us a Message',
+        contactIntroBody: 'Tell us a little about what you need and the best way to reach you. We\'ll get back to you as soon as possible.',
+        ctaText: 'Send Message',
+        fields: [
+            { label: 'Full Name', type: 'text' },
+            { label: 'Email Address', type: 'email' },
+            { label: 'Phone Number', type: 'tel' },
+            { label: 'Your Message', type: 'textarea' }
+        ]
+    },
+    styles: {
+        paddingTop: 'pt-16 lg:pt-24',
+        paddingBottom: 'pb-16 lg:pb-24',
+        paddingX: 'px-6',
+        textAlign: 'center',
+        variant: 'ContactFormDefault'
+    }
+  },
+
+  /** Blogs page — clean dark sub-page hero. */
+  blogshero: {
+    type: 'blogshero',
+    content: {
+        badgeText: 'Our Blog',
+        blogsHeroTitle: 'Latest Articles & Insights',
+        blogsHeroSubtitle: 'Tips, guides and industry updates from our team of experts — everything you need to stay informed and make the right decisions.'
+    },
+    styles: {
+        paddingTop: 'pt-24 lg:pt-32',
+        paddingBottom: 'pb-16 lg:pb-24',
+        paddingX: 'px-6',
+        textAlign: 'center',
+        variant: 'BlogsHeroDefault'
+    }
+  },
+
+  /** Blogs page — search bar + category filter. */
+  blogssearch: {
+    type: 'blogssearch',
+    content: {
+        searchPlaceholder: 'Search articles…',
+        filterHelperText: 'Browse by topic or search for exactly what you need.',
+        categories: ['All', 'Tips & Guides', 'Industry News', 'How-To', 'Community']
+    },
+    styles: {
+        paddingTop: 'pt-8 lg:pt-10',
+        paddingBottom: 'pb-4 lg:pb-6',
+        paddingX: 'px-6',
+        textAlign: 'center',
+        variant: 'BlogsSearchDefault'
+    }
+  },
+
+  /** Blogs page — blog post cards grid. */
+  blogslist: {
+    type: 'blogslist',
+    content: {},
+    styles: {
+        paddingTop: 'pt-6 lg:pt-8',
+        paddingBottom: 'pb-16 lg:pb-24',
+        paddingX: 'px-6',
+        textAlign: 'left',
+        variant: 'BlogsListDefault'
+    }
+  },
+
+  /** Blog detail — article header (title + meta + cover) + breadcrumb. */
+  blogarticlehero: {
+    type: 'blogarticlehero',
+    content: {
+        category: 'Tips & Guides',
+        title: 'How to Choose the Right Service Provider',
+        authorName: 'Jane Doe',
+        date: 'June 12, 2025',
+        readTime: '6 min read',
+        coverImage: { url: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1200&q=80', alt: '' }
+    },
+    styles: { paddingTop: 'pt-24 lg:pt-32', paddingBottom: 'pb-0', paddingX: 'px-6', textAlign: 'center', variant: 'BlogArticleHeroDefault' }
+  },
+
+  /** Blog detail — article body content. */
+  blogcontent: {
+    type: 'blogcontent',
+    content: {},
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-10 lg:pb-16', paddingX: 'px-6', textAlign: 'left', variant: 'BlogContentDefault' }
+  },
+
+  /** Blog detail — author bio card. */
+  blogauthor: {
+    type: 'blogauthor',
+    content: {
+        name: 'Jane Doe',
+        jobTitle: 'Senior Content Writer',
+        bio: 'Jane has over 10 years of hands-on industry experience and loves sharing practical tips that help homeowners make confident decisions.',
+        image: 'https://i.pravatar.cc/160?img=47',
+        links: [{ label: 'Twitter', icon: 'fa-x-twitter', url: '#' }, { label: 'LinkedIn', icon: 'fa-linkedin-in', url: '#' }]
+    },
+    styles: { paddingTop: 'pt-8 lg:pt-10', paddingBottom: 'pb-8 lg:pb-10', paddingX: 'px-6', textAlign: 'left', variant: 'BlogAuthorDefault' }
+  },
+
+  /** Blog detail — related articles grid. */
+  blogrelated: {
+    type: 'blogrelated',
+    content: { badgeText: 'Keep Reading', relatedTitle: 'Related Articles' },
+    styles: { paddingTop: 'pt-14 lg:pt-20', paddingBottom: 'pb-14 lg:pb-20', paddingX: 'px-6', textAlign: 'center', variant: 'BlogRelatedDefault' }
+  },
+
+  /** Blog detail — comments section. */
+  blogcomments: {
+    type: 'blogcomments',
+    content: {
+        commentSectionTitle: 'Join the Conversation',
+        commentSectionSubtitle: 'Share your thoughts — we\'d love to hear from you.',
+        ctaText: 'Post Comment'
+    },
+    styles: { paddingTop: 'pt-10 lg:pt-16', paddingBottom: 'pb-14 lg:pb-20', paddingX: 'px-6', textAlign: 'left', variant: 'BlogCommentsDefault' }
+  },
+
+  /** Legal page — dark hero (Privacy / Terms / Disclaimer). */
+  legalhero: {
+    type: 'legalhero',
+    content: {
+        badgeText: 'Legal',
+        heroTitle: 'Privacy Policy',
+        heroSubtitle: 'Please read this page carefully to understand how we handle your information and your rights.',
+        lastUpdatedLabel: 'Last updated: June 2025'
+    },
+    styles: { paddingTop: 'pt-24 lg:pt-32', paddingBottom: 'pb-14 lg:pb-20', paddingX: 'px-6', textAlign: 'center', variant: 'LegalHeroDefault' }
+  },
+
+  /** Legal page — document body (heading + rich-text sections). */
+  legalcontent: {
+    type: 'legalcontent',
+    content: {
+        sections: [
+            { heading: '1. Information We Collect', bodyHtml: 'We collect information you provide directly to us, such as your name, email address and phone number when you contact us or request a service. We also collect limited technical data (like your browser type) to keep our site secure and functional.' },
+            { heading: '2. How We Use Your Information', bodyHtml: 'Your information is used solely to respond to enquiries, schedule and deliver services, and improve your experience. We never sell your personal data to third parties.' },
+            { heading: '3. Cookies & Tracking', bodyHtml: 'We use essential cookies to run the site and optional analytics cookies to understand how visitors use it. You can disable non-essential cookies in your browser settings at any time.' },
+            { heading: '4. Data Security', bodyHtml: 'We apply reasonable technical and organisational measures to protect your data against unauthorised access, loss or misuse. No method of transmission is 100% secure, but we work hard to safeguard your information.' },
+            { heading: '5. Your Rights', bodyHtml: 'You may request access to, correction of, or deletion of your personal data at any time. To exercise these rights, simply reach out to us through our contact page.' },
+            { heading: '6. Changes to This Policy', bodyHtml: 'We may update this policy from time to time. Any changes will be posted on this page with an updated revision date above.' }
+        ]
+    },
+    styles: { paddingTop: 'pt-14 lg:pt-20', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'left', variant: 'LegalContentDefault' }
+  },
+
+  /** Location page — sub-locations (states / cities / areas) grid. */
+  sublocations: {
+    type: 'sublocations',
+    content: {
+        badgeText: 'Areas We Serve',
+        title: 'Explore Nearby Locations',
+        subtitle: 'We proudly serve homes and businesses across these areas — find yours below.',
+        items: [
+            { name: 'Downtown', meta: '12 areas covered' },
+            { name: 'North Side', meta: '9 areas covered' },
+            { name: 'West End', meta: '8 areas covered' },
+            { name: 'East Village', meta: '7 areas covered' },
+            { name: 'Southgate', meta: '10 areas covered' },
+            { name: 'Riverside', meta: '6 areas covered' },
+            { name: 'Hillcrest', meta: '5 areas covered' },
+            { name: 'Lakeside', meta: '8 areas covered' }
+        ]
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'SubLocationsDefault' }
+  },
+
+  /** Location page — embedded map (renders when lat/lng or mapEmbedUrl exists). */
+  locationmap: {
+    type: 'locationmap',
+    content: {
+        badgeText: 'Find Us',
+        title: 'Our Service Area',
+        lat: '40.7128',
+        lng: '-74.0060'
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationMapDefault' }
+  },
+
   navbar: {
     type: 'navbar',
     content: {

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { WebsiteData, Section, SectionType, WebsiteElement, ElementType, SEOMetadata } from './types';
 import { DEFAULT_TYPOGRAPHY, INITIAL_TEMPLATE, SECTION_TEMPLATES, PRESET_THEMES, ELEMENT_DEFAULTS } from './constants';
-import { getStandaloneInitialWebsiteData, isLocalServiceDemoPath, buildLocalServiceDemoWebsiteData } from './localServiceDemo';
+import { getStandaloneInitialWebsiteData, isLocalServiceDemoPath, isLocalAboutDemoPath, isLocalServiceDetailDemoPath, isLocalServicesListDemoPath, isLocalContactDemoPath, isLocalBlogsDemoPath, isLocalBlogDetailDemoPath, isLocalLocationDemoPath, getLocalLegalDemoTitle, buildLocalServiceDemoWebsiteData, buildLocalAboutDemoWebsiteData, buildLocalServiceDetailDemoWebsiteData, buildLocalServicesListDemoWebsiteData, buildLocalContactDemoWebsiteData, buildLocalBlogsDemoWebsiteData, buildLocalBlogDetailDemoWebsiteData, buildLocalLegalDemoWebsiteData, buildLocalLocationDemoWebsiteData } from './localServiceDemo';
 import { geminiService } from './services/geminiService';
 import { API_BASE_URL, MEDIA_BASE_URL, isValidHttpUrl, toAbsoluteMediaUrl } from './config';
 import SectionRenderer from './components/SectionRenderer';
@@ -132,21 +132,49 @@ const AppContent: React.FC = () => {
   const [siteData, setSiteData, undo, redo, canUndo, canRedo, resetSiteDataHistory] = useHistory<WebsiteData>(getStandaloneInitialWebsiteData());
   useUndoRedoShortcuts(undo, redo);
 
-  /** Without `projectId`, swap dummy homepage vs `/service` preview when the user uses browser back/forward. */
-  const standaloneDemoModeRef = useRef<'home' | 'service' | null>(null);
+  /** Without `projectId`, swap dummy homepage vs `/service` vs `/services/:name` (detail) vs `/services` (listing) vs `/about` preview when the user uses browser back/forward. */
+  const standaloneDemoModeRef = useRef<string | null>(null);
   useEffect(() => {
     const { projectId } = getUrlParams();
     if (projectId) {
       standaloneDemoModeRef.current = null;
       return;
     }
-    standaloneDemoModeRef.current = isLocalServiceDemoPath(window.location.pathname) ? 'service' : 'home';
+    // Order matters: DETAIL routes (/services/:name, /blog/:slug) before their
+    // listing counterparts (/services, /blogs). Legal (privacy/terms/…) carries
+    // a title so the mode key includes it.
+    const resolveMode = (): string => {
+      const p = window.location.pathname;
+      const legalTitle = getLocalLegalDemoTitle(p);
+      if (isLocalAboutDemoPath(p)) return 'about';
+      if (isLocalContactDemoPath(p)) return 'contact';
+      if (legalTitle) return `legal:${legalTitle}`;
+      if (isLocalLocationDemoPath(p)) return 'location';
+      if (isLocalBlogDetailDemoPath(p)) return 'blogdetail';
+      if (isLocalBlogsDemoPath(p)) return 'blogs';
+      if (isLocalServiceDetailDemoPath(p)) return 'servicedetail';
+      if (isLocalServicesListDemoPath(p)) return 'serviceslist';
+      if (isLocalServiceDemoPath(p)) return 'service';
+      return 'home';
+    };
+    standaloneDemoModeRef.current = resolveMode();
     const sync = () => {
       if (getUrlParams().projectId) return;
-      const mode = isLocalServiceDemoPath(window.location.pathname) ? 'service' : 'home';
+      const mode = resolveMode();
       if (standaloneDemoModeRef.current === mode) return;
       standaloneDemoModeRef.current = mode;
-      resetSiteDataHistory(mode === 'service' ? buildLocalServiceDemoWebsiteData() : INITIAL_TEMPLATE);
+      resetSiteDataHistory(
+        mode === 'service' ? buildLocalServiceDemoWebsiteData()
+          : mode === 'servicedetail' ? buildLocalServiceDetailDemoWebsiteData()
+          : mode === 'serviceslist' ? buildLocalServicesListDemoWebsiteData()
+          : mode === 'about' ? buildLocalAboutDemoWebsiteData()
+          : mode === 'contact' ? buildLocalContactDemoWebsiteData()
+          : mode === 'blogs' ? buildLocalBlogsDemoWebsiteData()
+          : mode === 'blogdetail' ? buildLocalBlogDetailDemoWebsiteData()
+          : mode === 'location' ? buildLocalLocationDemoWebsiteData()
+          : mode.startsWith('legal:') ? buildLocalLegalDemoWebsiteData(mode.slice('legal:'.length))
+          : INITIAL_TEMPLATE
+      );
     };
     window.addEventListener('popstate', sync);
     return () => window.removeEventListener('popstate', sync);

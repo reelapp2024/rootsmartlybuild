@@ -474,6 +474,19 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
     'TestimonialsPlumbing', 'WhyChoosePlumbing',
     'AboutPlumbing', 'AreasPlumbing', 'GuaranteePlumbing', 'FAQPlumbing',
     'HeaderPlumbing',
+    // About / Service page light sections — keep them theme-consistent (light)
+    'MissionVisionDefault', 'CoreValuesDefault', 'USPDefault',
+    'PromiseDefault', 'RelatedServicesDefault', 'AboutServiceConsistent',
+    // Contact page light sections
+    'ContactInfoDefault', 'ContactFormDefault',
+    // Blog page light sections
+    'BlogsSearchDefault', 'BlogsListDefault',
+    // Blog detail light sections
+    'BlogContentDefault', 'BlogAuthorDefault', 'BlogCommentsDefault', 'BlogRelatedDefault',
+    // Legal page light section
+    'LegalContentDefault',
+    // Location page light sections
+    'SubLocationsDefault', 'LocationMapDefault',
   ]);
   const isLight = styles.themeMode === 'light' || ALWAYS_LIGHT_VARIANTS.has((styles as any).variant || '');
 
