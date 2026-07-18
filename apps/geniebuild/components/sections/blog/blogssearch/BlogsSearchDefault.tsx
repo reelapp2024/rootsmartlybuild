@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { emitBlogsFilter } from '../../../../lib/blogsApi';
 
 interface Props {
   section: Section;
@@ -18,10 +19,8 @@ interface Props {
 const DEFAULT_CATEGORIES = ['All', 'Tips & Guides', 'Industry News', 'How-To', 'Community'];
 
 /**
- * BlogsSearchDefault — search bar + category filter chips for the blog listing.
- * Light section following the homepage tc.light pattern. The heading is an
- * editable ElementsSection element; the search input + filter chips are
- * theme-styled visual controls (placeholder/labels come from content).
+ * BlogsSearchDefault — search + category chips. On the live site (readOnly),
+ * filters the BlogsListDefault via `smartlybuild:blogs-filter` events.
  */
 export const BlogsSearchDefault: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
@@ -36,7 +35,7 @@ export const BlogsSearchDefault: React.FC<Props> = ({
   const accent     = lc.accentColor || tc?.accentColor || '#E11D48';
   const titleColor = fb.titleColor || lc.titleColor || '#111827';
   const textColor  = fb.textColor  || lc.textColor  || '#4B5563';
-  const cardBorder = fb.border     || lc.cardBorderColor || 'rgba(0,0,0,0.08)';
+  const cardBorder = fb.border     || lc.cardBorderColor     || 'rgba(0,0,0,0.08)';
   const inputBg    = (lc as any).inputBg || '#F9FAFB';
 
   const savedBg = s.backgroundColor;
@@ -67,6 +66,28 @@ export const BlogsSearchDefault: React.FC<Props> = ({
     ? c.categories.map((x: any) => String(x))
     : DEFAULT_CATEGORIES;
 
+  const [query, setQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState(categories[0] || 'All');
+
+  useEffect(() => {
+    if (!categories.includes(activeCategory)) {
+      setActiveCategory(categories[0] || 'All');
+    }
+  }, [categories, activeCategory]);
+
+  const emitFilter = useMemo(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    return (next: { search?: string; type?: string }) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        emitBlogsFilter({
+          search: next.search ?? query,
+          type: next.type ?? activeCategory,
+        });
+      }, 250);
+    };
+  }, [query, activeCategory]);
+
   const themeColors = { ...tc, titleColor, textColor, accentColor: accent, secondaryHeadingColor: accent };
   const passThrough = {
     onTextEdit, onElementUpdate: onElementUpdate || (() => {}), onElementSelect,
@@ -85,13 +106,22 @@ export const BlogsSearchDefault: React.FC<Props> = ({
         <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
           transition={{ duration: 0.5 }} className="flex flex-col items-center gap-5">
 
-          {/* Search bar (visual) */}
           <div className="w-full max-w-xl relative">
             <i className="fas fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-sm" style={{ color: accent }} aria-hidden="true" />
             <input
               type="search"
+              value={query}
               placeholder={searchPlaceholder}
-              disabled={readOnly}
+              onChange={(e) => {
+                const value = e.target.value;
+                setQuery(value);
+                emitFilter({ search: value, type: activeCategory });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  emitBlogsFilter({ search: query, type: activeCategory });
+                }
+              }}
               style={{
                 width: '100%', padding: '0.85rem 1rem 0.85rem 2.75rem',
                 borderRadius: '9999px', backgroundColor: inputBg,
@@ -101,19 +131,24 @@ export const BlogsSearchDefault: React.FC<Props> = ({
             />
           </div>
 
-          {/* Category filter chips */}
           <div className="flex flex-wrap justify-center gap-2">
-            {categories.map((cat, i) => {
-              const active = i === 0;
+            {categories.map((cat) => {
+              const active = cat === activeCategory;
               return (
-                <span key={i}
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory(cat);
+                    emitBlogsFilter({ search: query, type: cat });
+                  }}
                   className="px-4 py-1.5 rounded-full text-sm font-semibold cursor-pointer transition-colors"
                   style={active
                     ? { backgroundColor: accent, color: '#FFFFFF' }
                     : { backgroundColor: `${accent}12`, color: accent, border: `1px solid ${accent}22` }}
                 >
                   {cat}
-                </span>
+                </button>
               );
             })}
           </div>

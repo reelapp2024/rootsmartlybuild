@@ -21,7 +21,7 @@ module.exports = {
   },
 
   prompt(ctx) {
-    const { project, location, extraData = {} } = ctx;
+    const { project, location, extraData = {}, pageName = "" } = ctx;
 
     const projectName = project.projectName || "";
     const mainCategory = project.mainCategory || "";
@@ -31,10 +31,21 @@ module.exports = {
     const locationName = location?.name || "";
     const city = location?.city || "";
     const state = location?.state || "";
+    const isAreasListing =
+      String(pageName || extraData?.pageName || "")
+        .toLowerCase()
+        .trim() === "areas";
+
+    const areasHint = isAreasListing
+      ? `
+PAGE CONTEXT: ALL AREAS DIRECTORY (/areas)
+- Questions should be about coverage, which cities you serve, travel/scheduling by area, and how to pick a location page.
+`
+      : "";
 
     return `
 You are generating a Frequently Asked Questions (FAQ) section for a professional business website (homepage or general page).
-
+${areasHint}
 Website Name: ${projectName}
 Primary Category: ${mainCategory}
 Focus Keyword: ${focusKeyword}

@@ -30,7 +30,6 @@ interface Props {
  * Everything that's user-content goes through ElementsSection — no hardcoded
  * <h3>/<img>/<button>/<a>. Just layout chrome (motion wrappers + grid container).
  */
-// Each desc kept to ~13 words so it fits cleanly on 2 lines with line-clamp.
 const DEFAULT_SERVICES = [
   { img: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=900&q=80', title: 'Drain Cleaning',            desc: 'Hydro-jetting clears tough blockages fast and helps prevent future clogs in your pipes.' },
   { img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=900&q=80', title: 'Water Heater Services',      desc: 'Install, repair or replace any water heater brand — tank or tankless options.' },
@@ -40,28 +39,55 @@ const DEFAULT_SERVICES = [
   { img: 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=900&q=80', title: 'Leak Detection',             desc: 'Thermal imaging and acoustic sensors find hidden leaks with minimal disruption to your home.' },
 ];
 
-/** Published / read-only: shorten generic AI service blurbs so cards stay readable. */
+/**
+ * Published / read-only cards: keep a readable blurb — show up to 90 words, then "...".
+ */
+const SERVICE_CARD_DESC_MAX_WORDS = 90;
+
+function countWords(text: string): number {
+  return String(text || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function truncateToWords(text: string, maxWords: number): string {
+  const words = String(text || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length <= maxWords) return words.join(' ');
+  return `${words.slice(0, maxWords).join(' ')}...`;
+}
+
 function compactServiceCardBlurb(serviceTitle: string, rawDescription: string): string {
   const title = String(serviceTitle || '').trim();
   let d = String(rawDescription || '').trim();
   if (!d) {
-    return title ? `${title.charAt(0).toUpperCase() + title.slice(1)} — local installs with tidy workmanship.` : '';
+    return title
+      ? `${title.charAt(0).toUpperCase() + title.slice(1)} — local installs with tidy workmanship.`
+      : '';
   }
   if (d.toLowerCase() === title.toLowerCase()) {
     return `${title.charAt(0).toUpperCase() + title.slice(1)} — skilled installs and dependable support.`;
   }
+  // Strip leftover generic AI filler wrappers when present, keep the real service copy.
   if (/Our team provides dependable/i.test(d) && /with a focus on quality/i.test(d)) {
     d = d
       .replace(/^Our team provides dependable\s+/i, '')
       .replace(/\s+with a focus on quality,?\s+speed,?\s+and\s+long-term value\.?/i, '')
       .replace(/\s+We tailor[\s\S]*$/i, '')
       .trim();
-    d = d.charAt(0).toUpperCase() + d.slice(1);
-    if (d && !d.endsWith('.')) d += '.';
-    if (d.length > 160) d = d.slice(0, 157).trimEnd() + '…';
-    return d || (title ? `${title.charAt(0).toUpperCase() + title.slice(1)} — quality-driven local service.` : '');
+    if (d) d = d.charAt(0).toUpperCase() + d.slice(1);
   }
-  if (d.length > 220) return d.slice(0, 217).trimEnd() + '…';
+  if (!d) {
+    return title
+      ? `${title.charAt(0).toUpperCase() + title.slice(1)} — quality-driven local service.`
+      : '';
+  }
+  if (countWords(d) > SERVICE_CARD_DESC_MAX_WORDS) {
+    return truncateToWords(d, SERVICE_CARD_DESC_MAX_WORDS);
+  }
   return d;
 }
 
@@ -74,6 +100,12 @@ function normalizeImageBoxCardStyle(style: Record<string, any> | undefined): Rec
     if (s.titleFontSize === '1.125rem' || !s.titleFontSize) {
       delete s.titleFontSize;
     }
+  }
+  // Legacy cards used 2-line clamp (~short blurbs). Word truncate owns length now —
+  // don't CSS-clamp away the ~90-word blurb.
+  const clamp = parseInt(String(s.descriptionLineClamp ?? ''), 10);
+  if (!Number.isFinite(clamp) || (clamp > 0 && clamp <= 3)) {
+    s.descriptionLineClamp = 0;
   }
   return s;
 }
@@ -114,43 +146,61 @@ export const ServicesPlumbing2: React.FC<Props> = ({
     String(v || '')
       .trim()
       .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/[^a-z0-9\s/-]/g, '')
       .replace(/\s+/g, '-')
       .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '');
-  const isValidLink = (v: unknown): boolean => {
+      .replace(/^\/+|\/+$/g, '');
+  const isListingOnlyPath = (v: unknown): boolean => {
+    const s = String(v || '').trim().toLowerCase().replace(/\/+$/, '');
+    return !s || s === '#' || s === '/services' || s === 'services';
+  };
+  const isValidServiceDetailLink = (v: unknown): boolean => {
     const s = String(v || '').trim();
-    return !!s && s !== '#';
+    return !!s && !isListingOnlyPath(s);
   };
   const pickPreferredLink = (...candidates: unknown[]): string => {
     for (const candidate of candidates) {
-      if (isValidLink(candidate)) return String(candidate).trim();
+      if (isValidServiceDetailLink(candidate)) return String(candidate).trim();
     }
-    return '/services';
+    return '';
   };
   const toServiceHref = (svc: any, title: string | undefined): string => {
-    const explicitLink =
-      svc?.link ||
-      svc?.href ||
-      svc?.url ||
-      svc?.path ||
-      svc?.permalink ||
-      svc?.serviceLink ||
-      svc?.service_link ||
-      svc?.serviceUrl ||
-      svc?.service_url ||
-      '';
-    if (isValidLink(explicitLink)) return String(explicitLink).trim();
+    const explicitLink = pickPreferredLink(
+      svc?.link,
+      svc?.href,
+      svc?.url,
+      svc?.path,
+      svc?.permalink,
+      svc?.serviceLink,
+      svc?.service_link,
+      svc?.serviceUrl,
+      svc?.service_url
+    );
+    if (explicitLink) return explicitLink;
 
-    const explicitSlug =
+    const serviceId = String(svc?.serviceId || svc?.service_id || '').trim();
+    if (serviceId && navServiceItems.length) {
+      const byId = navServiceItems.find(
+        (row: any) => String(row?.serviceId || '').trim() === serviceId
+      );
+      const fromNavId = pickPreferredLink(byId?.link, byId?.url, byId?.href);
+      if (fromNavId) return fromNavId;
+    }
+
+    const explicitSlug = sanitizeSlug(
       svc?.slug ||
-      svc?.serviceSlug ||
-      svc?.service_slug ||
-      svc?.serviceNameSlug ||
-      svc?.service_name_slug ||
-      '';
-    const cleanedExplicitSlug = sanitizeSlug(explicitSlug);
-    if (cleanedExplicitSlug) return `/services/${cleanedExplicitSlug}`;
+        svc?.serviceSlug ||
+        svc?.service_slug ||
+        svc?.serviceNameSlug ||
+        svc?.service_name_slug ||
+        ''
+    );
+    if (explicitSlug) {
+      // WebsitePage slug may already be a full path (e.g. services/drain-cleaning
+      // or area/services/drain-cleaning). Don't double-prefix /services/.
+      if (explicitSlug.includes('/')) return `/${explicitSlug}`;
+      return `/services/${explicitSlug}`;
+    }
 
     const normTitle = normalize(title || svc?.title || svc?.name || svc?.service_name);
     if (normTitle && navServiceItems.length) {
@@ -158,11 +208,17 @@ export const ServicesPlumbing2: React.FC<Props> = ({
         const label = normalize(row?.label || row?.name || row?.title || '');
         return label && label === normTitle;
       });
-      const fromNav = match?.link || match?.url || '';
-      if (isValidLink(fromNav)) return String(fromNav).trim();
+      const fromNav = pickPreferredLink(match?.link, match?.url, match?.href);
+      if (fromNav) return fromNav;
     }
 
-    return '/services';
+    return '';
+  };
+
+  const openServicePage = (href: string) => {
+    const target = pickPreferredLink(href);
+    if (!target || typeof window === 'undefined') return;
+    window.location.assign(target);
   };
 
   // Light-palette tokens (Services section is white-bg by default)
@@ -357,7 +413,7 @@ export const ServicesPlumbing2: React.FC<Props> = ({
       const descOut = readOnly
         ? (String(cardDesc || ec.description || ec.subText || '').trim() || cardDesc)
         : (String(ec.description || ec.subText || cardDesc || '').trim() || cardDesc);
-      const linkOut = String(ec.buttonLink || ec.link || def.link || '#').trim() || '#';
+      const linkOut = pickPreferredLink(ec.buttonLink, ec.link, def.link) || '#';
       const cardLinkOut = serviceNavMode === 'card' ? linkOut : '#';
       return {
         ...existing,
@@ -370,8 +426,10 @@ export const ServicesPlumbing2: React.FC<Props> = ({
           description: descOut,
           subText: descOut,
           link: cardLinkOut,
+          linkNewTab: false,
           buttonLink: linkOut,
           buttonText: ec.buttonText || learnMoreText,
+          buttonNewTab: false,
           showButton: serviceNavMode === 'card' ? false : (ec.showButton !== false),
         } as any,
         style: normalizeImageBoxCardStyle(existing.style as Record<string, any>),
@@ -386,11 +444,11 @@ export const ServicesPlumbing2: React.FC<Props> = ({
         description: cardDesc,
         subText: cardDesc,
         link: serviceNavMode === 'card' ? (def.link || '#') : '#',
-        linkNewTab: true,
+        linkNewTab: false,
         showButton: serviceNavMode !== 'card',
         buttonText: learnMoreText,
         buttonLink: def.link || '#',
-        buttonNewTab: true,
+        buttonNewTab: false,
       } as any,
       style: {
         backgroundColor: 'transparent',
@@ -407,7 +465,8 @@ export const ServicesPlumbing2: React.FC<Props> = ({
         titleFontWeight: '700',
         descriptionColor: textColor,
         descriptionFontSize: '0.875rem',
-        descriptionLineClamp: 2,
+        // Word truncate (90 words + "...") owns length — no CSS line clamp
+        descriptionLineClamp: 0,
         // Button as simple link — text-with-URL, accent-colored
         buttonVariant: 'link',
         buttonTextColor: accent,
@@ -467,9 +526,19 @@ export const ServicesPlumbing2: React.FC<Props> = ({
                 Close
               </button>
               <a
-                href={pickPreferredLink(svcModal.href)}
+                href={pickPreferredLink(svcModal.href) || '#'}
                 className="px-4 py-2 rounded-lg font-semibold text-sm no-underline inline-flex items-center"
                 style={{ backgroundColor: btnBg, color: btnText }}
+                onClick={(e) => {
+                  const target = pickPreferredLink(svcModal.href);
+                  if (!target) {
+                    e.preventDefault();
+                    return;
+                  }
+                  e.preventDefault();
+                  setSvcModal((m) => ({ ...m, open: false }));
+                  openServicePage(target);
+                }}
               >
                 Open service page
               </a>
@@ -532,13 +601,15 @@ export const ServicesPlumbing2: React.FC<Props> = ({
             const fullDescription = String(
               svc.fullDescription || svc.about_service_full || svc.about_service || svc.description || svc.desc || ''
             ).trim() || DEFAULT_SERVICES[i % DEFAULT_SERVICES.length].desc;
+            const serviceHref = toServiceHref(svc, svc.title || DEFAULT_SERVICES[i % DEFAULT_SERVICES.length].title);
             const def = {
               img:   svc.imageUrl   || svc.img   || DEFAULT_SERVICES[i % DEFAULT_SERVICES.length].img,
               title: svc.title      || DEFAULT_SERVICES[i % DEFAULT_SERVICES.length].title,
               desc: fullDescription,
-              link:  toServiceHref(svc, svc.title || DEFAULT_SERVICES[i % DEFAULT_SERVICES.length].title),
+              link:  serviceHref,
             };
             const cardId = svc.id || `sp2-svc-${i}`;
+            const hasDetailLink = isValidServiceDetailLink(serviceHref);
             return (
               <motion.div
                 key={cardId}
@@ -548,8 +619,8 @@ export const ServicesPlumbing2: React.FC<Props> = ({
                 transition={{ duration: 0.5, delay: i * 0.05 }}
                 className="relative group/item"
               >
-                {serviceNavMode === 'card' && readOnly && def.link && def.link !== '#' ? (
-                  <a href={def.link} className="block no-underline text-inherit" style={{ cursor: 'pointer' }}>
+                {serviceNavMode === 'card' && readOnly && hasDetailLink ? (
+                  <a href={serviceHref} className="block no-underline text-inherit" style={{ cursor: 'pointer' }}>
                     <ElementsSection
                       section={{ ...section, elements: [getServiceCardEl(i, def)] }}
                       onTextEdit={onTextEdit}
@@ -568,11 +639,15 @@ export const ServicesPlumbing2: React.FC<Props> = ({
                       if (!readOnly || serviceNavMode === 'card') return;
                       const target = e.target as HTMLElement | null;
                       if (target?.closest('a,button,input,select,textarea,[role="button"]')) return;
+                      if (hasDetailLink) {
+                        openServicePage(serviceHref);
+                        return;
+                      }
                       setSvcModal({
                         open: true,
                         title: def.title,
                         body: fullDescription,
-                        href: pickPreferredLink(def.link),
+                        href: serviceHref,
                       });
                     }}
                     style={{ cursor: readOnly && serviceNavMode !== 'card' ? 'pointer' : undefined }}
@@ -588,13 +663,17 @@ export const ServicesPlumbing2: React.FC<Props> = ({
                       buttonClass={buttonClass}
                       themeColors={themeColors}
                       publishedImageBoxDetailHandler={
-                        serviceNavMode !== 'card' && String(fullDescription).trim().length > 0
+                        // Only open the detail popup when we do NOT have a real
+                        // WebsitePage slug yet. Otherwise Learn More is a normal link.
+                        serviceNavMode !== 'card' &&
+                        !hasDetailLink &&
+                        String(fullDescription).trim().length > 0
                           ? (p) =>
                               setSvcModal({
                                 open: true,
                                 title: p.title || def.title,
                                 body: fullDescription,
-                                href: pickPreferredLink((p as any)?.href, (p as any)?.link, def.link),
+                                href: pickPreferredLink((p as any)?.href, (p as any)?.link, serviceHref),
                               })
                           : undefined
                       }

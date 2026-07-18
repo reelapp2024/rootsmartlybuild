@@ -51,9 +51,19 @@ export const GuaranteePlumbing: React.FC<Props> = ({
     (content as any).description ||
     "We stand behind every job we do. If anything goes wrong, we'll make it right — guaranteed."
   );
-  const apiStatValue = String((content as any).statValue || (content as any)?.statCard?.value || '10');
-  const apiStatLabel = String((content as any).statLabel || (content as any)?.statCard?.label || 'Year Guarantee');
-  const apiStatIcon = String((content as any).statIcon || (content as any)?.statCard?.icon || 'fa-shield-halved');
+  const apiStatValue = String(
+    (content as any).statValue ||
+      (content as any)?.statCard?.value ||
+      (!readOnly ? '10' : '')
+  ).trim();
+  const apiStatLabel = String(
+    (content as any).statLabel ||
+      (content as any)?.statCard?.label ||
+      (!readOnly ? 'Year Guarantee' : '')
+  ).trim();
+  const apiStatIcon = String(
+    (content as any).statIcon || (content as any)?.statCard?.icon || 'fa-shield-halved'
+  );
   const apiCtaText = String((content as any).ctaText || 'Book With Confidence');
   const apiCtaHref = String((content as any).ctaHref || '#');
 

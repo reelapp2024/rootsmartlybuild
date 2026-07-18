@@ -18,6 +18,28 @@ const SocialLinkSchema = new mongoose.Schema(
     { _id: false }
 );
 
+const BusinessHoursDaySchema = new mongoose.Schema(
+    {
+        day: { type: String, required: true, trim: true }, // mon–sun
+        enabled: { type: Boolean, default: false },
+        open: { type: String, default: '07:00' },
+        close: { type: String, default: '20:00' },
+    },
+    { _id: false }
+);
+
+const BusinessHoursSchema = new mongoose.Schema(
+    {
+        /** same = selected days share open/close; custom = per-day times */
+        mode: { type: String, enum: ['same', 'custom'], default: 'same' },
+        open: { type: String, default: '07:00' },
+        close: { type: String, default: '20:00' },
+        note: { type: String, required: false, trim: true, default: '' },
+        days: { type: [BusinessHoursDaySchema], default: [] },
+    },
+    { _id: false }
+);
+
 // Define the schema for AboutUs
 const AboutUsSchema = new mongoose.Schema({
     email: { type: String, required: false }, // 
@@ -26,6 +48,8 @@ const AboutUsSchema = new mongoose.Schema({
     phones: { type: [ContactItemSchema], default: [] },
     address: { type: String, required: false },
     mainLocation: { type: String, required: false },
+    /** Structured availability — drives Contact + Footer hours */
+    businessHours: { type: BusinessHoursSchema, required: false },
     /** Preset keys (facebook, instagram, …) or "custom" with optional customLabel */
     socialLinks: { type: [SocialLinkSchema], default: [] },
     projectId: {

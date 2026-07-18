@@ -897,35 +897,113 @@ async function updateExistingWebsitePage({
   return { page, slugChanged, oldSlug };
 }
 
-function buildServicePageLinkMap(websitePages = []) {
-  const byServiceId = new Map();
-  (websitePages || []).forEach((page) => {
-    if (!page?.serviceId) return;
-    const slug = normalizeSlugInput(page.slug);
-    if (!slug) return;
-    byServiceId.set(String(page.serviceId), {
-      pageId: String(page._id),
-      link: toPublicPath(slug),
-    });
-  });
-  return byServiceId;
+function normalizeScopeLocationId(locationId) {
+  const normalized =
+    locationId != null && String(locationId).trim() !== ""
+      ? String(locationId).trim()
+      : "";
+  return normalized;
 }
 
-function attachServicePageLinksToGridItems(items, websitePages = []) {
+function buildServicePageLinkMap(websitePages = []) {
+  const byServiceAndLocation = new Map();
+  (websitePages || []).forEach((page) => {
+    if (!page?.serviceId) return;
+    if (page.isPublished === false) return;
+    const pageType = String(page?.pageType || "").toLowerCase().trim();
+    // Service detail pages are pageType "service". Also accept legacy rows that
+    // carry serviceId even if pageType was left as default.
+    if (pageType === "default" && !page.serviceId) return;
+    if (pageType && pageType !== "service" && pageType !== "default") return;
+
+    const slug = normalizeSlugInput(page.slug);
+    if (!slug) return;
+    const serviceId = String(page.serviceId?._id || page.serviceId || "").trim();
+    if (!serviceId) return;
+    const locKey = normalizeScopeLocationId(
+      page.locationId?._id || page.locationId || ""
+    );
+    const entry = {
+      pageId: String(page._id),
+      link: toPublicPath(slug),
+      locationId: locKey || null,
+      slug,
+      pageType: pageType || "service",
+    };
+    const key = `${serviceId}::${locKey}`;
+    const existing = byServiceAndLocation.get(key);
+    if (!existing) {
+      byServiceAndLocation.set(key, entry);
+      return;
+    }
+    // Prefer explicit pageType=service over legacy default+serviceId rows.
+    if (pageType === "service" && existing.pageType !== "service") {
+      byServiceAndLocation.set(key, entry);
+    }
+  });
+  return byServiceAndLocation;
+}
+
+function resolveServicePageLinkForScope(serviceId, scopeLocationId, byServiceAndLocation) {
+  const sid = String(serviceId || "").trim();
+  if (!sid || !byServiceAndLocation?.size) return null;
+
+  const loc = normalizeScopeLocationId(scopeLocationId);
+  if (loc) {
+    const scoped = byServiceAndLocation.get(`${sid}::${loc}`);
+    if (scoped) return scoped;
+  }
+
+  // Home / global service page (no locationId).
+  const globalScoped = byServiceAndLocation.get(`${sid}::`);
+  if (globalScoped) return globalScoped;
+
+  // Fallback: any WebsitePage for this serviceId in the project.
+  // Service slugs live on WebsitePage (projectId + serviceId + locationId); exact
+  // location match can miss when the grid is scoped to a parent/sibling location.
+  for (const [key, value] of byServiceAndLocation.entries()) {
+    if (key === `${sid}::` || key.startsWith(`${sid}::`)) return value;
+  }
+  return null;
+}
+
+function isUsableServiceLink(value) {
+  const s = String(value || "").trim();
+  return Boolean(s) && s !== "#" && s.toLowerCase() !== "/services" && s.toLowerCase() !== "services";
+}
+
+function attachServicePageLinksToGridItems(items, websitePages = [], scopeLocationId = null) {
   if (!Array.isArray(items) || !items.length) return items;
-  const byServiceId = buildServicePageLinkMap(websitePages);
-  if (!byServiceId.size) return items;
+  const byServiceAndLocation = buildServicePageLinkMap(websitePages);
+  if (!byServiceAndLocation.size) return items;
+
+  const defaultScope = normalizeScopeLocationId(scopeLocationId);
 
   return items.map((item) => {
-    const serviceId = String(item?.serviceId || "").trim();
+    const serviceId = String(item?.serviceId?._id || item?.serviceId || "").trim();
     if (!serviceId) return item;
-    const resolved = byServiceId.get(serviceId);
-    if (!resolved) return item;
+
+    const itemScope =
+      normalizeScopeLocationId(item?.locationId?._id || item?.locationId) ||
+      defaultScope;
+    const resolved = resolveServicePageLinkForScope(
+      serviceId,
+      itemScope,
+      byServiceAndLocation
+    );
+
+    if (!resolved) {
+      return item;
+    }
+
     return {
       ...item,
       pageId: resolved.pageId,
       link: resolved.link,
       href: resolved.link,
+      locationId: resolved.locationId ?? itemScope ?? item?.locationId ?? null,
+      slug: resolved.slug || item.slug,
+      serviceId,
     };
   });
 }

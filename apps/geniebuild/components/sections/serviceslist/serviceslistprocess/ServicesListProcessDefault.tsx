@@ -156,7 +156,12 @@ export const ServicesListProcessDefault: React.FC<Props> = ({
     const id = `${section.id}-slp-title`;
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
-    const sourceText: string = (c.text || content.title || 'How Our Service Works').toString().replace(/<[^>]+>/g, '').trim();
+    const sourceText: string = (
+      (readOnly ? String(content.title || '').trim() : '') ||
+      c.text ||
+      content.title ||
+      'How Our Service Works'
+    ).toString().replace(/<[^>]+>/g, '').trim();
     const words = sourceText.split(/\s+/).filter(Boolean);
     let textBefore = '';
     let highlightedText = sourceText;

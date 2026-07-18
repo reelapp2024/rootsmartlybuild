@@ -1,20 +1,23 @@
 /**
- * Core Values Section Generator
- * Returns intro text + exactly 6 core values
+ * Core Values — About page. Titles MUST be unique per business (not a fixed 6-word list).
  */
+
+const { aboutUniquenessRules } = require("../../_shared/aboutUniquenessPrompt");
 
 module.exports = {
   id: "corevalues",
 
   schema: {
+    badgeText: "string",
+    title: "string",
     intro: "string",
     items: [
       {
         title: "string",
         iconClass: "string",
-        description: "string"
-      }
-    ]
+        description: "string",
+      },
+    ],
   },
 
   prompt(ctx) {
@@ -28,9 +31,10 @@ module.exports = {
     const locationName = location?.name || "";
     const city = location?.city || "";
     const state = location?.state || "";
+    const locationLabel = `${locationName || city || ""} ${state || ""}`.trim();
 
     return `
-You are generating an "Our Core Values" section for a professional business website.
+You are generating "Our Core Values" for the About page of "${projectName}" (${mainCategory}).
 
 Website Name: ${projectName}
 Primary Category: ${mainCategory}
@@ -38,55 +42,51 @@ Focus Keyword: ${focusKeyword}
 SEO Keywords: ${seoKeywords}
 
 Location:
-${locationName || city || ""} ${state || ""}
+${locationLabel || "service area"}
 
-Extra context:
-${JSON.stringify(extraData)}
+${aboutUniquenessRules({
+  projectName,
+  mainCategory,
+  focusKeyword,
+  seoKeywords,
+  locationLabel,
+  pageLabel: "Core Values",
+})}
 
 Return STRICT JSON ONLY:
 
 {
-  "intro": "One sentence introduction",
+  "badgeText": "2-4 words",
+  "title": "4-8 word section heading mentioning values OR ${projectName}",
+  "intro": "One sentence (18-32 words) introducing how ${projectName} works",
   "items": [
     {
-      "title": "Customer First",
+      "title": "Unique value title",
       "iconClass": "fas fa-user-check",
-      "description": "Value description"
+      "description": "Value description tied to ${mainCategory}"
     }
   ]
 }
 
-Rules (VERY IMPORTANT):
+Rules:
 
-INTRO:
-- Must be exactly ONE sentence
-- Professional and SEO optimized
+HEADER:
+- badgeText: 2-4 words
+- title: 4-8 words, unique (avoid always "Our Core Values")
+- intro: exactly ONE sentence, 18–32 words, name ${projectName} or ${focusKeyword || mainCategory} once
 
 ITEMS:
 - Generate EXACTLY 6 items
-- Titles MUST be exactly:
-  1. Customer First
-  2. Professional Team
-  3. Eco-Friendly
-  4. Quality Standards
-  5. Reliability
-  6. Trust & Safety
-
-- Each description must be 20–25 words
-- iconClass must be valid "fas fa-..."
-- Each icon must be DIFFERENT
-- Descriptions must be unique
-- Content must relate to ${mainCategory}
+- Titles MUST be UNIQUE and ORIGINAL for this business (2–4 words each)
+- Do NOT use this fixed list as titles: "Customer First", "Professional Team", "Eco-Friendly", "Quality Standards", "Reliability", "Trust & Safety" — invent better, specific titles
+- Themes may cover service, craftsmanship, honesty, safety, community, accountability — but word them freshly for ${projectName}
+- Each description 22–36 words, UNIQUE, related to ${mainCategory} in ${locationLabel || "the area"}
+- iconClass valid "fas fa-..." and every icon DIFFERENT
 
 GLOBAL:
-- Subtle location relevance allowed
-- Do NOT include phone numbers
-- Do NOT include emails
-- Do NOT include addresses
-- Do NOT mention contacting or calling
-- No markdown
-- No explanations
-- Output ONLY valid JSON object
+- No phone/email/address
+- No contact CTAs
+- Output ONLY valid JSON
 `;
-  }
+  },
 };

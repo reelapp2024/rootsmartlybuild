@@ -154,6 +154,7 @@ router.post("/footer/activate/:id", authentication, AdminController.footerActiva
 
 // Create Default Header/Footer
 router.post("/header-footer/create-default", authentication, AdminController.createDefaultHeaderFooter);
+router.post("/header-footer/rebuild-menus", authentication, AdminController.rebuildHeaderFooterMenus);
 
 // Update menu URLs when page slug changes
 router.post("/header-footer/update-menu-urls", authentication, AdminController.updateMenuUrlsForPage);
@@ -284,6 +285,11 @@ router.post("/addTheme", AdminController.addTheme);
 router.post("/fetchThemeById", AdminController.fetchThemeById);
 
 router.post("/getUserProjects", authentication, AdminController.getUserProjects);
+router.post(
+  "/getProjectsSectionGenerationProgress",
+  authentication,
+  AdminController.getProjectsSectionGenerationProgress
+);
 
 // 2. Update Country Route
 router.post("/updateCountryInProject", ProjectControoler.updateCountryInProject);
@@ -397,6 +403,9 @@ router.get("/getBlog", authentication, BlogsController.get_blog);
 
 // List all blogs (with filters/pagination)
 router.get("/listBlogs", authentication, BlogsController.list_blogs);
+// Public published blogs for live site / GenieBuild blogs page (paginated)
+router.get("/listPublishedBlogs", BlogsController.list_published_blogs);
+router.post("/listPublishedBlogs", BlogsController.list_published_blogs);
 router.post("/related_blogs", BlogsController.related_blogs);
 
 // Like & Unlike

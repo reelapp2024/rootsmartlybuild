@@ -1,3 +1,6 @@
+import { formatBusinessHoursText } from './businessHours';
+import type { BusinessHours } from './businessHours';
+
 export type ContactSource = 'about_primary' | 'about_pick' | 'manual';
 
 export const DEFAULT_CONTACT_SOURCE: ContactSource = 'about_primary';
@@ -8,6 +11,9 @@ export type AboutUsContact = {
   phones?: AboutUsContactRow[];
   email?: string;
   emails?: AboutUsContactRow[];
+  address?: string;
+  mainLocation?: string;
+  businessHours?: BusinessHours | null;
 };
 
 export function telHref(value = ''): string {
@@ -263,6 +269,38 @@ export function applySectionContactForDisplay<T extends { type?: string; content
   }
   content = resolveSectionLinkRules(content, aboutUs);
 
+  // About / contact CTAs always bind phone display fields from AboutUs primary
+  if (type === 'aboutcta' || type === 'contactcta' || type === 'cta') {
+    if (normalizeSource(String(content.phoneSource || DEFAULT_CONTACT_SOURCE)) !== 'manual') {
+      content.phoneSource = content.phoneSource || DEFAULT_CONTACT_SOURCE;
+      content = resolveSectionPhoneFields(content, aboutUs);
+      if (content.phoneText) {
+        content.phoneNumber = content.phoneText;
+        content.contactText = content.contactText || content.phoneText;
+        content.contactHref = content.phoneLink || content.contactHref;
+      }
+    }
+  }
+
+  if (type === 'contactinfo') {
+    content = enrichContactInfoItemsForDisplay(content, aboutUs);
+  }
+
+  if (type === 'footer' && aboutUs.businessHours) {
+    const hoursLine = formatBusinessHoursText(aboutUs.businessHours);
+    if (hoursLine) {
+      content.hoursText = hoursLine;
+      const note = String(aboutUs.businessHours.note || '').trim();
+      if (note) content.hoursSub = note;
+      const fc = (content.footerContact || {}) as Record<string, unknown>;
+      content.footerContact = {
+        ...fc,
+        hoursText: hoursLine,
+        ...(note ? { hoursSub: note } : {}),
+      };
+    }
+  }
+
   let elements = (section as { elements?: Array<{ id?: string; content?: Record<string, unknown> }> }).elements;
   if (Array.isArray(elements)) {
     elements = elements.map((el) => {
@@ -273,4 +311,68 @@ export function applySectionContactForDisplay<T extends { type?: string; content
   }
 
   return { ...section, content, elements } as T;
+}
+
+function joinValueAndHelper(value: string, helper: string) {
+  const v = String(value || '').trim();
+  const h = String(helper || '').trim();
+  if (v && h) return `${v} — ${h}`;
+  return v || h || '';
+}
+
+/** Rebuild contactinfo card descriptions from live AboutUs values. */
+function enrichContactInfoItemsForDisplay(
+  content: Record<string, unknown>,
+  aboutUs: AboutUsContact
+) {
+  const phone = resolvePhone({ source: DEFAULT_CONTACT_SOURCE }, aboutUs).text;
+  const email = resolveEmail({ source: DEFAULT_CONTACT_SOURCE }, aboutUs).text;
+  const address = String(aboutUs.address || aboutUs.mainLocation || '').trim();
+  const hoursLine = formatBusinessHoursText(aboutUs.businessHours || null);
+
+  const items = Array.isArray(content.items) ? (content.items as any[]) : [];
+  if (!items.length) {
+    return {
+      ...content,
+      phoneText: phone,
+      phoneNumber: phone,
+      emailText: email,
+      addressText: address,
+      hoursText: hoursLine,
+    };
+  }
+
+  const nextItems = items.map((it) => {
+    const kind = String(it?.kind || '').toLowerCase();
+    const helper = String(it?.helperText || '').trim();
+    if (kind === 'phone' && phone) {
+      return { ...it, value: phone, description: joinValueAndHelper(phone, helper) };
+    }
+    if (kind === 'email' && email) {
+      return { ...it, value: email, description: joinValueAndHelper(email, helper) };
+    }
+    if (kind === 'address' && address) {
+      return { ...it, value: address, description: joinValueAndHelper(address, helper) };
+    }
+    if (kind === 'hours' && hoursLine) {
+      const note = String(aboutUs.businessHours?.note || '').trim();
+      return {
+        ...it,
+        value: hoursLine,
+        helperText: note,
+        description: hoursLine,
+      };
+    }
+    return it;
+  });
+
+  return {
+    ...content,
+    items: nextItems,
+    phoneText: phone,
+    phoneNumber: phone,
+    emailText: email,
+    addressText: address,
+    hoursText: hoursLine,
+  };
 }

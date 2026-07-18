@@ -184,6 +184,11 @@ const userProjectsSchema = new mongoose.Schema(
       enum: [0, 1, 2, 3], // 0 - Deactivate, 1 - processing,2-completed, 3 - Maintenance
       default: 0,
     },
+    /** Live/last section AI generation progress (admin Project List). */
+    contentGeneration: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     wantImages: {
       type: Number,
       enum: [0, 1], //  1 - yes, 0 - no

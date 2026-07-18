@@ -59,6 +59,7 @@ interface SectionRouterProps {
   themeColors?: any;
   sitePathname?: string;
   sitePageType?: string;
+  projectId?: string;
 }
 
 /**
@@ -115,10 +116,22 @@ export const SectionRouter: React.FC<SectionRouterProps> = (props) => {
   };
   const normalizeSectionType = (value: string) => {
     const raw = String(value || '').toLowerCase().trim();
+    // Legacy location* twins → homepage (area detail = home). Listing stays locationmap/sublocations.
     const aliases: Record<string, string> = {
       whychooseus: 'why-choose-us',
       servicesgrid: 'services',
       navbar: 'header',
+      locationhero: 'hero',
+      locationabout: 'about',
+      locationservices: 'services',
+      locationwhychoose: 'why-choose-us',
+      locationprocess: 'process',
+      locationcta: 'cta',
+      locationguarantee: 'guarantee',
+      locationtestimonials: 'testimonials',
+      locationareas: 'areas',
+      locationfaq: 'faq',
+      locationpromise: 'promise',
     };
     return aliases[raw] || raw;
   };
@@ -194,6 +207,7 @@ export const SectionRouter: React.FC<SectionRouterProps> = (props) => {
     onUpload: props.onUpload,
     sitePathname: props.sitePathname,
     sitePageType: props.sitePageType,
+    projectId: props.projectId,
   };
 
   if (!LazyComp) {

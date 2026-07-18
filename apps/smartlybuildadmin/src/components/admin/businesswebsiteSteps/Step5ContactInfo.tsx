@@ -4,6 +4,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, Phone, Plus, Share2, X } from "lucide-react";
+import { BusinessHoursEditor } from "./BusinessHoursEditor";
+import type { BusinessHours } from "./businessHoursUtils";
 
 type Step5ContactInfoProps = {
   title?: string;
@@ -19,11 +21,13 @@ type Step5ContactInfoProps = {
   setPresetSocialUrls: (value: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
   customSocialLinks: Array<{ id: string; label: string; url: string }>;
   setCustomSocialLinks: (value: Array<{ id: string; label: string; url: string }> | ((prev: Array<{ id: string; label: string; url: string }>) => Array<{ id: string; label: string; url: string }>)) => void;
+  businessHours: BusinessHours;
+  setBusinessHours: (value: BusinessHours | ((prev: BusinessHours) => BusinessHours)) => void;
 };
 
 export function Step5ContactInfo({
   title = "Step 5: Contact Information",
-  description = "Enter contact methods. Social links are optional.",
+  description = "Enter contact methods, availability, and optional social links.",
   emails,
   phones,
   addContactField,
@@ -35,6 +39,8 @@ export function Step5ContactInfo({
   setPresetSocialUrls,
   customSocialLinks,
   setCustomSocialLinks,
+  businessHours,
+  setBusinessHours,
 }: Step5ContactInfoProps) {
   return (
     <Card>
@@ -115,6 +121,8 @@ export function Step5ContactInfo({
           ))}
         </div>
 
+        <BusinessHoursEditor value={businessHours} onChange={setBusinessHours} />
+
         <div className="space-y-4 pt-2 border-t">
           <div className="flex items-center gap-2">
             <Share2 className="h-4 w-4 text-gray-500" />
@@ -158,60 +166,44 @@ export function Step5ContactInfo({
                 }
               >
                 <Plus className="h-4 w-4 mr-1" />
-                Add custom platform
+                Add custom
               </Button>
             </div>
-            {customSocialLinks.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No custom links yet. Use &quot;Add custom platform&quot; for Discord, Yelp, GitHub, a podcast, or any other URL.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {customSocialLinks.map((row, index) => (
-                  <div
-                    key={row.id}
-                    className="grid grid-cols-1 gap-2 sm:grid-cols-12 sm:items-end rounded-lg border bg-muted/30 p-3"
-                  >
-                    <div className="sm:col-span-4 space-y-1.5">
-                      <Label className="text-xs">Platform / label</Label>
+            {customSocialLinks.length > 0 && (
+              <div className="space-y-2">
+                {customSocialLinks.map((row) => (
+                  <div key={row.id} className="grid grid-cols-12 gap-2 items-center">
+                    <div className="col-span-4">
                       <Input
-                        placeholder="e.g., Discord, Yelp, Blog"
+                        placeholder="Platform name"
                         value={row.label}
                         onChange={(e) =>
                           setCustomSocialLinks((prev) =>
-                            prev.map((r) =>
-                              r.id === row.id ? { ...r, label: e.target.value } : r
-                            )
+                            prev.map((r) => (r.id === row.id ? { ...r, label: e.target.value } : r))
                           )
                         }
                       />
                     </div>
-                    <div className="sm:col-span-7 space-y-1.5">
-                      <Label className="text-xs">URL</Label>
+                    <div className="col-span-7">
                       <Input
                         type="url"
-                        inputMode="url"
                         placeholder="https://..."
                         value={row.url}
                         onChange={(e) =>
                           setCustomSocialLinks((prev) =>
-                            prev.map((r) =>
-                              r.id === row.id ? { ...r, url: e.target.value } : r
-                            )
+                            prev.map((r) => (r.id === row.id ? { ...r, url: e.target.value } : r))
                           )
                         }
                       />
                     </div>
-                    <div className="sm:col-span-1 flex sm:justify-end pb-0.5">
+                    <div className="col-span-1 flex justify-end">
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="text-gray-500 hover:text-red-600"
                         onClick={() =>
                           setCustomSocialLinks((prev) => prev.filter((r) => r.id !== row.id))
                         }
-                        aria-label={`Remove custom link ${index + 1}`}
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -226,4 +218,3 @@ export function Step5ContactInfo({
     </Card>
   );
 }
-

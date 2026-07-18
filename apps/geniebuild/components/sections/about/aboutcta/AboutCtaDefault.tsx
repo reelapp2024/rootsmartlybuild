@@ -62,11 +62,43 @@ export const AboutCtaDefault: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const phoneEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-act-phone`) || {
-    id: `${section.id}-act-phone`, type: 'heading',
-    content: { text: (content as any).phoneNumber || '(555) 123-4567', htmlTag: 'div' as any },
-    style: { color: accent, fontWeight: '900', fontSize: 'clamp(1.75rem, 5vw, 3rem)', letterSpacing: '-0.02em', textAlign: 'center' as any },
-  };
+  const livePhone = String(
+    (content as any).phoneNumber ||
+      (content as any).phoneText ||
+      (content as any).contactText ||
+      ''
+  ).trim();
+  const livePhoneLink = String(
+    (content as any).phoneLink || (content as any).phoneHref || (content as any).contactHref || ''
+  ).trim();
+
+  const phoneEl: WebsiteElement = (() => {
+    const id = `${section.id}-act-phone`;
+    const existing = section.elements?.find(e => e.id === id);
+    const base: WebsiteElement = existing || {
+      id, type: 'heading',
+      content: {
+        text: livePhone,
+        htmlTag: 'div' as any,
+        link: livePhoneLink,
+        contactKind: 'phone',
+        contactSource: 'about_primary',
+      },
+      style: { color: accent, fontWeight: '900', fontSize: 'clamp(1.75rem, 5vw, 3rem)', letterSpacing: '-0.02em', textAlign: 'center' as any },
+    };
+    // Always prefer live AboutUs primary phone (DB) over saved element text
+    return {
+      ...base,
+      content: {
+        ...(base.content || {}),
+        text: livePhone || (readOnly ? '' : String((base.content as any)?.text || '').trim()),
+        htmlTag: 'div' as any,
+        link: livePhoneLink || (base.content as any)?.link || '',
+        contactKind: 'phone',
+        contactSource: (base.content as any)?.contactSource || 'about_primary',
+      },
+    };
+  })();
 
   const phoneSubText = getCtaPhoneSubText(content as Record<string, unknown>);
   const existingPhoneSub = section.elements?.find(e => e.id === `${section.id}-act-phone-sub`);

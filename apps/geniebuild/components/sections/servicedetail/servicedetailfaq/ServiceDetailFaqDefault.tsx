@@ -139,47 +139,22 @@ export const ServiceDetailFaqDefault: React.FC<Props> = ({
     content: { ...(descEl.content || {}), text: apiDescriptionText },
   };
 
-  const isPlaceholderFaqItems = (rows: any[]) => {
-    if (!Array.isArray(rows) || rows.length === 0) return false;
-    const first = String(rows[0]?.question || rows[0]?.title || '').trim();
-    return DEFAULT_FAQS.some((d) => d.title === first);
-  };
 
-  const rawFaqItems = Array.isArray(content.items) && content.items.length > 0
-    ? content.items
-    : readOnly
-      ? []
-      : (() => {
-          const accordionEl = section.elements?.find(
-            (e) => e.type === 'accordion' && String(e.id || '').includes('-sdf-accordion')
-          );
-          const fromEl = (accordionEl?.content as any)?.items;
-          if (!Array.isArray(fromEl) || fromEl.length === 0) return [];
-          if (isPlaceholderFaqItems(fromEl)) return [];
-          return fromEl;
-        })();
+  // Items driven by content.items — same pattern as testimonials/reviews.
+  // When empty, fall back to DEFAULT_FAQS so demo/readOnly pages are never blank.
+  const sourceItems: any[] =
+    Array.isArray(content.items) && content.items.length > 0 ? content.items : [];
 
-  const items = rawFaqItems.length > 0
-    ? rawFaqItems.map((it: any, i: number) => {
-        const title = String(it.question || it.title || '').trim();
-        const body = String(it.answer || it.description || it.content || '').trim();
-        if (!readOnly && (!title || !body)) {
-          const fallback = DEFAULT_FAQS[i % DEFAULT_FAQS.length];
-          return {
-            title: title || fallback.title,
-            content: body || fallback.content,
-            openByDefault: !!it.openByDefault,
-          };
-        }
-        return { title, content: body, openByDefault: !!it.openByDefault };
-      }).filter((it) => it.title && it.content)
-    : readOnly
-      ? []
-      : DEFAULT_FAQS.map((f, i) => ({ ...f, openByDefault: i === 0 }));
-
-  if (readOnly && items.length === 0) {
-    return null;
-  }
+  const items = (sourceItems.length > 0 ? sourceItems : DEFAULT_FAQS).map((it: any, i: number) => {
+    const fallback = DEFAULT_FAQS[i % DEFAULT_FAQS.length];
+    const title = String(it.question || it.title || '').trim() || fallback.title;
+    const body = String(it.answer || it.description || it.content || '').trim() || fallback.content;
+    return {
+      title,
+      content: body,
+      openByDefault: Boolean(it.openByDefault) || (sourceItems.length === 0 && i === 0),
+    };
+  }).filter((it: any) => it.title && it.content);
 
   const savedAccordion = section.elements?.find(e => e.id === `${section.id}-sdf-accordion`);
   const accordionDefaultStyle: Record<string, any> = {

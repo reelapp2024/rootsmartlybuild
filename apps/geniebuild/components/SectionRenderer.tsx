@@ -28,6 +28,8 @@ interface SectionRendererProps {
   readOnly?: boolean;
   sitePathname?: string;
   sitePageType?: string;
+  /** Live site / preview project id (DynamicForm + AboutUs). */
+  projectId?: string;
   /** When true, draw a persistent subtle outline around every section
    *  (not just hovered/selected) so users can see the boundaries at a
    *  glance. Toggleable from Global Settings. */
@@ -213,6 +215,7 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
   readOnly = false,
   sitePathname,
   sitePageType,
+  projectId,
   showSectionOutlines = false,
   onClick,
   onDelete,
@@ -1069,6 +1072,7 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
         readOnly={readOnly}
         sitePathname={sitePathname}
         sitePageType={sitePageType}
+        projectId={projectId}
       />
     );
   };

@@ -14,12 +14,16 @@ const AboutUsContactContext = createContext<Ctx>({
   refresh: async () => {},
 });
 
-export const AboutUsContactProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AboutUsContactProvider: React.FC<{
+  children: React.ReactNode;
+  /** Live site / explicit project (falls back to ?projectId= URL). */
+  projectId?: string | null;
+}> = ({ children, projectId: projectIdProp }) => {
   const [aboutUs, setAboutUs] = useState<AboutUsContact | null>(null);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    const projectId = getProjectIdFromUrl();
+    const projectId = String(projectIdProp || getProjectIdFromUrl() || '').trim();
     if (!projectId) {
       setAboutUs(null);
       return;
@@ -30,7 +34,7 @@ export const AboutUsContactProvider: React.FC<{ children: React.ReactNode }> = (
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectIdProp]);
 
   useEffect(() => {
     refresh();

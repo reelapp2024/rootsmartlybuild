@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { WebsiteData, Section, SectionType, WebsiteElement, ElementType, SEOMetadata } from './types';
 import { DEFAULT_TYPOGRAPHY, INITIAL_TEMPLATE, SECTION_TEMPLATES, PRESET_THEMES, ELEMENT_DEFAULTS } from './constants';
-import { getStandaloneInitialWebsiteData, isLocalServiceDemoPath, isLocalAboutDemoPath, isLocalServiceDetailDemoPath, isLocalServicesListDemoPath, isLocalContactDemoPath, isLocalBlogsDemoPath, isLocalBlogDetailDemoPath, isLocalLocationDemoPath, getLocalLegalDemoTitle, buildLocalServiceDemoWebsiteData, buildLocalAboutDemoWebsiteData, buildLocalServiceDetailDemoWebsiteData, buildLocalServicesListDemoWebsiteData, buildLocalContactDemoWebsiteData, buildLocalBlogsDemoWebsiteData, buildLocalBlogDetailDemoWebsiteData, buildLocalLegalDemoWebsiteData, buildLocalLocationDemoWebsiteData } from './localServiceDemo';
+import { getStandaloneInitialWebsiteData, isLocalServiceDemoPath, isLocalAboutDemoPath, isLocalServiceDetailDemoPath, isLocalServicesListDemoPath, isLocalContactDemoPath, isLocalBlogsDemoPath, isLocalBlogDetailDemoPath, isLocalLocationDemoPath, isLocalAreasListDemoPath, getLocalLegalDemoTitle, resolveDemoWebsiteDataByPath } from './localServiceDemo';
 import { geminiService } from './services/geminiService';
 import { API_BASE_URL, MEDIA_BASE_URL, isValidHttpUrl, toAbsoluteMediaUrl } from './config';
 import SectionRenderer from './components/SectionRenderer';
@@ -149,6 +149,7 @@ const AppContent: React.FC = () => {
       if (isLocalAboutDemoPath(p)) return 'about';
       if (isLocalContactDemoPath(p)) return 'contact';
       if (legalTitle) return `legal:${legalTitle}`;
+      if (isLocalAreasListDemoPath(p)) return 'areas';
       if (isLocalLocationDemoPath(p)) return 'location';
       if (isLocalBlogDetailDemoPath(p)) return 'blogdetail';
       if (isLocalBlogsDemoPath(p)) return 'blogs';
@@ -163,18 +164,7 @@ const AppContent: React.FC = () => {
       const mode = resolveMode();
       if (standaloneDemoModeRef.current === mode) return;
       standaloneDemoModeRef.current = mode;
-      resetSiteDataHistory(
-        mode === 'service' ? buildLocalServiceDemoWebsiteData()
-          : mode === 'servicedetail' ? buildLocalServiceDetailDemoWebsiteData()
-          : mode === 'serviceslist' ? buildLocalServicesListDemoWebsiteData()
-          : mode === 'about' ? buildLocalAboutDemoWebsiteData()
-          : mode === 'contact' ? buildLocalContactDemoWebsiteData()
-          : mode === 'blogs' ? buildLocalBlogsDemoWebsiteData()
-          : mode === 'blogdetail' ? buildLocalBlogDetailDemoWebsiteData()
-          : mode === 'location' ? buildLocalLocationDemoWebsiteData()
-          : mode.startsWith('legal:') ? buildLocalLegalDemoWebsiteData(mode.slice('legal:'.length))
-          : INITIAL_TEMPLATE
-      );
+      resetSiteDataHistory(resolveDemoWebsiteDataByPath(window.location.pathname));
     };
     window.addEventListener('popstate', sync);
     return () => window.removeEventListener('popstate', sync);

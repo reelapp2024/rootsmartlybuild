@@ -1,24 +1,5 @@
 import axios from 'axios';
-
-/**
- * Prefer explicit NEXT_PUBLIC_SITENEXTJS_API_URL; otherwise derive from NEXT_PUBLIC_API_URL
- * (same host as admin → `/sitenextjs/v1`) so local GenieBuild saves and SiteNextJS reads one DB.
- */
-function resolveSiteNextJsApiUrl(): string {
-  const explicit = (process.env.NEXT_PUBLIC_SITENEXTJS_API_URL || '').trim();
-  if (explicit) return explicit;
-  const adminUrl = (process.env.NEXT_PUBLIC_API_URL || '').trim();
-  if (adminUrl) {
-    try {
-      const normalized = adminUrl.replace(/\/+$/, '');
-      const u = new URL(normalized.includes('://') ? normalized : `https://${normalized}`);
-      return `${u.origin}/sitenextjs/v1`;
-    } catch {
-      /* use default below */
-    }
-  }
-  return 'https://apis.smartlybuild.dev/sitenextjs/v1';
-}
+import { resolveSiteNextJsApiUrl } from './resolveSiteNextApiUrl';
 
 const siteNextJsApiUrl = resolveSiteNextJsApiUrl();
 

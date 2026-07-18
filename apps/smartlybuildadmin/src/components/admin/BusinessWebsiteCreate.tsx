@@ -26,6 +26,10 @@ import { LocalAreaGenerateDialog } from "./businesswebsiteSteps/LocalAreaGenerat
 import { DesignGenerationDialog } from "./businesswebsiteSteps/DesignGenerationDialog";
 import { WizardProgressHeader, type WebsiteWizardVariant } from "./businesswebsiteSteps/WizardProgressHeader";
 import {
+  defaultBusinessHours,
+  normalizeBusinessHours,
+} from "./businesswebsiteSteps/businessHoursUtils";
+import {
   BulkGeoLocationPanel,
   type BulkGeoLocationPanelHandle,
 } from "./bulkwebsiteSteps/BulkGeoLocationPanel";
@@ -215,6 +219,24 @@ async function ensureDefaultHeaderFooterForProject(projectId: string) {
   }
 }
 
+/** After pages are upserted — fill header with all selected page links (About, Services, Areas, Blog, Contact…). */
+async function rebuildHeaderFooterMenusForProject(projectId: string) {
+  const token = localStorage.getItem("token");
+  if (!token || !projectId) return;
+  try {
+    await http.post(
+      "/header-footer/rebuild-menus",
+      { projectId, syncSections: true },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+  } catch (e: any) {
+    console.warn(
+      "[rebuildHeaderFooterMenusForProject] skipped:",
+      e?.response?.data?.message || e?.message || e
+    );
+  }
+}
+
 export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteCreateProps) {
   const navigate = useNavigate();
   const storagePrefix = wizardStoragePrefix(variant);
@@ -316,8 +338,12 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
   }
   const [emails, setEmails] = useState<ContactValue[]>([{ value: "", is_primary: true }]);
   const [phones, setPhones] = useState<ContactValue[]>([{ value: "", is_primary: true }]);
+  const [businessHours, setBusinessHours] = useState(() => defaultBusinessHours());
   const [lastSavedEmails, setLastSavedEmails] = useState("");
   const [lastSavedPhones, setLastSavedPhones] = useState("");
+  const [lastSavedBusinessHours, setLastSavedBusinessHours] = useState(() =>
+    JSON.stringify(defaultBusinessHours())
+  );
   const [presetSocialUrls, setPresetSocialUrls] = useState<Record<SocialPresetKey, string>>(emptyPresetSocialUrls);
   const [customSocialLinks, setCustomSocialLinks] = useState<CustomSocialLinkRow[]>([]);
   const [lastSavedSocialLinks, setLastSavedSocialLinks] = useState(() =>
@@ -360,10 +386,12 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
   /**
    * Pages to persist as WebsitePage rows.
    *
-   * Phase 1 requirement: save ONLY user-selected pages (including the single Service page)
-   * so the "service" page can store its selected sections + per-location toggle.
+   * - Include Service + Blog Article templates (they store section blueprints).
+   * - Exclude Area Detail (`location`): landings are `location-{id}` pages that
+   *   reuse Home design; publishing a fake `/location` page breaks Areas nav.
    */
-  const getUpsertablePages = (pages: PageOption[] = selectedPages) => pages;
+  const getUpsertablePages = (pages: PageOption[] = selectedPages) =>
+    pages.filter((p) => p.id !== "location");
 
   // Keep pageSections keys in sync so a selected page can legally have zero sections.
   useEffect(() => {
@@ -379,6 +407,69 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
       return changed ? next : prev;
     });
   }, [selectedPages]);
+
+  // Service template always includes About Service (required for grids + service pages).
+  useEffect(() => {
+    const serviceSelected = selectedPages.some((p) => p.id === "service");
+    if (!serviceSelected) return;
+    setPageSections((prev) => {
+      const list = Array.isArray(prev.service) ? [...prev.service] : [];
+      const hasAbout = list.some(
+        (s) => String(s?.id || "").toLowerCase() === "servicedetailabout"
+      );
+      if (hasAbout) return prev;
+      const aboutOpt =
+        DEFAULT_PAGES.find((p) => p.id === "service")?.sections.find(
+          (s) => s.id === "servicedetailabout"
+        ) || {
+          id: "servicedetailabout",
+          name: "About Service",
+          description: "Detailed service description (required)",
+          defaultSelected: true,
+        };
+      return {
+        ...prev,
+        service: sortSectionObjectsByCanonicalOrder(
+          "service",
+          [...list, aboutOpt],
+          (s: any) => s.id
+        ),
+      };
+    });
+  }, [selectedPages]);
+
+  // Location pages use the exact same sections as Home — keep selection in sync.
+  useEffect(() => {
+    const locationSelected = selectedPages.some((p) => p.id === "location");
+    if (!locationSelected) return;
+    setPageSections((prev) => {
+      const homeSecs = Array.isArray(prev.home) ? prev.home : [];
+      const locSecs = Array.isArray(prev.location) ? prev.location : [];
+      const same =
+        homeSecs.length === locSecs.length &&
+        homeSecs.every(
+          (s, i) => String(s?.id || "") === String(locSecs[i]?.id || "")
+        );
+      if (same) return prev;
+      return { ...prev, location: homeSecs.map((s) => ({ ...s })) };
+    });
+  }, [selectedPages, pageSections.home]);
+
+  // Location landings share Home's location-specific content flag.
+  // Selecting Area Detail means per-location content must be on for Home
+  // (landings reuse Home design + location-scoped SectionContent).
+  useEffect(() => {
+    const locationSelected = selectedPages.some((p) => p.id === "location");
+    const homeSelected = selectedPages.some((p) => p.id === "home");
+    if (!locationSelected && !homeSelected) return;
+    setPerLocationByPage((prev) => {
+      if (locationSelected) {
+        if (prev.home && prev.location) return prev;
+        return { ...prev, home: true, location: true };
+      }
+      return prev;
+    });
+  }, [selectedPages, perLocationByPage.home, perLocationByPage.location]);
   const [generatingDesign, setGeneratingDesign] = useState(false);
   const [showDesignDialog, setShowDesignDialog] = useState(false);
   const [designReady, setDesignReady] = useState(false);
@@ -891,6 +982,9 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
     setPhones(normalizedPhones);
     setLastSavedEmails(JSON.stringify(normalizedEmails));
     setLastSavedPhones(JSON.stringify(normalizedPhones));
+    const hours = normalizeBusinessHours(aboutUsData.businessHours);
+    setBusinessHours(hours);
+    setLastSavedBusinessHours(JSON.stringify(hours));
     const { presetUrls, customRows } = parseSocialLinksFromAboutUs(aboutUsData.socialLinks);
     setPresetSocialUrls(presetUrls);
     setCustomSocialLinks(customRows);
@@ -1329,17 +1423,50 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
       const newSections = { ...pageSections };
       delete newSections[pageId];
       setPageSections(newSections);
-    } else {
-      // Add page with default sections
-      setSelectedPages([...selectedPages, page]);
+    } else if (pageId === "location") {
+      // Location landings reuse Home layout — ensure Home is selected and copy its sections.
+      const homePage = DEFAULT_PAGES.find((p) => p.id === "home");
+      const homeAlready = selectedPages.some((p) => p.id === "home");
+      const homeSecs =
+        (Array.isArray(pageSections.home) && pageSections.home.length
+          ? pageSections.home
+          : homePage?.sections.filter((s) => s.defaultSelected)) ||
+        page.sections.filter((s) => s.defaultSelected);
+      const nextPages = [...selectedPages];
+      if (!homeAlready && homePage) nextPages.push(homePage);
+      nextPages.push(page);
+      const homePerLoc = Boolean(
+        perLocationByPage.home ?? homePage?.defaultPerLocationContent ?? true
+      );
+      setSelectedPages(nextPages);
       setPageSections({
         ...pageSections,
-        [pageId]: page.sections.filter(s => s.defaultSelected),
+        home: homeSecs.map((s) => ({ ...s })),
+        location: homeSecs.map((s) => ({ ...s })),
       });
       setPerLocationByPage({
         ...perLocationByPage,
-        [pageId]: Boolean(page.defaultPerLocationContent),
+        home: homePerLoc,
+        location: homePerLoc,
       });
+    } else {
+      // Add page with default sections
+      const nextSections = {
+        ...pageSections,
+        [pageId]: page.sections.filter((s) => s.defaultSelected),
+      };
+      const nextPerLoc = {
+        ...perLocationByPage,
+        [pageId]: Boolean(page.defaultPerLocationContent),
+      };
+      // Keep Location mirror when Home sections are (re)added
+      if (pageId === "home" && selectedPages.some((p) => p.id === "location")) {
+        nextSections.location = nextSections.home.map((s) => ({ ...s }));
+        nextPerLoc.location = nextPerLoc.home;
+      }
+      setSelectedPages([...selectedPages, page]);
+      setPageSections(nextSections);
+      setPerLocationByPage(nextPerLoc);
     }
   };
 
@@ -1388,8 +1515,11 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
       // Save theme first so ThemeSetting always matches the user's selection
       await saveThemeSettings(currentProjectId);
 
-      // Phase 1: Save GenieBuild design structure (styles + variants)
+      // Phase 1: Save GenieBuild design structure (styles + variants) — creates WebsitePage rows
       await saveDesignStructure();
+
+      // Phase 1.25: Rebuild header/footer nav from selected pages (About, Services, Areas, Blog, Contact…)
+      await rebuildHeaderFooterMenusForProject(currentProjectId);
 
       // Phase 1.5: Queue AI for selected sections (design + service pages via queue pass 2)
       try {
@@ -1450,11 +1580,20 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
         .filter((id) => !SITE_WIDE_HEADER_FOOTER_SECTION_IDS.has(id))
     );
 
-    // Home services grid needs per-location aboutservice bundles on each service page.
+    // Home services grid needs per-location about bundles on each service page
+    // (GenieBuild servicedetailabout dual-writes aboutservice for Multicolor grids).
     const homeSectionIds = (pageSections.home || []).map((s) =>
       String(s?.id || "").toLowerCase()
     );
     if (homeSectionIds.includes("servicesgrid") || homeSectionIds.includes("services")) {
+      selectedSectionIdSet.add("servicedetailabout");
+      selectedSectionIdSet.add("aboutservice");
+    }
+    const servicesListIds = (pageSections.services || []).map((s) =>
+      String(s?.id || "").toLowerCase()
+    );
+    if (servicesListIds.includes("serviceslistgrid")) {
+      selectedSectionIdSet.add("servicedetailabout");
       selectedSectionIdSet.add("aboutservice");
     }
 
@@ -1467,7 +1606,21 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
 
     const perLocationContentByPage: Record<string, boolean> = {};
     for (const page of selectedPages) {
-      perLocationContentByPage[page.id] = Boolean(perLocationByPage[page.id]);
+      if (page.id === "location") {
+        perLocationContentByPage.location = Boolean(
+          perLocationByPage.home ?? perLocationByPage.location
+        );
+      } else {
+        perLocationContentByPage[page.id] = Boolean(perLocationByPage[page.id]);
+      }
+    }
+    if (
+      selectedPages.some((p) => p.id === "location") &&
+      perLocationContentByPage.home === undefined
+    ) {
+      perLocationContentByPage.home = Boolean(
+        perLocationByPage.home ?? perLocationByPage.location
+      );
     }
 
     await http.post(
@@ -1937,12 +2090,15 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
       const primaryPhone = normalizedPhones.find((item) => item.is_primary)?.value || normalizedPhones[0]?.value || "";
       const normalizedSocialLinks = buildSocialLinksFromForm(presetSocialUrls, customSocialLinks);
       const socialLinksSignature = stableSocialLinksPayload(normalizedSocialLinks);
+      const normalizedHours = normalizeBusinessHours(businessHours);
+      const hoursSignature = JSON.stringify(normalizedHours);
 
       // Check if contact details have changed
       const hasContactChanged =
         JSON.stringify(normalizedEmails) !== lastSavedEmails ||
         JSON.stringify(normalizedPhones) !== lastSavedPhones ||
-        socialLinksSignature !== lastSavedSocialLinks;
+        socialLinksSignature !== lastSavedSocialLinks ||
+        hoursSignature !== lastSavedBusinessHours;
 
       if (!hasContactChanged) {
         setStep(step + 1); // Proceed to next step
@@ -1964,6 +2120,7 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
           address: mainLocation,
           mainLocation,
           socialLinks: normalizedSocialLinks,
+          businessHours: normalizedHours,
         };
         const token = localStorage.getItem("token");
         const res = await http.put(
@@ -1980,6 +2137,8 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
           setLastSavedEmails(JSON.stringify(normalizedEmails));
           setLastSavedPhones(JSON.stringify(normalizedPhones));
           setLastSavedSocialLinks(socialLinksSignature);
+          setLastSavedBusinessHours(hoursSignature);
+          setBusinessHours(normalizedHours);
           setStep(step + 1);
         } else {
           throw new Error("Failed to save contact information");
@@ -2064,7 +2223,10 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
           name: page.id,
           displayName: page.name,
           description: page.description || '',
-          perLocationContent: Boolean(perLocationByPage[page.id]),
+          perLocationContent:
+            page.id === "home" && selectedPages.some((p) => p.id === "location")
+              ? true
+              : Boolean(perLocationByPage[page.id]),
           componentIds: [], // GenieBuild sections are saved in WebsiteDesignsData.pages[].style
         };
       });
@@ -2126,7 +2288,11 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
 
     const pagesData = upsertablePages
       .map((page) => {
-      const sections = pageSections[page.id] || [];
+      // Location template mirrors Home sections (same GenieBuild ids).
+      const sections =
+        page.id === "location"
+          ? pageSections.home || pageSections.location || []
+          : pageSections[page.id] || [];
       const dbPageId = pageIdsMap[page.id];
 
       if (!dbPageId) {
@@ -2135,7 +2301,24 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
       }
 
       // Build GenieBuild section objects (canonical order — builder can reorder later)
-      const pageKey = page.id === "service" ? "service" : "home";
+      const pageKey =
+        page.id === "service"
+          ? "service"
+          : page.id === "services"
+            ? "services"
+            : page.id === "areas"
+              ? "areas"
+              : page.id === "about"
+                ? "about"
+                : page.id === "contact"
+                  ? "contact"
+                  : page.id === "legal"
+                    ? "legal"
+                    : page.id === "blog"
+                      ? "blog"
+                      : page.id === "blogdetail"
+                        ? "blogdetail"
+                        : "home";
       const orderedSections = sortSectionObjectsByCanonicalOrder(
         pageKey,
         sections.filter((section) => section && section.id),
@@ -2233,40 +2416,81 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
       'testimonial': 'testimonial',
       'faq': 'faq',
       'process': 'process',
-      'serviceprocess': 'serviceprocess',
       'services': 'services',
       'servicesgrid': 'services',
-      'serviceshero': 'serviceshero',
+      'cta': 'cta',
+      'whychooseus': 'whychooseus',
+      'guarantee': 'guarantee',
+      'areas': 'areas',
+      'stats': 'stats',
+      // About
+      'abouthero': 'abouthero',
+      'missionvision': 'missionvision',
+      'corevalues': 'corevalues',
+      'usp': 'usp',
+      'aboutwhychoose': 'aboutwhychoose',
+      'aboutcta': 'aboutcta',
+      'aboutfaq': 'aboutfaq',
+      // Services list
+      'serviceslisthero': 'serviceslisthero',
+      'serviceslistgrid': 'serviceslistgrid',
+      'serviceslistwhychoose': 'serviceslistwhychoose',
+      'serviceslistcta': 'serviceslistcta',
+      'serviceslistguarantee': 'serviceslistguarantee',
+      'serviceslistprocess': 'serviceslistprocess',
+      'serviceslistareas': 'serviceslistareas',
+      'serviceslistfaq': 'serviceslistfaq',
+      // Contact
+      'contacthero': 'contacthero',
+      'contactinfo': 'contactinfo',
+      'contactform': 'contactform',
+      'contactcta': 'contactcta',
+      'contactfaq': 'contactfaq',
+      // Service detail (GenieBuild)
+      'servicedetailhero': 'servicedetailhero',
+      'servicedetailabout': 'servicedetailabout',
+      'servicedetailservices': 'servicedetailservices',
+      'servicedetailprocess': 'servicedetailprocess',
+      'servicedetailcta': 'servicedetailcta',
+      'servicedetailwhychoose': 'servicedetailwhychoose',
+      'servicedetailguarantee': 'servicedetailguarantee',
+      'servicedetailtestimonials': 'servicedetailtestimonials',
+      'servicedetailfaq': 'servicedetailfaq',
+      'relatedservices': 'relatedservices',
+      // Blog
+      'blogshero': 'blogshero',
+      'blogssearch': 'blogssearch',
+      'blogslist': 'blogslist',
+      'blogarticlehero': 'blogarticlehero',
+      'blogcontent': 'blogcontent',
+      'blogauthor': 'blogauthor',
+      'blogrelated': 'blogrelated',
+      'blogcomments': 'blogcomments',
+      // Legal
+      'legalhero': 'legalhero',
+      'legalcontent': 'legalcontent',
+      // All Areas listing page (dedicated allareas/* sections)
+      'areashero': 'areashero',
+      'areastestimonials': 'areastestimonials',
+      'areasfaq': 'areasfaq',
+      'locationmap': 'locationmap',
+      'sublocations': 'sublocations',
+      // Legacy Multicolor fallbacks
       'servicehero': 'servicehero',
       'aboutservice': 'aboutservice',
+      'serviceshero': 'serviceshero',
       'servicecopy': 'servicecopy',
       'servicegroups': 'servicegroups',
-      'servicedetailcta': 'servicedetailcta',
+      'serviceprocess': 'serviceprocess',
       'servicewhychooseus': 'servicewhychooseus',
       'serviceguarantee': 'serviceguarantee',
       'promiseline': 'promiseline',
-      'relatedservices': 'relatedservices',
       'subservices': 'subservices',
       'descriptions': 'descriptions',
-      'cta': 'cta',
-      'stats': 'stats',
-      'partners': 'partners',
-      'benefits': 'benefits',
-      'video': 'video',
-      'pricing-preview': 'pricing',
-      'newsletter': 'newsletter',
-      'social-proof': 'socialproof',
-      'awards': 'awards',
-      'case-studies': 'casestudies',
-      'blog-preview': 'blog',
-      'location-map': 'locationmap',
-      'contact-info': 'contactinfosection',
-      'footer-cta': 'footerctasection',
+      'contactpage': 'contacthero',
     };
 
-    // Return mapped name or use sectionId as-is (replace hyphens with underscores)
     const componentName = mapping[sectionId.toLowerCase()] || sectionId.toLowerCase();
-    // Replace hyphens with underscores to ensure consistent format
     return componentName.replace(/-/g, '_');
   };
 
@@ -2277,7 +2501,7 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
   // NOTE: Backend now auto-scans filesystem, but we keep this for admin panel defaults
   // uniqueId = variant = filename (all same)
   const GENIEBUILD_SECTION_MAP: Record<string, { type: string; variant: string }> = {
-    // Core
+    // Core homepage
     'navbar': { type: 'navbar', variant: 'NavbarSimple' },
     'hero': { type: 'hero', variant: 'HeroPlumbing1' },
     'about': { type: 'about', variant: 'AboutPlumbing' },
@@ -2292,24 +2516,79 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
     'faq': { type: 'faq', variant: 'FAQCentered' },
     'footer': { type: 'footer', variant: 'FooterColumns' },
 
-    // Service detail page (backend/sections/service)
-    'servicehero': { type: 'servicehero', variant: 'ServiceHeroDefault' },
-    'aboutservice': { type: 'aboutservice', variant: 'AboutServiceDefault' },
-    'servicecopy': { type: 'servicecopy', variant: 'ServiceCopyDefault' },
-    'servicegroups': { type: 'servicegroups', variant: 'ServiceGroupsDefault' },
-    'servicedetailcta': { type: 'servicedetailcta', variant: 'ServiceDetailCtaDefault' },
-    'serviceprocess': { type: 'serviceprocess', variant: 'ServiceProcessDefault' },
-    'servicewhychooseus': { type: 'servicewhychooseus', variant: 'ServiceWhyChooseUsDefault' },
-    'serviceguarantee': { type: 'serviceguarantee', variant: 'ServiceGuaranteeDefault' },
-    'promiseline': { type: 'promiseline', variant: 'PromiseLineDefault' },
-    'relatedservices': { type: 'relatedservices', variant: 'RelatedServicesDefault' },
-    'subservices': { type: 'subservices', variant: 'SubServicesDefault' },
+    // About page
+    'abouthero': { type: 'abouthero', variant: 'AboutHeroDefault' },
+    'missionvision': { type: 'missionvision', variant: 'MissionVisionDefault' },
+    'corevalues': { type: 'corevalues', variant: 'CoreValuesDefault' },
+    'usp': { type: 'usp', variant: 'USPDefault' },
+    'aboutwhychoose': { type: 'aboutwhychoose', variant: 'AboutWhyChooseDefault' },
+    'aboutcta': { type: 'aboutcta', variant: 'AboutCtaDefault' },
+    'aboutfaq': { type: 'aboutfaq', variant: 'AboutFaqDefault' },
 
-    // All-services listing page (backend/sections/service)
-    'serviceshero': { type: 'serviceshero', variant: 'ServicesHeroDefault' },
-    'descriptions': { type: 'descriptions', variant: 'DescriptionsDefault' },
-  
-    // Keep existing optional types if already used
+    // Services listing
+    'serviceslisthero': { type: 'serviceslisthero', variant: 'ServicesListHeroDefault' },
+    'serviceslistgrid': { type: 'serviceslistgrid', variant: 'ServicesListGridDefault' },
+    'serviceslistwhychoose': { type: 'serviceslistwhychoose', variant: 'ServicesListWhyChooseDefault' },
+    'serviceslistcta': { type: 'serviceslistcta', variant: 'ServicesListCtaDefault' },
+    'serviceslistguarantee': { type: 'serviceslistguarantee', variant: 'ServicesListGuaranteeDefault' },
+    'serviceslistprocess': { type: 'serviceslistprocess', variant: 'ServicesListProcessDefault' },
+    'serviceslistareas': { type: 'serviceslistareas', variant: 'ServicesListAreasDefault' },
+    'serviceslistfaq': { type: 'serviceslistfaq', variant: 'ServicesListFaqDefault' },
+
+    // Contact
+    'contacthero': { type: 'contacthero', variant: 'ContactHeroDefault' },
+    'contactinfo': { type: 'contactinfo', variant: 'ContactInfoDefault' },
+    'contactform': { type: 'contactform', variant: 'ContactFormDefault' },
+    'contactcta': { type: 'contactcta', variant: 'ContactCtaDefault' },
+    'contactfaq': { type: 'contactfaq', variant: 'ContactFaqDefault' },
+    'contactpage': { type: 'contacthero', variant: 'ContactHeroDefault' },
+
+    // Service detail (GenieBuild)
+    'servicedetailhero': { type: 'servicedetailhero', variant: 'ServiceDetailHeroDefault' },
+    'servicedetailabout': { type: 'servicedetailabout', variant: 'ServiceDetailAboutDefault' },
+    'servicedetailservices': { type: 'servicedetailservices', variant: 'ServiceDetailServicesDefault' },
+    'servicedetailprocess': { type: 'servicedetailprocess', variant: 'ServiceDetailProcessDefault' },
+    'servicedetailcta': { type: 'servicedetailcta', variant: 'ServiceDetailCtaDefault' },
+    'servicedetailwhychoose': { type: 'servicedetailwhychoose', variant: 'ServiceDetailWhyChooseDefault' },
+    'servicedetailguarantee': { type: 'servicedetailguarantee', variant: 'ServiceDetailGuaranteeDefault' },
+    'servicedetailtestimonials': { type: 'servicedetailtestimonials', variant: 'ServiceDetailTestimonialsDefault' },
+    'servicedetailfaq': { type: 'servicedetailfaq', variant: 'ServiceDetailFaqDefault' },
+    'relatedservices': { type: 'relatedservices', variant: 'RelatedServicesDefault' },
+    'promise': { type: 'promise', variant: 'PromiseDefault' },
+
+    // Blog
+    'blogshero': { type: 'blogshero', variant: 'BlogsHeroDefault' },
+    'blogssearch': { type: 'blogssearch', variant: 'BlogsSearchDefault' },
+    'blogslist': { type: 'blogslist', variant: 'BlogsListDefault' },
+    'blogarticlehero': { type: 'blogarticlehero', variant: 'BlogArticleHeroDefault' },
+    'blogcontent': { type: 'blogcontent', variant: 'BlogContentDefault' },
+    'blogauthor': { type: 'blogauthor', variant: 'BlogAuthorDefault' },
+    'blogrelated': { type: 'blogrelated', variant: 'BlogRelatedDefault' },
+    'blogcomments': { type: 'blogcomments', variant: 'BlogCommentsDefault' },
+
+    // Legal
+    'legalhero': { type: 'legalhero', variant: 'LegalHeroDefault' },
+    'legalcontent': { type: 'legalcontent', variant: 'LegalContentDefault' },
+
+    // All Areas listing (`geniebuild/.../allareas`)
+    'areashero': { type: 'areashero', variant: 'AreasHeroDefault' },
+    'areastestimonials': { type: 'areastestimonials', variant: 'AreasTestimonialsDefault' },
+    'areasfaq': { type: 'areasfaq', variant: 'AreasFaqDefault' },
+    'locationmap': { type: 'locationmap', variant: 'LocationMapDefault' },
+    'sublocations': { type: 'sublocations', variant: 'SubLocationsDefault' },
+
+    // Legacy Multicolor fallbacks (old projects)
+    'servicehero': { type: 'servicedetailhero', variant: 'ServiceDetailHeroDefault' },
+    'aboutservice': { type: 'servicedetailabout', variant: 'ServiceDetailAboutDefault' },
+    'serviceshero': { type: 'serviceslisthero', variant: 'ServicesListHeroDefault' },
+    'serviceprocess': { type: 'servicedetailprocess', variant: 'ServiceDetailProcessDefault' },
+    'servicewhychooseus': { type: 'servicedetailwhychoose', variant: 'ServiceDetailWhyChooseDefault' },
+    'serviceguarantee': { type: 'servicedetailguarantee', variant: 'ServiceDetailGuaranteeDefault' },
+    'subservices': { type: 'servicedetailservices', variant: 'ServiceDetailServicesDefault' },
+    'promiseline': { type: 'promise', variant: 'PromiseDefault' },
+    'servicecopy': { type: 'servicedetailabout', variant: 'ServiceDetailAboutDefault' },
+    'servicegroups': { type: 'servicedetailservices', variant: 'ServiceDetailServicesDefault' },
+
     'pricing': { type: 'pricing', variant: 'PricingCards' },
     'image-banner': { type: 'image-banner', variant: 'BannerCenter' },
     'elements': { type: 'elements', variant: 'ElementsSection' },
@@ -2320,7 +2599,6 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
   // To add new variant: Just create the file, backend will auto-detect it!
   // uniqueId = variant = filename (all same)
   const [genieBuildVariants] = useState<Record<string, string[]>>({
-    // Core existing
     'navbar': ['NavbarSimple', 'NavbarCentered', 'NavbarMinimal', 'NavbarApi'],
     'hero': [
       'HeroPlumbing1',
@@ -2345,17 +2623,65 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
     ],
     'faq': ['FAQCentered', 'FAQSplit', 'FAQLight', 'FAQModern', 'FAQMulticolor'],
     'footer': ['FooterColumns', 'FooterCentered', 'FooterMinimal', 'FooterApi'],
-  
-    // New homepage-related section types found in your geniebuild sections
     'services': ['ServicesGrid'],
     'why-choose-us': ['WhyChooseUsGrid'],
     'process': ['ProcessSteps'],
     'guarantee': ['GuaranteeSimple'],
-  
     'about': ['AboutPlumbing', 'About1'],
-  
-    // Add when you create area section component in geniebuild
-    'areas': [],
+    'areas': ['AreasGrid'],
+
+    'abouthero': ['AboutHeroDefault'],
+    'missionvision': ['MissionVisionDefault'],
+    'corevalues': ['CoreValuesDefault'],
+    'usp': ['USPDefault'],
+    'aboutwhychoose': ['AboutWhyChooseDefault'],
+    'aboutcta': ['AboutCtaDefault'],
+    'aboutfaq': ['AboutFaqDefault'],
+
+    'serviceslisthero': ['ServicesListHeroDefault'],
+    'serviceslistgrid': ['ServicesListGridDefault'],
+    'serviceslistwhychoose': ['ServicesListWhyChooseDefault'],
+    'serviceslistcta': ['ServicesListCtaDefault'],
+    'serviceslistguarantee': ['ServicesListGuaranteeDefault'],
+    'serviceslistprocess': ['ServicesListProcessDefault'],
+    'serviceslistareas': ['ServicesListAreasDefault'],
+    'serviceslistfaq': ['ServicesListFaqDefault'],
+
+    'contacthero': ['ContactHeroDefault'],
+    'contactinfo': ['ContactInfoDefault'],
+    'contactform': ['ContactFormDefault'],
+    'contactcta': ['ContactCtaDefault'],
+    'contactfaq': ['ContactFaqDefault'],
+
+    'servicedetailhero': ['ServiceDetailHeroDefault'],
+    'servicedetailabout': ['ServiceDetailAboutDefault'],
+    'servicedetailservices': ['ServiceDetailServicesDefault'],
+    'servicedetailprocess': ['ServiceDetailProcessDefault'],
+    'servicedetailcta': ['ServiceDetailCtaDefault'],
+    'servicedetailwhychoose': ['ServiceDetailWhyChooseDefault'],
+    'servicedetailguarantee': ['ServiceDetailGuaranteeDefault'],
+    'servicedetailtestimonials': ['ServiceDetailTestimonialsDefault'],
+    'servicedetailfaq': ['ServiceDetailFaqDefault'],
+    'relatedservices': ['RelatedServicesDefault'],
+    'promise': ['PromiseDefault'],
+
+    'blogshero': ['BlogsHeroDefault'],
+    'blogssearch': ['BlogsSearchDefault'],
+    'blogslist': ['BlogsListDefault'],
+    'blogarticlehero': ['BlogArticleHeroDefault'],
+    'blogcontent': ['BlogContentDefault'],
+    'blogauthor': ['BlogAuthorDefault'],
+    'blogrelated': ['BlogRelatedDefault'],
+    'blogcomments': ['BlogCommentsDefault'],
+
+    'legalhero': ['LegalHeroDefault'],
+    'legalcontent': ['LegalContentDefault'],
+
+    'areashero': ['AreasHeroDefault'],
+    'areastestimonials': ['AreasTestimonialsDefault'],
+    'areasfaq': ['AreasFaqDefault'],
+    'locationmap': ['LocationMapDefault'],
+    'sublocations': ['SubLocationsDefault'],
   });
 
   const GENIEBUILD_VARIANTS = genieBuildVariants;
@@ -2869,6 +3195,8 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
           setPresetSocialUrls={setPresetSocialUrls}
           customSocialLinks={customSocialLinks}
           setCustomSocialLinks={setCustomSocialLinks}
+          businessHours={businessHours}
+          setBusinessHours={setBusinessHours}
         />
       )}
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import SectionRenderer from '@geniebuild/components/SectionRenderer';
+import { AboutUsContactProvider } from '@geniebuild/components/builder/context/AboutUsContactContext';
 import { Section, GlobalElementStyles } from '@geniebuild/types';
 import { DEFAULT_TYPOGRAPHY, resolveSiteFontSizes } from '@geniebuild/constants';
 import { DefaultSizesContext } from '@geniebuild/components/builder/state/DefaultSizesContext';
@@ -26,36 +27,16 @@ interface GenieBuildPageRendererProps {
     buttonTextColor: string;
   };
   projectId?: string;
-  previewProjectId?: string;
   sitePathname?: string;
   sitePageType?: string;
   themeSettings?: ThemeSettingsInput;
   globalElementStyles?: GlobalElementStyles;
 }
 
-function appendPreviewProjectId(href: string, previewProjectId: string): string {
-  const raw = String(href || '').trim();
-  if (!raw || raw === '#' || /^https?:\/\//i.test(raw) || /^mailto:|^tel:/i.test(raw)) {
-    return raw;
-  }
-  try {
-    const url = new URL(raw, 'http://localhost');
-    const path = url.pathname || '/';
-    const params = new URLSearchParams(url.search);
-    params.set('projectId', previewProjectId);
-    const query = params.toString();
-    return query ? `${path}?${query}` : path;
-  } catch {
-    const path = raw.startsWith('/') ? raw : `/${raw}`;
-    return `${path}?projectId=${encodeURIComponent(previewProjectId)}`;
-  }
-}
-
 export default function GenieBuildPageRenderer({
   sections,
   globalColors,
   projectId,
-  previewProjectId,
   sitePathname = '/',
   sitePageType = '',
   themeSettings,
@@ -68,24 +49,44 @@ export default function GenieBuildPageRenderer({
   );
 
   useEffect(() => {
-    if (!previewProjectId) return;
     const root = document.getElementById('canvas-root');
     if (!root) return;
 
     const onClick = (event: MouseEvent) => {
+      // Allow modified clicks (new tab / download) to keep browser defaults.
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
       const anchor = (event.target as HTMLElement | null)?.closest('a');
       if (!anchor) return;
       const rawHref = anchor.getAttribute('href') || '';
-      if (!rawHref || rawHref === '#' || /^https?:\/\//i.test(rawHref)) return;
-      const nextHref = appendPreviewProjectId(rawHref, previewProjectId);
-      if (nextHref === rawHref) return;
+      if (!rawHref || rawHref === '#' || /^https?:\/\//i.test(rawHref) || /^mailto:|^tel:/i.test(rawHref)) {
+        return;
+      }
+      if (anchor.getAttribute('target') === '_blank' || anchor.hasAttribute('download')) {
+        return;
+      }
+
+      // Soft-navigate internal links. projectId lives in localStorage — no need to
+      // append ?projectId= on every href (admin open still persists it once).
+      let nextHref: string | null = null;
+      try {
+        const url = new URL(rawHref, window.location.origin);
+        if (url.origin !== window.location.origin) return;
+        nextHref = `${url.pathname}${url.search}${url.hash}`;
+      } catch {
+        nextHref = rawHref.startsWith('/') ? rawHref : `/${rawHref}`;
+      }
+
+      if (!nextHref) return;
+
       event.preventDefault();
       router.push(nextHref);
     };
 
     root.addEventListener('click', onClick);
     return () => root.removeEventListener('click', onClick);
-  }, [previewProjectId, router]);
+  }, [router]);
 
   useEffect(() => {
     applySiteThemeToDocument(themeSettings ?? null, globalColors);
@@ -94,21 +95,25 @@ export default function GenieBuildPageRenderer({
     return mountSiteThemeCss({ themeSettings: themeSettings ?? null, globalColors });
   }, [themeSettings, globalColors]);
 
+  const effectiveProjectId = projectId || '';
+
   return (
     <DefaultSizesContext.Provider value={resolvedDefaultSizes}>
     <GlobalElementStylesContext.Provider value={globalElementStyles}>
+    <AboutUsContactProvider projectId={effectiveProjectId || null}>
     <div id="canvas-root" className="min-h-full">
       {sections.map((section) => (
         <SectionRenderer
           key={section.id}
           section={section}
           readOnly={true}
-          projectId={projectId}
+          projectId={effectiveProjectId || undefined}
           sitePathname={sitePathname}
           sitePageType={sitePageType}
         />
       ))}
     </div>
+    </AboutUsContactProvider>
     </GlobalElementStylesContext.Provider>
     </DefaultSizesContext.Provider>
   );

@@ -110,29 +110,36 @@ function validateSectionContent(sectionId = "", data = {}) {
     case "testimonials":
       validateItemDescriptions(data.items, "items", 25, errors, 3);
       break;
-    case "process": {
+    case "process":
+    case "serviceslistprocess": {
       const intro = pickText(data.description, data.subtitle);
       if (countWords(intro) < 12) pushError(errors, "description", countWords(intro), 12);
       const steps = Array.isArray(data.data) ? data.data : (Array.isArray(data.items) ? data.items : []);
-      validateItemDescriptions(steps, "data", 18, errors, 5);
+      validateItemDescriptions(steps, "data", 18, errors, 4);
       break;
     }
     case "whychooseus":
-    case "why-choose-us": {
+    case "why-choose-us":
+    case "serviceslistwhychoose":
+    case "aboutwhychoose": {
       const boxes = Array.isArray(data.featureBoxes)
         ? data.featureBoxes
         : (Array.isArray(data.items) ? data.items : []);
       validateItemDescriptions(boxes, "featureBoxes", 18, errors, 5);
       break;
     }
-    case "guarantee": {
+    case "guarantee":
+    case "serviceslistguarantee": {
       const list = Array.isArray(data.guaranteeList)
         ? data.guaranteeList
         : (Array.isArray(data.items) ? data.items : []);
       validateItemDescriptions(list, "guaranteeList", 8, errors, 4);
       break;
     }
-    case "cta": {
+    case "cta":
+    case "contactcta":
+    case "aboutcta":
+    case "serviceslistcta": {
       const title = pickText(data.title, data.heading);
       const subtitle = pickText(data.subtitle, data.description);
       if (countWords(title) < 4) pushError(errors, "title", countWords(title), 4);
@@ -140,7 +147,8 @@ function validateSectionContent(sectionId = "", data = {}) {
       break;
     }
     case "services":
-    case "servicesgrid": {
+    case "servicesgrid":
+    case "serviceslistgrid": {
       const subtitle = pickText(data.subtitle, data.description, data.descriptionText);
       if (countWords(subtitle) < 18) pushError(errors, "subtitle", countWords(subtitle), 18);
       if (Array.isArray(data.items) && data.items.length) {
@@ -151,17 +159,25 @@ function validateSectionContent(sectionId = "", data = {}) {
       }
       break;
     }
-    case "serviceshero": {
-      const desc = pickText(data.servicesPageDescription, data.subtitle, data.description);
-      if (countWords(desc) < 70) pushError(errors, "servicesPageDescription", countWords(desc), 70);
+    case "serviceshero":
+    case "serviceslisthero": {
+      const desc = pickText(
+        data.serviceHeroSubtitle,
+        data.servicesPageDescription,
+        data.subtitle,
+        data.description
+      );
+      if (countWords(desc) < 18) pushError(errors, "serviceHeroSubtitle", countWords(desc), 18);
       break;
     }
-    case "servicehero": {
+    case "servicehero":
+    case "servicedetailhero": {
       const subtitle = pickText(data.serviceHeroSubtitle, data.subtitle);
       if (countWords(subtitle) < 22) pushError(errors, "serviceHeroSubtitle", countWords(subtitle), 22);
       break;
     }
-    case "aboutservice": {
+    case "aboutservice":
+    case "servicedetailabout": {
       const words = countWords(pickAboutServiceBody(data));
       if (words < ABOUT_SERVICE_MIN_WORDS) {
         pushError(errors, "about_service", words, ABOUT_SERVICE_MIN_WORDS);
@@ -174,6 +190,10 @@ function validateSectionContent(sectionId = "", data = {}) {
       break;
     }
     case "faq":
+    case "contactfaq":
+    case "aboutfaq":
+    case "serviceslistfaq":
+    case "servicedetailfaq":
       validateFaqItems(
         Array.isArray(data.items) ? data.items : [],
         errors,
@@ -200,7 +220,7 @@ function buildLengthFixPrompt(sectionId, data, errors = []) {
     .join("\n");
 
   let sectionExtra = "";
-  if (id === "aboutservice") {
+  if (id === "aboutservice" || id === "servicedetailabout") {
     const currentWords = countWords(pickAboutServiceBody(data));
     const deficit = Math.max(ABOUT_SERVICE_TARGET_WORDS - currentWords, ABOUT_SERVICE_MIN_WORDS - currentWords);
     sectionExtra = `

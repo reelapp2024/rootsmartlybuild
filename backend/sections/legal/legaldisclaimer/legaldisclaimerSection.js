@@ -1,5 +1,6 @@
 /**
- * Disclaimer page — structured HTML sections
+ * Legacy combined Disclaimer pack (hero + sections).
+ * GenieBuild prefers `legalhero` + `legalcontent` — queue dual-writes both shapes.
  */
 
 const { IMAGE_PROMPT_JSON_RULES } = require("../../sectionImagePrompts");
@@ -9,9 +10,11 @@ module.exports = {
   imageCount: 6,
 
   schema: {
+    badgeText: "string",
     heroTitle: "string",
     heroSubtitle: "string",
     lastUpdatedLabel: "string",
+    breadcrumbLabel: "string",
     sections: [{ heading: "string", bodyHtml: "string" }],
     ai_image_prompt: "string",
     non_ai_image_prompt: "string",
@@ -19,7 +22,6 @@ module.exports = {
 
   prompt(ctx) {
     const { project, extraData = {} } = ctx;
-
     const projectName = project.projectName || "";
     const mainCategory = project.mainCategory || "";
 
@@ -32,14 +34,16 @@ ${JSON.stringify(extraData)}
 Return STRICT JSON ONLY:
 
 {
+  "badgeText": "Legal",
   "heroTitle": "Disclaimer",
   "heroSubtitle": "18-35 words on informational nature of site",
   "lastUpdatedLabel": "Last updated line",
+  "breadcrumbLabel": "Disclaimer",
   "sections": [
     { "heading": "string", "bodyHtml": "string" }
   ],
-  "ai_image_prompt": "24-42 words: neutral abstract disclaimer mood — balance, caution, measurement, professional judgment, transparency; soft photoreal or clean abstract, no overlaid text.",
-  "non_ai_image_prompt": "3-10 words stock keywords disclaimer legal abstract balance scales minimal (e.g. \"legal disclaimer abstract scales\")"
+  "ai_image_prompt": "24-42 words: neutral abstract disclaimer mood; no overlaid text.",
+  "non_ai_image_prompt": "3-10 words stock keywords disclaimer legal abstract scales"
 }
 
 ${IMAGE_PROMPT_JSON_RULES}
@@ -50,5 +54,5 @@ RULES:
 - No invented regulations; no phone/email/street address.
 - Output ONLY valid JSON.
 `;
-  }
+  },
 };

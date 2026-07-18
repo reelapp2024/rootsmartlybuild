@@ -1,6 +1,7 @@
 /**
- * Vision Section Generator
- * Returns vision line + exactly 3 sub-headings
+ * Legacy standalone vision generator.
+ * Prefer About-page combined `missionvision` (GenieBuild MissionVisionDefault).
+ * Kept for older pipelines that still request `vision` alone.
  */
 
 module.exports = {
@@ -8,7 +9,7 @@ module.exports = {
 
   schema: {
     line: "string",
-    subHeadings: ["string"]
+    subHeadings: ["string"],
   },
 
   prompt(ctx) {
@@ -51,7 +52,7 @@ Return STRICT JSON ONLY:
 Rules (VERY IMPORTANT):
 
 LINE:
-- Must be approximately 25 characters
+- Must be approximately 25–45 characters
 
 SUBHEADINGS:
 - Generate EXACTLY 3 strings
@@ -71,6 +72,8 @@ GLOBAL:
 - No markdown
 - No explanations
 - Output ONLY valid JSON object
+
+NOTE: For the About page prefer the combined section id "missionvision".
 `;
-  }
+  },
 };

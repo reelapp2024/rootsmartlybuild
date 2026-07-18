@@ -834,7 +834,19 @@ const isValidObjectId = (id) => /^[a-f\d]{24}$/i.test(String(id || ""));
 
 async function assertBusinessProjectOwned(projectId, userId) {
   if (!projectId || !userId) return null;
-  return UserProject.findOne({ _id: projectId, userId }).exec();
+  if (!isValidObjectId(projectId)) return null;
+
+  const project = await UserProject.findById(projectId).exec();
+  if (!project) return null;
+
+  // Owner can always access.
+  if (String(project.userId) === String(userId)) return project;
+
+  // Super admins can manage any project (same as getUserProjects / dashboard).
+  const user = await Users.findById(userId).select("isSuper").lean();
+  if (Number(user?.isSuper) === 1) return project;
+
+  return null;
 }
 
 async function processBusinessWebsiteCategories(categories, subCategories, microCategories) {
@@ -1519,6 +1531,7 @@ module.exports = {
             address: "",
             mainLocation: "",
             socialLinks: [],
+            businessHours: null,
           },
         });
       }
@@ -2895,8 +2908,11 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
             servicePageSlug: page.slug || "",
             sections: {
               servicehero: heroContent,
+              servicedetailhero: heroContent,
               aboutservice: aboutContent,
+              servicedetailabout: aboutContent,
               faq: faqContent,
+              servicedetailfaq: faqContent,
             }
           },
           status: "generated",
@@ -3113,6 +3129,17 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
           "whychooseus",
           "why-choose-us",
           "guarantee",
+          // About page (GenieBuild ids)
+          "abouthero",
+          "missionvision",
+          "corevalues",
+          "usp",
+          "aboutwhychoose",
+          "aboutcta",
+          "aboutfaq",
+          "mission",
+          "vision",
+          "difference",
           "aboutservice",
           "servicecopy",
           "serviceprocess",
@@ -3123,16 +3150,66 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
           "promiseline",
           "relatedservices",
           "subservices",
+          // Service detail page (GenieBuild ids)
+          "servicedetailhero",
+          "servicedetailabout",
+          "servicedetailservices",
+          "servicedetailprocess",
+          "servicedetailwhychoose",
+          "servicedetailguarantee",
+          "servicedetailtestimonials",
+          "servicedetailfaq",
           "descriptions",
-          "blogarticle",
-          "blogslisting",
+          // Contact page (GenieBuild ids)
+          "contacthero",
+          "contactinfo",
+          "contactform",
+          "contactcta",
+          "contactfaq",
+          "contactpage",
+          // Services listing page (GenieBuild ids)
+          "serviceslisthero",
+          "serviceslistgrid",
+          "serviceslistwhychoose",
+          "serviceslistcta",
+          "serviceslistguarantee",
+          "serviceslistprocess",
+          "serviceslistareas",
+          "serviceslistfaq",
+          // Blog (GenieBuild) — list/chrome AI; posts from Blog collection
+          "blogshero",
+          "blogssearch",
+          "blogslist",
+          "blogarticlehero",
+          "blogcontent",
           "blogauthor",
-          "blogrelated",
           "blogcomments",
+          "blogrelated",
+          "blogslisting",
+          "blogarticle",
+          // Legal (GenieBuild split + legacy combined)
+          "legalhero",
+          "legalcontent",
           "legalprivacy",
           "legalterms",
           "legaldisclaimer",
-          "contactpage",
+          // Location UI ids (resolve → homepage prompts; map/subs from DB)
+          "locationhero",
+          "locationabout",
+          "locationservices",
+          "locationwhychoose",
+          "locationprocess",
+          "locationcta",
+          "locationguarantee",
+          "locationpromise",
+          "locationtestimonials",
+          "locationareas",
+          "locationfaq",
+          "locationmap",
+          "sublocations",
+          "areashero",
+          "areastestimonials",
+          "areasfaq",
         ];
 
         // Exact match first
@@ -3278,7 +3355,7 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
   updateBusinessAboutUs: async (req, res) => {
     try {
       const projectId = req.params.projectId || req.body.projectId;
-      const { email, phone, emails, phones, mainLocation, address, socialLinks } = req.body;
+      const { email, phone, emails, phones, mainLocation, address, socialLinks, businessHours } = req.body;
       const userId = req.user?.userId;
 
       const project = userId
@@ -3318,7 +3395,25 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
 
       const primaryEmail = normalizedEmails.find((item) => item.is_primary)?.value || normalizedEmails[0]?.value || "";
       const primaryPhone = normalizedPhones.find((item) => item.is_primary)?.value || normalizedPhones[0]?.value || "";
-      const normalizedAddress = address || mainLocation || "";
+
+      // Prefer primary (parent) BusinessLocation formatted address when client didn't send a street address
+      let normalizedAddress = String(address || mainLocation || "").trim();
+      try {
+        const BusinessLocation = require("../models/businessLocation");
+        const { resolveMainParentLocation } = require("../services/sectionGenerationLocationService");
+        const locs = await BusinessLocation.find({ projectId }).lean();
+        const isBulk = Number(project.projectType) === 0;
+        const main = resolveMainParentLocation(locs, { isBusinessProject: !isBulk });
+        const primaryLabel = String(
+          main?.formattedAddress || main?.areaName || ""
+        ).trim();
+        if (primaryLabel) {
+          // Always prefer primary parent location for "Visit Us" when locations exist
+          normalizedAddress = primaryLabel;
+        }
+      } catch (locErr) {
+        console.warn("[updateBusinessAboutUs] primary location resolve failed:", locErr.message);
+      }
 
       let normalizedSocialLinks = [];
       if (Array.isArray(socialLinks)) {
@@ -3339,20 +3434,28 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
           });
       }
 
+      const { normalizeBusinessHours } = require("../services/businessHours");
+      const normalizedHours = businessHours
+        ? normalizeBusinessHours(businessHours)
+        : undefined;
+
+      const $set = {
+        email: primaryEmail,
+        phone: primaryPhone,
+        emails: normalizedEmails,
+        phones: normalizedPhones,
+        address: normalizedAddress,
+        mainLocation: normalizedAddress,
+        socialLinks: normalizedSocialLinks,
+      };
+      if (normalizedHours) {
+        $set.businessHours = normalizedHours;
+      }
+
       // Keep a single AboutUs document per project (no duplicates)
       const aboutUs = await AboutUs.findOneAndUpdate(
         { projectId },
-        {
-          $set: {
-            email: primaryEmail,
-            phone: primaryPhone,
-            emails: normalizedEmails,
-            phones: normalizedPhones,
-            address: normalizedAddress,
-            mainLocation: normalizedAddress,
-            socialLinks: normalizedSocialLinks,
-          },
-        },
+        { $set },
         {
           new: true,
           upsert: true,
@@ -3360,7 +3463,12 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
         }
       );
 
-
+      try {
+        const { syncContactSurfacesFromAboutUs } = require("../services/syncContactSurfacesFromAboutUs");
+        await syncContactSurfacesFromAboutUs(projectId, aboutUs?.toObject ? aboutUs.toObject() : aboutUs);
+      } catch (contactSyncErr) {
+        console.warn("[updateBusinessAboutUs] contact surfaces sync failed:", contactSyncErr.message);
+      }
 
       try {
         const { syncHeaderFooterSectionsForProject } = require("../services/headerFooterSectionSync");

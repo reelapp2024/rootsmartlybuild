@@ -65,9 +65,9 @@ Return STRICT JSON ONLY:
       "items": [
     {
       "serviceId": "exact id from list above",
-      "description": "18-32 words — unique teaser for THIS service at THIS location"
+      "description": "90-110 words — unique blurb for THIS service at THIS location (UI shows ~90 words then …)"
     }
-  ]
+    ]
 }
 
 UNIQUENESS (CRITICAL — this page must NOT look like another location's services block):
@@ -75,8 +75,8 @@ UNIQUENESS (CRITICAL — this page must NOT look like another location's service
 - NEVER reuse the same sentence opener across cards (ban repeats like "We offer", "Our team", "Professional", "Get reliable").
 - NEVER use one template with only the service name swapped (e.g. "{Service} for {Area} properties — clear scope…" on every card).
 - NEVER copy the same header or card blurbs you would write for a different neighborhood — change hook, examples, and priority.
-- Card copy is a GRID TEASER (one compelling line), not the full service page — write fresh from scratch.
-- Sound human and specific: short concrete detail (timing, property type, season, access) beats generic marketing adjectives.
+- Card copy is a rich grid blurb (at least 90 words), not a one-line teaser and not a full service page — write fresh from scratch.
+- Sound human and specific: concrete detail (timing, property type, season, access) beats generic marketing adjectives.
 - Avoid AI clichés: "comprehensive solutions", "cutting-edge", "seamless experience", "trusted partner", "top-notch", "state-of-the-art".
 - Include ${locationName || city || "the area"} or city in the section description and in 2–4 card descriptions total — varied phrasing, not "in X" on every card.
 - items array length MUST equal the service list length; serviceId MUST match exactly.
@@ -147,7 +147,7 @@ Return STRICT JSON ONLY:
       "id": "service-1",
       "icon": "fas fa-star",
       "title": "Service title (2-5 words)",
-      "description": "Service description (14-26 words)"
+      "description": "Service description (90-110 words; UI shows ~90 words then …)"
     }
   ]
 }
@@ -158,7 +158,7 @@ Rules (VERY IMPORTANT):
 - Include ${locationName || city || "the area"} or city in title OR description once for local SEO
 - Generate EXACTLY 4-8 service items
 - Each item id MUST be unique: service-1, service-2, ...
-- Each card description MUST use a DIFFERENT angle (speed, quality, commercial, residential, maintenance, safety, etc.)
+- Each card description MUST be 90-110 words and use a DIFFERENT angle (speed, quality, commercial, residential, maintenance, safety, etc.)
 - NEVER reuse sentence openers or the same blurb template across cards
 - icon must be valid Font Awesome class in format "fas fa-..."
 - Every icon must be different

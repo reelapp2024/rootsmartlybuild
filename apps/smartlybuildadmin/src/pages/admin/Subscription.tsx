@@ -167,19 +167,34 @@ export default function Subscription() {
     }
   };
 
-  const buyPlanDummy = async (planId: string) => {
+  const buyPlan = async (planId: string, planName?: string) => {
     try {
       setBuyingPlanId(planId);
       const token = localStorage.getItem("token");
-      await httpFile.post(
+      const res = await httpFile.post(
         "/wallet/v2/purchase/plan",
-        { plan_id: planId, payment_mode: "money", coupon_code: couponCode },
+        { plan_id: planId, payment_mode: "money", coupon_code: couponCode || undefined },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      await fetchUserSubscriptionData();
+      toast({
+        title: "Plan purchased",
+        description:
+          res.data?.message ||
+          `${planName || "Plan"} bought successfully. Credits added to your wallet.`,
+      });
       setCouponCode("");
-    } catch (e) {
+      if (isSuper) {
+        await fetchData();
+      } else {
+        await fetchUserSubscriptionData();
+      }
+    } catch (e: any) {
       console.error("Plan purchase failed:", e);
+      toast({
+        title: "Purchase failed",
+        description: e?.response?.data?.message || e?.message || "Unable to buy this plan",
+        variant: "destructive",
+      });
     } finally {
       setBuyingPlanId(null);
     }
@@ -236,8 +251,8 @@ export default function Subscription() {
                     <p className="text-sm">Credits: {p.credits_per_cycle}</p>
                     <p className="text-sm">Type: {p.billing_type}</p>
                     <p className="text-sm">Price: {Number(p.price).toFixed(2)}</p>
-                    <Button onClick={() => buyPlanDummy(p._id)} disabled={buyingPlanId === p._id}>
-                      {buyingPlanId === p._id ? "Processing..." : (p.billing_type === "one_time" ? "Buy Now" : "Subscribe")}
+                    <Button onClick={() => buyPlan(p._id, p.name)} disabled={buyingPlanId === p._id}>
+                      {buyingPlanId === p._id ? "Processing..." : "Buy"}
                     </Button>
                   </div>
                 ))}
@@ -320,17 +335,26 @@ export default function Subscription() {
             <p className="text-gray-500">No plans yet</p>
           ) : (
             plans.map((p) => (
-              <div key={p._id} className="border rounded p-3 flex items-center justify-between">
-                <div>
+              <div key={p._id} className="border rounded p-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
                   <p className="font-semibold">
                     {p.name} - ${p.price}/{p.billing_type}
                     {p.billing_type === "one_time" && <span className="ml-2 text-xs text-blue-700">(Pay Once)</span>}
                   </p>
                   <p className="text-sm text-gray-500">Credits/Cycle: {p.credits_per_cycle} | Validity: {p.validity_days}d</p>
                 </div>
-                <Badge className={p.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}>
-                  {p.is_active ? "Active" : "Inactive"}
-                </Badge>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge className={p.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}>
+                    {p.is_active ? "Active" : "Inactive"}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    onClick={() => buyPlan(p._id, p.name)}
+                    disabled={!p.is_active || buyingPlanId === p._id}
+                  >
+                    {buyingPlanId === p._id ? "Buying..." : "Buy"}
+                  </Button>
+                </div>
               </div>
             ))
           )}

@@ -1,8 +1,14 @@
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { getProjectIdFromUrl } from '../../../../lib/aboutUsApi';
+import {
+  fetchProjectDynamicForm,
+  mapDynamicFormToSectionFields,
+  submitDynamicFormData,
+} from '../../../../lib/dynamicFormApi';
 
 interface Props {
   section: Section;
@@ -13,18 +19,26 @@ interface Props {
   selectedElementId?: string | null;
   readOnly?: boolean;
   themeColors?: any;
+  projectId?: string;
 }
 
+type FormFieldView = {
+  name: string;
+  label: string;
+  type: string;
+  required?: boolean;
+  options?: string[];
+  placeholder?: string;
+};
+
 /**
- * ContactFormDefault — a contact form card. The builder has no dedicated form
- * element, so the heading, intro, trust bullets and submit BUTTON are real
- * editable ElementsSection elements, while the input fields are theme-styled
- * visual placeholders (labels editable via the field list). Colors come from
- * tc.light so the section stays theme-consistent, like the homepage sections.
+ * ContactFormDefault — marketing copy via ElementsSection; fields from admin
+ * DynamicForm (fetch_dynamic_forms / submit_form_data). Builder = preview;
+ * live readOnly = interactive submit.
  */
 export const ContactFormDefault: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
-  selectedElementId, readOnly = false, themeColors: tc,
+  selectedElementId, readOnly = false, themeColors: tc, projectId: projectIdProp,
 }) => {
   const { content, styles } = section;
   const s = styles as any;
@@ -116,24 +130,104 @@ export const ContactFormDefault: React.FC<Props> = ({
     style: { textAlign: 'center' as any, maxWidth: '520px', margin: '0 auto', lineHeight: '1.65' },
   };
 
-  const btnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cf-btn`) || {
-    id: `${section.id}-cf-btn`, type: 'button',
-    content: { text: content.ctaText || 'Send Message', link: content.ctaHref || '#' },
-    style: { backgroundColor: btnBg, color: btnText, padding: '0.875rem 2rem', borderRadius: '0.5rem', fontWeight: '700', fontSize: '0.95rem', width: '100%' } as any,
-  };
-  const btnElResolved: WebsiteElement = { ...btnEl, content: { ...(btnEl.content || {}), text: content.ctaText || 'Send Message', link: content.ctaHref || '#' } };
+  const projectId = String(projectIdProp || getProjectIdFromUrl() || '').trim();
+  const storedFormId = String(c.formId || '').trim();
 
-  // Visual form fields (no builder form element exists). Labels are configurable
-  // via content.fields; defaults cover Name / Email / Phone / Message.
-  const fields: Array<{ label: string; type: string }> = Array.isArray(c.fields) && c.fields.length
-    ? c.fields.map((f: any) => ({ label: String(f?.label || 'Field'), type: String(f?.type || 'text') }))
-    : [
-        { label: 'Full Name', type: 'text' },
-        { label: 'Email Address', type: 'email' },
-        { label: 'Phone Number', type: 'tel' },
-        { label: 'Your Message', type: 'textarea' },
-      ];
+  const fallbackFields: FormFieldView[] = useMemo(() => {
+    if (Array.isArray(c.fields) && c.fields.length) {
+      return c.fields.map((f: any, i: number) => ({
+        name: String(f?.name || `field_${i + 1}`).trim(),
+        label: String(f?.label || 'Field').trim(),
+        type: String(f?.type || 'text').trim(),
+        required: Boolean(f?.required),
+        options: Array.isArray(f?.options) ? f.options.map(String) : [],
+        placeholder: String(f?.placeholder || f?.label || '').trim(),
+      }));
+    }
+    return [
+      { name: 'full_name', label: 'Full Name', type: 'text', required: true },
+      { name: 'email_address', label: 'Email Address', type: 'email', required: true },
+      { name: 'phone_number', label: 'Phone Number', type: 'tel' },
+      { name: 'your_message', label: 'Your Message', type: 'textarea', required: true },
+    ];
+  }, [c.fields]);
 
+  const [formId, setFormId] = useState(storedFormId);
+  const [fields, setFields] = useState<FormFieldView[]>(fallbackFields);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string>('');
+  const [statusOk, setStatusOk] = useState<boolean | null>(null);
+  const [formMissing, setFormMissing] = useState(Boolean(c.formMissing));
+
+  useEffect(() => {
+    setFields(fallbackFields);
+    setFormId(storedFormId);
+  }, [fallbackFields, storedFormId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!projectId) return;
+      const form = await fetchProjectDynamicForm(projectId);
+      if (cancelled) return;
+      if (!form?._id) {
+        setFormMissing(true);
+        return;
+      }
+      const mapped = mapDynamicFormToSectionFields(form);
+      setFormId(String(form._id));
+      if (mapped.length) setFields(mapped);
+      setFormMissing(false);
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  useEffect(() => {
+    setValues((prev) => {
+      const next: Record<string, string> = {};
+      for (const f of fields) {
+        next[f.name] = prev[f.name] ?? '';
+      }
+      return next;
+    });
+  }, [fields]);
+
+  const onChangeField = useCallback((name: string, value: string) => {
+    setValues((prev) => ({ ...prev, [name]: value }));
+  }, []);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!readOnly) return; // builder preview — no submit
+    if (!formId) {
+      setStatusOk(false);
+      setStatusMsg('Contact form is not set up yet. Please configure a form in admin.');
+      return;
+    }
+    for (const f of fields) {
+      if (f.required && !String(values[f.name] || '').trim()) {
+        setStatusOk(false);
+        setStatusMsg(`Please fill in "${f.label}".`);
+        return;
+      }
+    }
+    setSubmitting(true);
+    setStatusMsg('');
+    const result = await submitDynamicFormData(formId, values);
+    setSubmitting(false);
+    setStatusOk(result.ok);
+    setStatusMsg(result.message);
+    if (result.ok) {
+      setValues((prev) => {
+        const cleared: Record<string, string> = {};
+        Object.keys(prev).forEach((k) => { cleared[k] = ''; });
+        return cleared;
+      });
+    }
+  }, [readOnly, formId, fields, values]);
+
+  const btnLabel = content.ctaText || 'Send Message';
   const inputStyle: React.CSSProperties = {
     backgroundColor: inputBg,
     border: `1px solid ${inputBorder}`,
@@ -143,6 +237,50 @@ export const ContactFormDefault: React.FC<Props> = ({
     color: titleColor,
     width: '100%',
     outline: 'none',
+  };
+
+  const renderField = (f: FormFieldView, i: number) => {
+    const common = {
+      id: `${section.id}-field-${f.name || i}`,
+      name: f.name,
+      required: Boolean(f.required) && readOnly,
+      placeholder: f.placeholder || f.label,
+      style: inputStyle,
+      disabled: !readOnly || submitting,
+      value: values[f.name] || '',
+      onChange: (ev: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+        onChangeField(f.name, ev.target.value),
+    };
+
+    if (f.type === 'textarea') {
+      return <textarea key={f.name || i} rows={4} {...common} />;
+    }
+    if (f.type === 'select') {
+      return (
+        <select key={f.name || i} {...common}>
+          <option value="">{f.placeholder || `Select ${f.label}`}</option>
+          {(f.options || []).map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      );
+    }
+    if (f.type === 'checkbox') {
+      return (
+        <label key={f.name || i} className="flex items-center gap-2 text-sm" style={{ color: textColor }}>
+          <input
+            type="checkbox"
+            name={f.name}
+            checked={values[f.name] === 'true' || values[f.name] === '1'}
+            disabled={!readOnly || submitting}
+            onChange={(ev) => onChangeField(f.name, ev.target.checked ? 'true' : '')}
+          />
+          {f.label}
+        </label>
+      );
+    }
+    const inputType = ['email', 'tel', 'number', 'date', 'file'].includes(f.type) ? f.type : 'text';
+    return <input key={f.name || i} type={inputType} {...common} />;
   };
 
   return (
@@ -162,25 +300,74 @@ export const ContactFormDefault: React.FC<Props> = ({
           <ElementsSection section={{ ...section, elements: [descEl] }} {...passThrough} />
         </motion.div>
 
-        {/* Form card */}
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
           transition={{ duration: 0.6, delay: 0.15 }}
           className="rounded-2xl p-6 sm:p-8 space-y-4"
           style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}`, boxShadow: `0 12px 32px -16px ${accent}20` }}
         >
-          {fields.map((f, i) => (
-            <div key={i} className="space-y-1.5">
-              <label className="block text-sm font-semibold" style={{ color: textColor }}>{f.label}</label>
-              {f.type === 'textarea' ? (
-                <textarea rows={4} placeholder={f.label} style={inputStyle} disabled={readOnly} />
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate={!readOnly}>
+            {fields.map((f, i) => (
+              <div key={f.name || i} className="space-y-1.5">
+                {f.type !== 'checkbox' && (
+                  <label className="block text-sm font-semibold" style={{ color: textColor }} htmlFor={`${section.id}-field-${f.name || i}`}>
+                    {f.label}{f.required ? ' *' : ''}
+                  </label>
+                )}
+                {renderField(f, i)}
+              </div>
+            ))}
+
+            {formMissing && readOnly && (
+              <p className="text-sm" style={{ color: textColor }}>
+                No dynamic form is enabled for this project yet. Create one in Admin → Forms.
+              </p>
+            )}
+
+            {statusMsg && (
+              <p className="text-sm font-medium" style={{ color: statusOk ? '#15803d' : accent }}>
+                {statusMsg}
+              </p>
+            )}
+
+            <div className="pt-2">
+              {readOnly ? (
+                <button
+                  type="submit"
+                  disabled={submitting || !formId}
+                  className="w-full font-bold rounded-lg transition opacity-100 disabled:opacity-60"
+                  style={{
+                    backgroundColor: btnBg,
+                    color: btnText,
+                    padding: '0.875rem 2rem',
+                    fontSize: '0.95rem',
+                  }}
+                >
+                  {submitting ? 'Sending…' : btnLabel}
+                </button>
               ) : (
-                <input type={f.type} placeholder={f.label} style={inputStyle} disabled={readOnly} />
+                <ElementsSection
+                  section={{
+                    ...section,
+                    elements: [{
+                      id: `${section.id}-cf-btn`,
+                      type: 'button',
+                      content: { text: btnLabel, link: '#' },
+                      style: {
+                        backgroundColor: btnBg,
+                        color: btnText,
+                        padding: '0.875rem 2rem',
+                        borderRadius: '0.5rem',
+                        fontWeight: '700',
+                        fontSize: '0.95rem',
+                        width: '100%',
+                      } as any,
+                    }],
+                  }}
+                  {...passThrough}
+                />
               )}
             </div>
-          ))}
-          <div className="pt-2">
-            <ElementsSection section={{ ...section, elements: [btnElResolved] }} {...passThrough} />
-          </div>
+          </form>
         </motion.div>
       </div>
     </div>

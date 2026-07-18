@@ -287,12 +287,18 @@ const DynamicFormController = {
                 return helper.sendError(res, 400, 'Valid Project ID is required.');
             }
 
-            // 2. Find the most recent form for the project (no userId check for public access)
-            // Return only the latest created/updated form for website display
-            const forms = await DynamicForm.find({ projectId })
-                .sort({ updatedAt: -1, createdAt: -1 }) // Sort by most recently updated/created first
-                .limit(1) // Only return the most recent form
+            // Prefer the enabled form for live websites; fall back to most recent.
+            let forms = await DynamicForm.find({ projectId, isEnabled: true })
+                .sort({ updatedAt: -1, createdAt: -1 })
+                .limit(1)
                 .exec();
+
+            if (!forms || forms.length === 0) {
+                forms = await DynamicForm.find({ projectId })
+                    .sort({ updatedAt: -1, createdAt: -1 })
+                    .limit(1)
+                    .exec();
+            }
 
             if (!forms || forms.length === 0) {
                 // Return 200 with empty array if no forms exist, it's not strictly an error

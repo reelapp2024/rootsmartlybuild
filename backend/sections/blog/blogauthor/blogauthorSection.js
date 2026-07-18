@@ -1,12 +1,13 @@
 /**
- * Author block — aligns with apps Author type + backend authors.js
- * name, jobTitle, bio, image (URL empty), links[]
+ * Author block — prefer Author collection (queue DB hydrate).
+ * OpenAI prompt kept only as last-resort seed when no Author rows exist.
  */
 
 const { IMAGE_PROMPT_JSON_RULES } = require("../../sectionImagePrompts");
 
 module.exports = {
   id: "blogauthor",
+  source: "blog_author",
   imageCount: 1,
 
   schema: {
@@ -21,12 +22,14 @@ module.exports = {
 
   prompt(ctx) {
     const { project, extraData = {} } = ctx;
-
     const projectName = project.projectName || "";
     const mainCategory = project.mainCategory || "";
 
     return `
-Create a plausible expert AUTHOR profile for ${mainCategory} content on behalf of ${projectName}.
+Create a fallback AUTHOR profile ONLY if the database has no author (seed). Prefer real Author records elsewhere.
+
+Business: ${projectName}
+Category: ${mainCategory}
 
 Extra:
 ${JSON.stringify(extraData)}
@@ -35,24 +38,19 @@ Return STRICT JSON ONLY:
 
 {
   "name": "First Last",
-  "jobTitle": "Realistic role 2-6 words",
-  "bio": "45-90 words — credentials, perspective, specialty; no fake awards with dates",
+  "jobTitle": "2-6 word role",
+  "bio": "40-80 words",
   "image": "",
-  "links": [
-    { "label": "LinkedIn", "url": "#" },
-    { "label": "Website", "url": "#" }
-  ],
-  "ai_image_prompt": "22-38 words: ONE professional headshot for this expert — inclusive, soft studio light, neutral background, confident expression, ${mainCategory} industry styling, no text.",
-  "non_ai_image_prompt": "3-8 words stock keywords professional headshot portrait studio (e.g. \"professional woman headshot studio\")"
+  "links": [{ "label": "LinkedIn", "url": "#" }],
+  "ai_image_prompt": "22-36 words professional headshot for ${mainCategory}; no text.",
+  "non_ai_image_prompt": "3-8 words stock professional headshot"
 }
 
 ${IMAGE_PROMPT_JSON_RULES}
 
 RULES:
-- image MUST be "" (empty). links[].url use \"#\" only — replace in CMS.
-- No phone/email in bio.
-- links: 2 or 3 items, labels unique.
-- Output ONLY valid JSON.
+- image MUST be "". links url "#".
+- No phone/email. JSON only.
 `;
-  }
+  },
 };

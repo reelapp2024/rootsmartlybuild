@@ -30,7 +30,14 @@ export function normalizeSectionContent(sectionType: string, raw: any): any {
     };
   }
 
-  if (type === 'services') {
+  if (
+    type === 'services' ||
+    type === 'servicesgrid' ||
+    type === 'serviceslistgrid' ||
+    type === 'relatedservices' ||
+    type === 'locationservices' ||
+    type === 'servicedetailservices'
+  ) {
     const rawObj = Array.isArray(raw) ? { data: raw } : raw;
     const serviceItems = Array.isArray(rawObj?.items)
       ? rawObj.items
@@ -42,13 +49,37 @@ export function normalizeSectionContent(sectionType: string, raw: any): any {
         subtitle: rawObj?.subtitle || rawObj?.description || rawObj?.sectionSubtitle || '',
         title: rawObj?.title || rawObj?.sectionTitle || 'Our Services',
         description: rawObj?.description || rawObj?.sectionSubtitle || '',
-        items: serviceItems.map((item: any, index: number) => ({
-          id: item?.id || `service-${index + 1}`,
-          title: item?.title || '',
-          description: item?.description || '',
-          icon: item?.icon || item?.iconClass || '',
-          iconClass: item?.iconClass || item?.icon || '',
-        })),
+        items: serviceItems.map((item: any, index: number) => {
+          const link = String(
+            item?.link || item?.href || item?.url || item?.path || ''
+          ).trim();
+          const slug = String(item?.slug || item?.serviceSlug || '').trim();
+          return {
+            ...item,
+            id: item?.id || `service-${index + 1}`,
+            title: item?.title || item?.name || '',
+            description: item?.description || item?.desc || '',
+            icon: item?.icon || item?.iconClass || '',
+            iconClass: item?.iconClass || item?.icon || '',
+            // WebsitePage routing keys — must survive hydration for live CTAs
+            ...(item?.serviceId != null && item?.serviceId !== ''
+              ? { serviceId: String(item.serviceId) }
+              : {}),
+            ...(item?.pageId != null && item?.pageId !== ''
+              ? { pageId: String(item.pageId) }
+              : {}),
+            ...(item?.locationId != null && item?.locationId !== ''
+              ? { locationId: String(item.locationId) }
+              : {}),
+            ...(slug ? { slug } : {}),
+            ...(link && link !== '#'
+              ? { link, href: link }
+              : {}),
+            ...(item?.imageUrl || item?.img
+              ? { imageUrl: item.imageUrl || item.img }
+              : {}),
+          };
+        }),
       };
     }
   }
@@ -65,7 +96,12 @@ export function normalizeSectionContent(sectionType: string, raw: any): any {
     };
   }
 
-  if (type === 'guarantee') {
+  if (
+    type === 'guarantee' ||
+    type === 'serviceslistguarantee' ||
+    type === 'servicedetailguarantee' ||
+    type === 'serviceguarantee'
+  ) {
     const rawObj = Array.isArray(raw) ? {} : (raw || {});
     const guaranteeList = Array.isArray(rawObj.guaranteeList) ? rawObj.guaranteeList : [];
     const legacyArr = Array.isArray(rawObj.items) ? rawObj.items : [];

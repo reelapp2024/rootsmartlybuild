@@ -354,7 +354,6 @@ async function syncBulkLocationLandingPages(projectId) {
           $setOnInsert: {
             projectId,
             name: pageName,
-            isPublished: true,
           },
         },
         upsert: true,

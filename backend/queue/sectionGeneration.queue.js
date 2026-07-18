@@ -16,8 +16,18 @@ const {
 const Slug = require("../models/slug");
 const slugify = require("../additional/slugify");
 const { fetchJSONFromOpenAI } = require("../additional/openaiHelpers");
+const {
+  startProgress,
+  patchProgress,
+  finishProgress,
+  getDefaultParallelWorkers,
+  mapWithConcurrency,
+} = require("../services/sectionGenerationProgress");
 const resolveSectionFile = require("../sections/resolveSectionFile");
 const { resolvePhone, SOURCE: CONTACT_SOURCE } = require("../services/contactResolver");
+const {
+  applyContactPageSectionDynamics,
+} = require("../services/contactPageDynamics");
 const {
   syncHeaderFooterSectionsForProject,
 } = require("../services/headerFooterSectionSync");
@@ -33,7 +43,25 @@ const {
   isBusinessLocationsSection,
   usesServicesGridDbBuilder,
   isServiceDetailSection,
+  serviceDetailBundleTwinId,
+  locationHomeTwinId,
+  isLocationMapSection,
+  usesBlogCollectionBuilder,
+  usesBlogDocumentBuilder,
+  usesBlogAuthorBuilder,
+  usesBlogRelatedBuilder,
 } = require("../additional/sectionResolverRegistry");
+const {
+  buildBlogListSectionData,
+  buildBlogArticleHeroData,
+  buildBlogContentData,
+  buildBlogAuthorData,
+  buildBlogRelatedItems,
+} = require("../services/blogSectionDynamics");
+const {
+  resolveLegalDocType,
+  splitLegalPayload,
+} = require("../services/legalSectionDynamics");
 const {
   coerceFaqSectionPayload,
   FAQ_ANSWER_MIN_WORDS,
@@ -61,6 +89,310 @@ const {
 require("dotenv").config();
 
 const SECTION_LENGTH_FIX_MAX_ATTEMPTS = 4;
+const GENERIC_PLACEHOLDER_RX =
+  /(sample\s*question|sample\s*answer|placeholder|lorem ipsum|dummy text|question\s*\d+|answer\s*\d+)/i;
+
+function sanitizeAiHeadingField(value = "", fallback = "") {
+  const current = String(value || "").trim();
+  if (!current) return String(fallback || "").trim();
+  if (GENERIC_PLACEHOLDER_RX.test(current)) return String(fallback || "").trim();
+  return current;
+}
+
+function buildSectionHeadingFallbacks({
+  sectionId = "",
+  project = {},
+  locationDisplayName = "",
+}) {
+  const projectName = String(project?.projectName || "").trim();
+  const category =
+    String(project?.mainCategory || project?.serviceType || project?.focusKeyword || "Service")
+      .trim();
+  const locationHint = String(locationDisplayName || "").trim();
+  const sectionLabel = String(sectionId || "")
+    .replace(/[-_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return {
+    badgeText: `${projectName || category} ${sectionLabel}`.trim().split(/\s+/).slice(0, 4).join(" "),
+    title: `${projectName || category} ${sectionLabel || "Section"}`.trim(),
+    subtitle: locationHint
+      ? `Professional ${category.toLowerCase()} content tailored for ${locationHint}.`
+      : `Professional ${category.toLowerCase()} content tailored for your business.`,
+  };
+}
+
+function sanitizeFaqItems(items = [], project = {}, locationDisplayName = "") {
+  const cleaned = (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      question: String(item?.question || item?.title || "").trim(),
+      answer: String(item?.answer || item?.description || item?.content || "").trim(),
+    }))
+    .filter(
+      (item) =>
+        item.question &&
+        item.answer &&
+        !GENERIC_PLACEHOLDER_RX.test(item.question) &&
+        !GENERIC_PLACEHOLDER_RX.test(item.answer)
+    );
+
+  if (cleaned.length >= 4) return cleaned;
+
+  const businessName = String(project?.projectName || "Our Team").trim();
+  const category = String(project?.mainCategory || project?.serviceType || "service").trim();
+  const area = String(locationDisplayName || "your area").trim();
+  return [
+    {
+      question: `What experience does ${businessName} bring?`,
+      answer: `${businessName} brings practical, hands-on ${category.toLowerCase()} experience with a quality-first process built around clear communication, reliable workmanship, and clean project delivery for customers in ${area}.`,
+    },
+    {
+      question: `How does your team ensure consistent quality?`,
+      answer: `We follow a documented workflow for every job: clear scope, careful execution, quality checks, and final walkthroughs. That approach keeps outcomes consistent and helps customers trust our ${category.toLowerCase()} team long term.`,
+    },
+    {
+      question: `Do you serve nearby neighborhoods and surrounding areas?`,
+      answer: `Yes. We support customers across ${area} and nearby neighborhoods, and we tailor recommendations to local conditions so the work stays practical, durable, and aligned with real customer needs.`,
+    },
+    {
+      question: `What makes your company different from competitors?`,
+      answer: `${businessName} focuses on transparent communication, dependable timelines, and accountable follow-through. We prioritize long-term customer relationships over one-time transactions, so each project is handled with care and professional standards.`,
+    },
+    {
+      question: `How do customers stay informed during projects?`,
+      answer: `Customers get clear updates at each major step, including scope confirmation, status updates, and final completion notes. This keeps expectations aligned and prevents confusion during delivery.`,
+    },
+    {
+      question: `Do you stand behind the work after completion?`,
+      answer: `Yes. We back completed work with responsive post-service support and practical guidance, so customers in ${area} have confidence in the outcomes long after the initial project is finished.`,
+    },
+  ];
+}
+
+function isTestimonialSectionId(sectionId = "") {
+  const id = String(sectionId || "").toLowerCase().trim();
+  return (
+    id === "testimonials" ||
+    id === "areastestimonials" ||
+    id === "locationtestimonials" ||
+    id === "servicedetailtestimonials"
+  );
+}
+
+/** Stock plumbing demo badges from GenieBuild defaults — never persist these. */
+const STOCK_REVIEW_SERVICE_BADGES = new Set(
+  [
+    "emergency pipe repair",
+    "drain cleaning",
+    "water heater install",
+    "bathroom remodel",
+    "leak detection",
+    "water heater repair",
+    "service booking",
+    "repeat customer",
+    "new installation",
+    "full service",
+    "emergency call",
+    "same-day service",
+  ].map((s) => s.toLowerCase())
+);
+
+function sanitizeTestimonialItems(items = [], project = {}, serviceNames = []) {
+  const list = Array.isArray(items) ? items : [];
+  const services = (Array.isArray(serviceNames) ? serviceNames : [])
+    .map((s) => String(s || "").trim())
+    .filter(Boolean);
+  const category = String(
+    project?.mainCategory || project?.serviceType || project?.focusKeyword || "Service"
+  ).trim();
+
+  return list.map((raw, idx) => {
+    const item = raw && typeof raw === "object" ? { ...raw } : {};
+    const description = String(item.description || item.quote || item.content || "").trim();
+    let badge = String(item.service || item.title || item.badge || "").trim();
+    const badgeKey = badge.toLowerCase();
+    const isStock = !badge || STOCK_REVIEW_SERVICE_BADGES.has(badgeKey);
+
+    if (isStock) {
+      // Prefer a real project service that appears in the quote; else rotate project services.
+      const fromQuote = services.find((name) =>
+        description.toLowerCase().includes(String(name).toLowerCase())
+      );
+      if (fromQuote) {
+        badge = fromQuote;
+      } else if (services.length) {
+        badge = services[idx % services.length];
+      } else {
+        badge = category;
+      }
+    }
+
+    item.title = badge;
+    item.service = badge;
+    if (!item.id) item.id = `testimonial-${idx + 1}`;
+    if (description && !item.description) item.description = description;
+    const rating = Number(item.rating);
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+      item.rating = 5;
+    }
+    return item;
+  });
+}
+
+function sanitizeGeneratedSectionPayload({
+  sectionId = "",
+  payload = {},
+  project = {},
+  locationDisplayName = "",
+  serviceNames = [],
+}) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+
+  const cleaned = { ...payload };
+  const fallback = buildSectionHeadingFallbacks({
+    sectionId,
+    project,
+    locationDisplayName,
+  });
+
+  if ("badgeText" in cleaned) {
+    cleaned.badgeText = sanitizeAiHeadingField(cleaned.badgeText, fallback.badgeText);
+  }
+  if ("title" in cleaned) {
+    cleaned.title = sanitizeAiHeadingField(cleaned.title, fallback.title);
+  }
+  if ("heading" in cleaned) {
+    cleaned.heading = sanitizeAiHeadingField(cleaned.heading, fallback.title);
+  }
+  if ("subtitle" in cleaned) {
+    cleaned.subtitle = sanitizeAiHeadingField(cleaned.subtitle, fallback.subtitle);
+  }
+  if ("description" in cleaned) {
+    cleaned.description = sanitizeAiHeadingField(cleaned.description, fallback.subtitle);
+  }
+  if ("descriptionText" in cleaned) {
+    cleaned.descriptionText = sanitizeAiHeadingField(cleaned.descriptionText, fallback.subtitle);
+  }
+  if ("intro" in cleaned) {
+    cleaned.intro = sanitizeAiHeadingField(cleaned.intro, fallback.subtitle);
+  }
+
+  if (/faq/i.test(String(sectionId || "")) && Array.isArray(cleaned.items)) {
+    cleaned.items = sanitizeFaqItems(cleaned.items, project, locationDisplayName);
+  }
+
+  if (isTestimonialSectionId(sectionId) && Array.isArray(cleaned.items)) {
+    cleaned.items = sanitizeTestimonialItems(cleaned.items, project, serviceNames);
+  }
+
+  return cleaned;
+}
+
+function appendUniversalSectionPromptRules(rawPrompt = "", sectionId = "") {
+  const base = String(rawPrompt || "").trim();
+  const sid = String(sectionId || "").trim();
+  return `${base}
+
+GLOBAL SECTION RULES (apply strictly):
+- Every heading-style field must be business-specific and dynamic: badgeText, title, heading, subtitle, description, descriptionText, intro.
+- Never output placeholders or template labels like "Sample Question 1", "Question 1", "Sample Answer", "Lorem ipsum", "placeholder", or "dummy text".
+- For any FAQ section, generate real customer questions and detailed answers specific to the business context.
+- For testimonials/reviews: every item MUST include title and service (same short job badge, 2-5 words) that matches THAT review's quote — prefer real project service names; never invent unrelated stock plumbing badges.
+- Keep section copy unique for this project; avoid reusable stock phrases across sites.
+- For guarantee sections: never use the stock pair value "98%" + label "On-time completion"; invent a project-specific metric.
+- Output strict JSON only for section "${sid}".
+`;
+}
+
+function hashStringSeed(input = "") {
+  let hash = 0;
+  const s = String(input || "");
+  for (let i = 0; i < s.length; i++) {
+    hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+function buildGuaranteeStatCardFallback(project = {}, serviceName = "") {
+  const projectName = String(project?.projectName || "").trim() || "Our team";
+  const category = String(
+    project?.mainCategory || project?.serviceType || project?.focusKeyword || "service"
+  ).trim();
+  const focus = String(serviceName || category).trim() || "service";
+  const options = [
+    {
+      icon: "fa-clock",
+      value: "Same-day",
+      label: "Booking goal",
+      description: `Fast scheduling for ${focus} jobs with ${projectName}`,
+    },
+    {
+      icon: "fa-star",
+      value: "4.9★",
+      label: "Customer rating",
+      description: `Trusted ${category.toLowerCase()} results from ${projectName}`,
+    },
+    {
+      icon: "fa-shield-halved",
+      value: "100%",
+      label: "Workmanship care",
+      description: `Quality-checked ${focus.toLowerCase()} delivery every visit`,
+    },
+    {
+      icon: "fa-headset",
+      value: "24/7",
+      label: "Support access",
+      description: `Responsive help when ${projectName} customers need it`,
+    },
+    {
+      icon: "fa-calendar-check",
+      value: "On schedule",
+      label: "Arrival promise",
+      description: `Reliable timing for ${focus.toLowerCase()} appointments`,
+    },
+    {
+      icon: "fa-award",
+      value: "Local pro",
+      label: "Trusted crew",
+      description: `Experienced ${category.toLowerCase()} specialists from ${projectName}`,
+    },
+  ];
+  const idx = hashStringSeed(`${projectName}::${focus}`) % options.length;
+  return options[idx];
+}
+
+function isStockGuaranteeStat(value = "", label = "") {
+  const v = String(value || "").trim().toLowerCase();
+  const l = String(label || "").trim().toLowerCase();
+  if (!v && !l) return true;
+  if (v === "98%" && /on[-\s]?time\s+completion/.test(l)) return true;
+  if (v === "10" && /year\s+guarantee/.test(l)) return true;
+  if (v === "98%" && (!l || /jobs?\s+done\s+right/.test(l))) return true;
+  return false;
+}
+
+function sanitizeGuaranteeStatCard(statCard = {}, project = {}, serviceName = "") {
+  const fallback = buildGuaranteeStatCardFallback(project, serviceName);
+  const icon = String(statCard?.icon || "").trim() || fallback.icon;
+  let label = String(statCard?.label || "").trim();
+  let value = String(statCard?.value || "").trim();
+  let description = String(statCard?.description || "").trim();
+
+  if (isStockGuaranteeStat(value, label) || !value || !label) {
+    value = fallback.value;
+    label = fallback.label;
+    description = description || fallback.description;
+  }
+  if (!description) description = fallback.description;
+
+  return {
+    icon: icon.replace(/^fas?\s+/, ""),
+    label,
+    value,
+    description,
+  };
+}
 
 async function loadWizardAboutserviceFallback(projectId, locationId) {
   const wizardPage = await WebsitePage.findOne({
@@ -102,11 +434,11 @@ async function fetchValidatedSectionJson({
     const validation = validateSectionContent(sectionId, result);
     if (validation.ok) return result;
     if (attempt === SECTION_LENGTH_FIX_MAX_ATTEMPTS) {
-      if (normalizedId === "aboutservice") {
+      if (normalizedId === "aboutservice" || normalizedId === "servicedetailabout") {
         const words = countSectionWords(pickAboutServiceBody(result));
         if (words >= ABOUT_SERVICE_MIN_WORDS) {
           console.warn(
-            `[sectionGenerationQueue] aboutservice accepted after retries at ${words} words (min ${ABOUT_SERVICE_MIN_WORDS})`
+            `[sectionGenerationQueue] ${normalizedId} accepted after retries at ${words} words (min ${ABOUT_SERVICE_MIN_WORDS})`
           );
           return result;
         }
@@ -252,12 +584,12 @@ async function generateSeoAfterSectionGeneration({
 // CONFIG
 // =========================
 
-const SECTION_GENERATION_QUEUE = "section-generation";
+const { getBullRedisConfig, bullQueueName } = require("../config/bullRedis");
+const crypto = require("crypto");
 
-const redisConfig = {
-  host: process.env.redisHost,
-  port: process.env.redisPort
-};
+const SECTION_GENERATION_QUEUE = bullQueueName("section-generation");
+
+const redisConfig = getBullRedisConfig();
 
 const ensureHeaderFooterComponents = (componentIds = []) => {
   const list = Array.isArray(componentIds) ? [...componentIds] : [];
@@ -323,15 +655,39 @@ const sectionGenerationQueue = new Bull(SECTION_GENERATION_QUEUE, {
     attempts: 2,
     backoff: { type: "fixed", delay: 15000 },
     removeOnComplete: true,
-    removeOnFail: false
-  }
+    // Keep failures visible for ops / re-queue debugging
+    removeOnFail: false,
+  },
 });
 
-console.log("🔥 Section queue worker started");
+/**
+ * Process handler body is assigned later in this file (sync load).
+ * Register the named Bull processor immediately so this process never claims
+ * generate-section jobs without a handler.
+ */
+let runSectionGenerationJob = async () => {
+  throw new Error("Section generation worker not finished loading");
+};
+
+sectionGenerationQueue.process("generate-section", 2, async (job) =>
+  runSectionGenerationJob(job)
+);
+
+console.log(
+  `🔥 Section queue worker started queue="${SECTION_GENERATION_QUEUE}" redis=${redisConfig.host}:${redisConfig.port}`
+);
 
 // =========================
 // QUEUE EVENTS
 // =========================
+
+sectionGenerationQueue.on("error", (err) => {
+  console.error(`[sectionGenerationQueue] redis/queue error: ${err?.message || err}`);
+});
+
+sectionGenerationQueue.on("ready", () => {
+  console.log(`[sectionGenerationQueue] redis ready for "${SECTION_GENERATION_QUEUE}"`);
+});
 
 sectionGenerationQueue.on("active", (job) => {
   console.log(`[sectionGenerationQueue] active job=${job.id}`);
@@ -392,7 +748,11 @@ async function enqueueSectionGeneration({
     normalizedOnlyServiceIds.join(","),
     normalizedOnlyServicePageIds.join(",")
   ].join("|");
-  const jobId = `sectiongen:${dedupeKey}`;
+  const jobId = `sectiongen:${crypto
+    .createHash("sha1")
+    .update(dedupeKey)
+    .digest("hex")
+    .slice(0, 24)}`;
 
   const toComparableKey = (data = {}) => {
     const selected = Array.isArray(data?.selectedSectionIds)
@@ -454,12 +814,18 @@ async function enqueueSectionGeneration({
     }, {
       jobId,
       removeOnComplete: true,
-      removeOnFail: true
+      removeOnFail: false,
     });
   } catch (err) {
     if (String(err?.message || "").toLowerCase().includes("jobid")) {
       const existingJob = await sectionGenerationQueue.getJob(jobId);
-      if (existingJob) return existingJob;
+      if (existingJob) {
+        const state = await existingJob.getState().catch(() => "");
+        if (state === "failed") {
+          await existingJob.retry().catch(() => null);
+        }
+        return existingJob;
+      }
     }
     throw err;
   }
@@ -478,7 +844,8 @@ async function generateSingleSection({
   sectionId,
   location,
   locationId,
-  serviceNames = []
+  serviceNames = [],
+  extraData = {},
 }) {
   const getLocationDisplayName = (loc = null) => {
     if (!loc) return "";
@@ -504,8 +871,15 @@ async function generateSingleSection({
   console.log("⚙️ Generating section:", {
     sectionId: normalizedSectionId,
     pageId,
-    location: location?.name || "DEFAULT",
-    locationId
+    location: location?.name || location?.areaName || "DEFAULT",
+    locationId,
+    ...(extraData?.__progress
+      ? {
+          progress: `${extraData.__progress.done + 1}/${extraData.__progress.total}`,
+          pending: Math.max(0, extraData.__progress.total - extraData.__progress.done - 1),
+          status: "generating",
+        }
+      : {}),
   });
 
   const pageDoc =
@@ -522,6 +896,29 @@ async function generateSingleSection({
     if (pageType === "about" || pageName === "about" || pageName === "about us") return "about";
     if (pageType === "contact" || pageName === "contact") return "contact";
     if (pageType === "home" || pageType === "homepage" || pageName === "home") return "homepage";
+    if (pageName === "blog" || pageName === "blogs" || pageName.startsWith("blog-")) return "blog";
+    // Location landings reuse homepage section modules (content scoped by locationId)
+    if (pageName.startsWith("location-") || pageName === "location" || pageDoc?.locationId) {
+      return "homepage";
+    }
+    // All Areas listing (`/areas`) — prompts under sections/allareas/
+    if (
+      pageType === "areas" ||
+      pageType === "allareas" ||
+      pageName === "areas" ||
+      pageName === "allareas" ||
+      pageName === "all-areas"
+    ) {
+      return "allareas";
+    }
+    if (
+      pageName === "legal" ||
+      pageName.includes("privacy") ||
+      pageName.includes("terms") ||
+      pageName.includes("disclaimer")
+    ) {
+      return "legal";
+    }
     return pageName || pageType || "";
   })();
 
@@ -675,7 +1072,11 @@ async function generateSingleSection({
       const aboutContent =
         serviceBundleByServiceAndLocation.get(
           `${String(svc?._id || "")}::${bundleLocKey}`
-        )?.sections?.aboutservice || {};
+        )?.sections?.aboutservice ||
+        serviceBundleByServiceAndLocation.get(
+          `${String(svc?._id || "")}::${bundleLocKey}`
+        )?.sections?.servicedetailabout ||
+        {};
       const aboutImage =
         aboutContent?.imageUrl ||
         (Array.isArray(aboutContent?.images) && aboutContent.images[0]?.url) ||
@@ -740,13 +1141,13 @@ async function generateSingleSection({
           extraData: { serviceCards, pageId },
         });
         const prompt = buildLocationAwarePrompt(
-          rawPrompt,
+          appendUniversalSectionPromptRules(rawPrompt, normalizedSectionId),
           locationDisplayName,
           normalizedSectionId
         );
         const enriched = await fetchValidatedSectionJson({
           prompt,
-          sectionId: "servicesgrid",
+          sectionId: normalizedSectionId === "serviceslistgrid" ? "serviceslistgrid" : "servicesgrid",
           label: "services_grid_copy",
           tracking: {
             userId: userId || project?.userId,
@@ -938,11 +1339,169 @@ Rules:
     };
   };
 
+  const buildDbBackedSublocationsSection = async () => {
+    const scopeLocationId =
+      locationId || pageDoc?.locationId
+        ? String(locationId || pageDoc.locationId)
+        : null;
+
+    const { getScopedAreaLocations } = require("../services/locationContentScope");
+    const {
+      buildBusinessLocationPathMap,
+      resolveLocationPageHref,
+    } = require("../additional/businessLocationPaths");
+
+    const allLocs = await BusinessLocation.find({ projectId, status: 1 })
+      .select("_id areaName type parentId")
+      .lean();
+
+    // All Areas listing (no parent scope): show primary parent's children (or parents).
+    // Location landing: show children of that location.
+    const scopedLocs = scopeLocationId
+      ? await BusinessLocation.find({
+          projectId,
+          status: 1,
+          parentId: scopeLocationId,
+        })
+          .select("_id areaName type parentId")
+          .lean()
+      : getScopedAreaLocations({
+          allLocations: allLocs,
+          projectType: projectTypeNum,
+          scopeLocationId: null,
+          onHomepage: true,
+        });
+
+    if (!scopedLocs.length) return null;
+
+    const locPages = await WebsitePage.find({
+      projectId,
+      locationId: { $in: scopedLocs.map((c) => c._id) },
+      pageType: { $ne: "service" },
+    })
+      .select("_id slug locationId name")
+      .lean();
+    const pageByLoc = new Map(
+      (locPages || []).map((p) => [String(p.locationId), p])
+    );
+    const pageSlugById = new Map();
+    for (const p of locPages || []) {
+      const slug = String(p?.slug || "").trim().replace(/^\/+/, "");
+      if (slug) pageSlugById.set(String(p.locationId), `/${slug}`);
+    }
+    const pathByLocationId = buildBusinessLocationPathMap(allLocs);
+
+    const items = scopedLocs
+      .map((loc) => {
+        const name = String(loc.areaName || "").trim();
+        if (!name) return null;
+        const locId = String(loc._id);
+        const page = pageByLoc.get(locId);
+        const link = resolveLocationPageHref(locId, pageSlugById, pathByLocationId);
+        return {
+          name,
+          title: name,
+          meta: "Local coverage",
+          locationId: locId,
+          link: link && link !== "#" ? link : (page?.slug ? `/${String(page.slug).replace(/^\/+/, "")}` : "#"),
+        };
+      })
+      .filter(Boolean);
+
+    if (!items.length) return null;
+
+    const parentLabel = locationDisplayName || "your service area";
+    return {
+      data: {
+        badgeText: "Areas We Serve",
+        title: scopeLocationId
+          ? `Explore Nearby Locations`
+          : `Areas We Serve`,
+        subtitle: scopeLocationId
+          ? `Neighborhoods and communities we serve around ${parentLabel}.`
+          : `Find local coverage across the areas ${String(project?.projectName || "we").trim()} serve.`,
+        items,
+        contentRef: {
+          source: "business_locations",
+          parentId: scopeLocationId || null,
+        },
+      },
+      meta: {
+        source: "database",
+        scopeLocationId: scopeLocationId || null,
+        locationIds: scopedLocs.map((c) => c._id),
+      },
+    };
+  };
+
+  const buildDbBackedLocationMapSection = async () => {
+    const scopeLocationId =
+      locationId || pageDoc?.locationId
+        ? String(locationId || pageDoc.locationId)
+        : null;
+    if (!scopeLocationId) return null;
+
+    const loc = await BusinessLocation.findOne({
+      _id: scopeLocationId,
+      projectId,
+      status: 1,
+    })
+      .select("areaName lat lng formattedAddress googlePlaceId")
+      .lean();
+    if (!loc) return null;
+
+    const lat = typeof loc.lat === "number" ? loc.lat : null;
+    const lng = typeof loc.lng === "number" ? loc.lng : null;
+    let mapEmbedUrl = "";
+    if (lat != null && lng != null) {
+      mapEmbedUrl = `https://maps.google.com/maps?q=${lat},${lng}&z=14&output=embed`;
+    }
+
+    return {
+      data: {
+        badgeText: "Service Area",
+        title: `Find Us in ${String(loc.areaName || "Your Area").trim()}`,
+        subtitle: String(loc.formattedAddress || "").trim(),
+        lat,
+        lng,
+        mapEmbedUrl,
+        formattedAddress: String(loc.formattedAddress || "").trim(),
+        contentRef: { source: "location_map", locationId: scopeLocationId },
+      },
+      meta: { source: "database", scopeLocationId },
+    };
+  };
+
   let dbSectionPayload = null;
   if (usesServicesGridDbBuilder(normalizedSectionId)) {
     dbSectionPayload = await buildDbBackedServicesSection();
+  } else if (normalizedSectionId === "sublocations") {
+    dbSectionPayload = await buildDbBackedSublocationsSection();
+  } else if (isLocationMapSection(normalizedSectionId)) {
+    dbSectionPayload = await buildDbBackedLocationMapSection();
   } else if (isBusinessLocationsSection(normalizedSectionId)) {
     dbSectionPayload = await buildDbBackedAreasSection();
+  } else if (usesBlogCollectionBuilder(normalizedSectionId)) {
+    dbSectionPayload = await buildBlogListSectionData(projectId);
+  } else if (usesBlogDocumentBuilder(normalizedSectionId)) {
+    const blogOpts = {
+      blogId: extraData?.blogId || pageDoc?.blogId,
+      slug: extraData?.blogSlug || extraData?.slug,
+    };
+    if (normalizedSectionId === "blogcontent" || normalizedSectionId === "blogarticle") {
+      dbSectionPayload = await buildBlogContentData(projectId, blogOpts);
+    } else {
+      dbSectionPayload = await buildBlogArticleHeroData(projectId, blogOpts);
+    }
+  } else if (usesBlogAuthorBuilder(normalizedSectionId)) {
+    dbSectionPayload = await buildBlogAuthorData(projectId, {
+      blogId: extraData?.blogId,
+      slug: extraData?.blogSlug || extraData?.slug,
+    });
+    // If no Author in DB, fall through to OpenAI seed below
+    if (dbSectionPayload?.meta?.empty) {
+      dbSectionPayload = null;
+    }
   }
 
   let resultToSave = null;
@@ -963,17 +1522,26 @@ Rules:
     const rawPrompt = sectionModule.prompt({
       project,
       location: location || {},
+      pageName,
+      pageSlug: String(pageDoc?.slug || "").trim(),
       extraData: {
         pageId,
         pageType,
+        pageName,
+        pageSlug: String(pageDoc?.slug || "").trim(),
         sectionId: normalizedSectionId,
         serviceName,
         serviceNames,
-        servicesCount: serviceNames.length
+        servicesCount: serviceNames.length,
+        ...extraData,
       }
     });
 
-    const prompt = buildLocationAwarePrompt(rawPrompt, locationDisplayName, normalizedSectionId);
+    const prompt = buildLocationAwarePrompt(
+      appendUniversalSectionPromptRules(rawPrompt, normalizedSectionId),
+      locationDisplayName,
+      normalizedSectionId
+    );
 
     let result;
     try {
@@ -991,14 +1559,15 @@ Rules:
       });
     } catch (genErr) {
       if (
-        normalizedSectionId === "aboutservice" &&
+        (normalizedSectionId === "aboutservice" ||
+          normalizedSectionId === "servicedetailabout") &&
         pageType === "service" &&
         pageDoc?.serviceId
       ) {
         const fallback = await loadWizardAboutserviceFallback(projectId, locationId);
         if (fallback) {
           console.warn(
-            `[sectionGenerationQueue] aboutservice fallback from Service wizard page project=${projectId} location=${locationId || "null"}`
+            `[sectionGenerationQueue] ${normalizedSectionId} fallback from Service wizard page project=${projectId} location=${locationId || "null"}`
           );
           result = fallback;
         } else {
@@ -1011,7 +1580,13 @@ Rules:
 
     resultToSave =
       result && typeof result === "object" && !Array.isArray(result)
-        ? stripLegacyImagePromptFields({ ...result })
+        ? sanitizeGeneratedSectionPayload({
+            sectionId: normalizedSectionId,
+            payload: stripLegacyImagePromptFields({ ...result }),
+            project,
+            locationDisplayName,
+            serviceNames,
+          })
         : result;
   }
 
@@ -1025,17 +1600,70 @@ Rules:
   }
 
   // Process section guardrail: auto-fix generic static values if model returns them.
-  if (normalizedSectionId === "process" && resultToSave && typeof resultToSave === "object" && !Array.isArray(resultToSave)) {
+  if (
+    (normalizedSectionId === "process" ||
+      normalizedSectionId === "serviceslistprocess" ||
+      normalizedSectionId === "servicedetailprocess" ||
+      normalizedSectionId === "serviceprocess") &&
+    resultToSave &&
+    typeof resultToSave === "object" &&
+    !Array.isArray(resultToSave)
+  ) {
     const categoryBase = toTitleCase(project?.mainCategory || project?.focusKeyword || "Service");
-    const rawBadge = String(resultToSave.badge || "").trim();
+    const rawBadge = String(resultToSave.badge || resultToSave.badgeText || "").trim();
     const rawTitle = String(resultToSave.title || "").trim();
 
     if (!rawBadge || /^workflow$/i.test(rawBadge)) {
-      resultToSave.badge = `${categoryBase} Flow`;
+      const fixed = `${categoryBase} Flow`;
+      resultToSave.badge = fixed;
+      resultToSave.badgeText = fixed;
+    } else if (!resultToSave.badgeText && resultToSave.badge) {
+      resultToSave.badgeText = resultToSave.badge;
+    } else if (!resultToSave.badge && resultToSave.badgeText) {
+      resultToSave.badge = resultToSave.badgeText;
     }
 
     if (!rawTitle || /^(our process|how we work)$/i.test(rawTitle)) {
       resultToSave.title = `How ${categoryBase} Works`;
+    }
+
+    // GenieBuild process / servicedetailprocess expect content.items
+    const rawSteps = Array.isArray(resultToSave.items)
+      ? resultToSave.items
+      : Array.isArray(resultToSave.steps_process)
+        ? resultToSave.steps_process
+        : Array.isArray(resultToSave.data)
+          ? resultToSave.data
+          : [];
+    if (rawSteps.length) {
+      resultToSave.items = rawSteps.map((step, idx) => {
+        const iconRaw = String(
+          step?.icon || step?.iconClass || "fa-circle-check"
+        ).trim();
+        const icon = iconRaw.startsWith("fa-")
+          ? iconRaw
+          : iconRaw.replace(/^fas?\s+fa-/, "fa-").replace(/^fa\s+/, "fa-") || "fa-circle-check";
+        return {
+          id: String(step?.id || `step-${idx + 1}`),
+          icon,
+          iconClass: icon,
+          title: String(
+            step?.title || step?.heading || step?.stepName || `Step ${idx + 1}`
+          ).trim(),
+          description: String(
+            step?.description || step?.subtitle || step?.serviceDescription || ""
+          ).trim(),
+        };
+      });
+      // Multicolor legacy mirror
+      resultToSave.steps_process = resultToSave.items.map((step) => ({
+        stepName: step.title,
+        iconClass: step.icon.startsWith("fa-") ? `fas ${step.icon}` : step.icon,
+        serviceDescription: step.description,
+      }));
+      if (!resultToSave.subtitle && resultToSave.description) {
+        resultToSave.subtitle = resultToSave.description;
+      }
     }
   }
 
@@ -1100,7 +1728,14 @@ Rules:
       normalizedTrustStripItems.length === 3 ? normalizedTrustStripItems : fallbackTrustStripItems;
   }
 
-  if (normalizedSectionId === "faq" && Array.isArray(resultToSave)) {
+  if (
+    (normalizedSectionId === "faq" ||
+      normalizedSectionId === "contactfaq" ||
+      normalizedSectionId === "aboutfaq" ||
+      normalizedSectionId === "serviceslistfaq" ||
+      normalizedSectionId === "servicedetailfaq") &&
+    Array.isArray(resultToSave)
+  ) {
     resultToSave = coerceFaqSectionPayload({ items: resultToSave });
   }
 
@@ -1143,10 +1778,21 @@ Rules:
       ).trim();
     }
 
-    if (normalizedSectionId === "whychooseus" || normalizedSectionId === "why-choose-us") {
+    if (
+      normalizedSectionId === "whychooseus" ||
+      normalizedSectionId === "why-choose-us" ||
+      normalizedSectionId === "serviceslistwhychoose" ||
+      normalizedSectionId === "aboutwhychoose" ||
+      normalizedSectionId === "servicedetailwhychoose" ||
+      normalizedSectionId === "servicewhychooseus"
+    ) {
       const rawItems = Array.isArray(resultToSave.featureBoxes)
         ? resultToSave.featureBoxes
-        : (Array.isArray(resultToSave.items) ? resultToSave.items : []);
+        : Array.isArray(resultToSave.whyChooseUsSection)
+          ? resultToSave.whyChooseUsSection
+          : Array.isArray(resultToSave.items)
+            ? resultToSave.items
+            : [];
       const normalizedItems = rawItems.slice(0, 10).map((item, idx) => ({
         icon: String(item?.icon || item?.iconClass || "fas fa-star").trim(),
         iconClass: String(item?.iconClass || item?.icon || "fas fa-star").trim(),
@@ -1155,9 +1801,22 @@ Rules:
       }));
       resultToSave.featureBoxes = normalizedItems;
       resultToSave.items = normalizedItems;
+      // Multicolor legacy mirror
+      resultToSave.whyChooseUsSection = normalizedItems.map((item) => ({
+        title: item.title,
+        description: item.description,
+        iconClass: item.iconClass.startsWith("fa-")
+          ? `fas ${item.iconClass}`
+          : item.iconClass,
+      }));
     }
 
-    if (normalizedSectionId === "guarantee") {
+    if (
+      normalizedSectionId === "guarantee" ||
+      normalizedSectionId === "serviceslistguarantee" ||
+      normalizedSectionId === "servicedetailguarantee" ||
+      normalizedSectionId === "serviceguarantee"
+    ) {
       const rawList = Array.isArray(resultToSave.guaranteeList)
         ? resultToSave.guaranteeList
         : (Array.isArray(resultToSave.items) ? resultToSave.items : []);
@@ -1166,20 +1825,44 @@ Rules:
         line: String(it?.line || it?.title || it?.description || "").trim(),
       })).filter((it) => it.line);
       if (resultToSave.guaranteeList.length < 4) {
+        const cat = String(project?.mainCategory || project?.serviceType || "service").trim();
+        const biz = String(project?.projectName || "Our team").trim();
         resultToSave.guaranteeList = [
-          { icon: "fas fa-check-circle", line: "Verified workmanship standards" },
-          { icon: "fas fa-check-circle", line: "Transparent pricing with approvals" },
-          { icon: "fas fa-check-circle", line: "Qualified and insured professionals" },
-          { icon: "fas fa-check-circle", line: "Prompt support after completion" },
+          { icon: "fas fa-check-circle", line: `Verified ${cat.toLowerCase()} workmanship from ${biz}` },
+          { icon: "fas fa-check-circle", line: "Clear pricing with approvals before work starts" },
+          { icon: "fas fa-check-circle", line: "Qualified and careful professionals on every job" },
+          { icon: "fas fa-check-circle", line: "Responsive support after the work is complete" },
         ];
       }
-      const statCard = resultToSave.statCard || {};
+      let resolvedServiceHint = String(
+        extraData?.serviceName || extraData?.service_name || ""
+      ).trim();
+      if (!resolvedServiceHint && pageDoc?.serviceId) {
+        try {
+          const svcDoc = await Service.findById(pageDoc.serviceId).select("name").lean();
+          resolvedServiceHint = String(svcDoc?.name || "").trim();
+        } catch (_) {
+          resolvedServiceHint = "";
+        }
+      }
+      const cleanStat = sanitizeGuaranteeStatCard(
+        resultToSave.statCard || {},
+        project,
+        resolvedServiceHint
+      );
       resultToSave.statCard = {
-        icon: String(statCard.icon || "fas fa-shield-halved").trim(),
-        label: String(statCard.label || "Service Reliability").trim(),
-        value: String(statCard.value || "98%").trim(),
-        description: String(statCard.description || "Successful, quality-checked visits").trim(),
+        icon: cleanStat.icon.startsWith("fa-")
+          ? `fas ${cleanStat.icon}`
+          : cleanStat.icon,
+        label: cleanStat.label,
+        value: cleanStat.value,
+        description: cleanStat.description,
       };
+      // Flatten for GenieBuild UI (GuaranteePlumbing reads top-level fields)
+      resultToSave.statValue = cleanStat.value;
+      resultToSave.statLabel = cleanStat.label;
+      resultToSave.statIcon = cleanStat.icon;
+      resultToSave.statDescription = cleanStat.description;
       resultToSave.items = resultToSave.guaranteeList.map((it, idx) => ({
         id: `guarantee-${idx + 1}`,
         title: it.line,
@@ -1187,7 +1870,13 @@ Rules:
       }));
     }
 
-    if (normalizedSectionId === "faq") {
+    if (
+      normalizedSectionId === "faq" ||
+      normalizedSectionId === "contactfaq" ||
+      normalizedSectionId === "aboutfaq" ||
+      normalizedSectionId === "serviceslistfaq" ||
+      normalizedSectionId === "servicedetailfaq"
+    ) {
       const beforeCount = Array.isArray(resultToSave.items) ? resultToSave.items.length : 0;
       coerceFaqSectionPayload(resultToSave);
       if (resultToSave.items.length < 4) {
@@ -1288,6 +1977,222 @@ Rules:
       ).trim();
     }
 
+    // Contact + services-list + service-detail CTA enrichment (AboutUs phone + trust strip)
+    if (
+      [
+        "contactinfo",
+        "contactform",
+        "contactcta",
+        "contactfaq",
+        "aboutcta",
+        "aboutfaq",
+        "serviceslistcta",
+        "servicedetailcta",
+        "servicedetailfaq",
+        "serviceslistfaq",
+      ].includes(normalizedSectionId)
+    ) {
+      resultToSave = await applyContactPageSectionDynamics(
+        normalizedSectionId,
+        resultToSave,
+        projectId
+      );
+    }
+
+    // GenieBuild servicedetailservices: mirror items ↔ subServices
+    if (
+      (normalizedSectionId === "servicedetailservices" ||
+        normalizedSectionId === "subservices") &&
+      resultToSave &&
+      typeof resultToSave === "object"
+    ) {
+      const rawItems = Array.isArray(resultToSave.items) ? resultToSave.items : [];
+      if (rawItems.length) {
+        resultToSave.items = rawItems.map((item, idx) => {
+          const iconRaw = String(item?.icon || item?.iconClass || "fa-check").trim();
+          const icon = iconRaw.startsWith("fa-")
+            ? iconRaw
+            : iconRaw.replace(/^fas?\s+fa-/, "fa-").replace(/^fa\s+/, "fa-") || "fa-check";
+          return {
+            icon,
+            title: String(item?.title || item?.heading || `Include ${idx + 1}`).trim(),
+            description: String(item?.description || "").trim(),
+          };
+        });
+        resultToSave.subServices = resultToSave.items
+          .map((it) => it.title)
+          .filter(Boolean);
+      } else if (Array.isArray(resultToSave.subServices) && resultToSave.subServices.length) {
+        resultToSave.items = resultToSave.subServices.map((label, idx) => ({
+          icon: "fa-check",
+          title: String(label || "").trim(),
+          description: "",
+        }));
+      }
+    }
+
+    // Related services: normalize legacy AI header keys (cards filled at page resolve)
+    if (
+      normalizedSectionId === "relatedservices" &&
+      resultToSave &&
+      typeof resultToSave === "object"
+    ) {
+      const badge = String(
+        resultToSave.badgeText || resultToSave.relatedServicesBadge || ""
+      ).trim();
+      const title = String(
+        resultToSave.title || resultToSave.relatedServicesTitle || ""
+      ).trim();
+      const subtitle = String(
+        resultToSave.subtitle || resultToSave.relatedServicesSubtitle || ""
+      ).trim();
+      if (badge) {
+        resultToSave.badgeText = badge;
+        resultToSave.relatedServicesBadge = badge;
+      }
+      if (title) {
+        resultToSave.title = title;
+        resultToSave.relatedServicesTitle = title;
+      }
+      if (subtitle) {
+        resultToSave.subtitle = subtitle;
+        resultToSave.relatedServicesSubtitle = subtitle;
+      }
+      // Never persist invented card lists — resolve-time catalog wins
+      delete resultToSave.items;
+    }
+
+    // Hero badge/title mirrors for GenieBuild + Multicolor
+    if (
+      (normalizedSectionId === "servicedetailhero" ||
+        normalizedSectionId === "servicehero" ||
+        normalizedSectionId === "locationhero" ||
+        normalizedSectionId === "hero") &&
+      resultToSave &&
+      typeof resultToSave === "object"
+    ) {
+      const badge = String(
+        resultToSave.badgeText || resultToSave.serviceHeroBadge || ""
+      ).trim();
+      const title = String(
+        resultToSave.serviceHeroTitle || resultToSave.title || ""
+      ).trim();
+      const subtitle = String(
+        resultToSave.serviceHeroSubtitle || resultToSave.subtitle || ""
+      ).trim();
+      if (badge) {
+        resultToSave.badgeText = badge;
+        resultToSave.serviceHeroBadge = badge;
+      }
+      if (title) {
+        resultToSave.serviceHeroTitle = title;
+        resultToSave.title = title;
+      }
+      if (subtitle) {
+        resultToSave.serviceHeroSubtitle = subtitle;
+        resultToSave.subtitle = subtitle;
+      }
+    }
+
+    // locationpromise ← promiseline prompt (title/subtitle mirrors)
+    if (
+      (normalizedSectionId === "locationpromise" ||
+        normalizedSectionId === "promiseline") &&
+      resultToSave &&
+      typeof resultToSave === "object"
+    ) {
+      const line = String(
+        resultToSave.promiseLine || resultToSave.subtitle || resultToSave.line || ""
+      ).trim();
+      const title = String(resultToSave.title || "Our Promise").trim();
+      resultToSave.title = title;
+      if (line) {
+        resultToSave.promiseLine = line;
+        resultToSave.subtitle = line;
+        resultToSave.line = line;
+      }
+    }
+
+    // Related blogs: AI chrome + Blog collection cards
+    if (usesBlogRelatedBuilder(normalizedSectionId) && resultToSave) {
+      try {
+        const relatedItems = await buildBlogRelatedItems(projectId, {
+          blogId: extraData?.blogId,
+          slug: extraData?.blogSlug || extraData?.slug,
+        });
+        resultToSave.items = relatedItems;
+        if (!resultToSave.relatedTitle && resultToSave.title) {
+          resultToSave.relatedTitle = resultToSave.title;
+        }
+        if (!resultToSave.title && resultToSave.relatedTitle) {
+          resultToSave.title = resultToSave.relatedTitle;
+        }
+        sectionMeta = {
+          ...sectionMeta,
+          source: "hybrid",
+          blogIds: relatedItems.map((it) => it.blogId).filter(Boolean),
+        };
+      } catch (relErr) {
+        console.warn(
+          `[sectionGenerationQueue] blogrelated DB merge failed: ${relErr.message}`
+        );
+      }
+    }
+
+    // blogshero title mirrors
+    if (normalizedSectionId === "blogshero" || normalizedSectionId === "blogslisting") {
+      const title = String(
+        resultToSave.blogsHeroTitle || resultToSave.title || ""
+      ).trim();
+      const subtitle = String(
+        resultToSave.blogsHeroSubtitle || resultToSave.subtitle || ""
+      ).trim();
+      if (title) {
+        resultToSave.blogsHeroTitle = title;
+        resultToSave.title = title;
+      }
+      if (subtitle) {
+        resultToSave.blogsHeroSubtitle = subtitle;
+        resultToSave.subtitle = subtitle;
+      }
+    }
+
+    // Legal pages: normalize GenieBuild + legacy shapes
+    if (
+      [
+        "legalhero",
+        "legalcontent",
+        "legalprivacy",
+        "legalterms",
+        "legaldisclaimer",
+      ].includes(normalizedSectionId) &&
+      resultToSave &&
+      typeof resultToSave === "object"
+    ) {
+      const docType = resolveLegalDocType({
+        sectionId: normalizedSectionId,
+        pageName,
+        pageSlug: String(pageDoc?.slug || "").trim(),
+        extraData,
+      });
+      const split = splitLegalPayload(resultToSave, docType);
+      if (normalizedSectionId === "legalhero") {
+        resultToSave = { ...resultToSave, ...split.hero };
+      } else if (normalizedSectionId === "legalcontent") {
+        resultToSave = {
+          ...resultToSave,
+          sections: split.content.sections,
+        };
+      } else {
+        resultToSave = { ...resultToSave, ...split.combined };
+      }
+      sectionMeta = {
+        ...sectionMeta,
+        legalDocType: docType,
+        legacyLegalSectionId: split.legacySectionId,
+      };
+    }
+
     resultToSave = await attachGeneratedImagesToSectionData({
       project,
       projectId,
@@ -1302,22 +2207,59 @@ Rules:
     projectId,
     pageId,
     sectionId: normalizedSectionId,
-    locationId
+    locationId,
+    ...(extraData?.__progress
+      ? {
+          progress: `${extraData.__progress.done + 1}/${extraData.__progress.total}`,
+          pending: Math.max(0, extraData.__progress.total - extraData.__progress.done - 1),
+          status: "saving",
+        }
+      : {}),
   });
 
   const isServiceBundleWrite =
-    (getSectionResolver(normalizedSectionId) === "service_bundle" || normalizedSectionId === "faq") &&
+    (getSectionResolver(normalizedSectionId) === "service_bundle" ||
+      normalizedSectionId === "faq" ||
+      normalizedSectionId === "servicedetailfaq") &&
     String(pageDoc?.pageType || "").toLowerCase() === "service" &&
     pageDoc?.serviceId;
 
   if (resultToSave && typeof resultToSave === "object" && !Array.isArray(resultToSave)) {
-    if (normalizedSectionId === "areas") {
+    if (
+      normalizedSectionId === "areas" ||
+      normalizedSectionId === "serviceslistareas" ||
+      normalizedSectionId === "locationareas"
+    ) {
+      // Runtime resolver rebuilds pills from BusinessLocation; keep header only
       delete resultToSave.items;
     }
   }
 
   if (isServiceBundleWrite) {
     const bundleLocationId = pageDoc?.locationId || locationId || null;
+    const twinId = serviceDetailBundleTwinId(normalizedSectionId);
+    const $set = {
+      [`data.sections.${normalizedSectionId}`]: resultToSave,
+      "data.serviceId": pageDoc.serviceId,
+      "data.locationId": bundleLocationId,
+      status: "generated",
+      error: null,
+      locationId: bundleLocationId,
+      meta: {
+        ...sectionMeta,
+        generatedFrom:
+          sectionMeta.generatedFrom ||
+          sectionMeta.copySource ||
+          (dbSectionPayload?.data ? "database" : "openai"),
+        serviceIds: sectionMeta.serviceIds || [],
+        locationIds: sectionMeta.locationIds || [],
+      },
+    };
+    // Dual-write GenieBuild ↔ Multicolor keys so grids + both UIs stay aligned
+    if (twinId && twinId !== normalizedSectionId) {
+      $set[`data.sections.${twinId}`] = resultToSave;
+    }
+
     await SectionContent.findOneAndUpdate(
       {
         projectId,
@@ -1326,25 +2268,7 @@ Rules:
         sectionId: "service_sections",
         locationId: bundleLocationId
       },
-      {
-        $set: {
-          [`data.sections.${normalizedSectionId}`]: resultToSave,
-          "data.serviceId": pageDoc.serviceId,
-          "data.locationId": bundleLocationId,
-          status: "generated",
-          error: null,
-          locationId: bundleLocationId,
-          meta: {
-            ...sectionMeta,
-            generatedFrom:
-              sectionMeta.generatedFrom ||
-              sectionMeta.copySource ||
-              (dbSectionPayload?.data ? "database" : "openai"),
-            serviceIds: sectionMeta.serviceIds || [],
-            locationIds: sectionMeta.locationIds || []
-          }
-        }
-      },
+      { $set },
       { upsert: true }
     );
     if (bundleLocationId) {
@@ -1359,54 +2283,131 @@ Rules:
     }
     console.info(`[content-resolver:service-bundle-write] project=${projectId} service=${pageDoc.serviceId} location=${bundleLocationId} section=${normalizedSectionId}`);
   } else {
-    await SectionContent.findOneAndUpdate(
-      {
-        projectId,
-        ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
-        sectionId: normalizedSectionId,
-        locationId: locationId || null
-      },
-      {
-        $set: {
-          pageId: normalizedPageId,
-          data: resultToSave,
-          status: "generated",
-          error: null,
-          locationId: locationId || null,
-          meta: {
-            ...sectionMeta,
-            generatedFrom:
-              sectionMeta.generatedFrom ||
-              sectionMeta.copySource ||
-              (dbSectionPayload?.data ? "database" : "openai"),
-            serviceIds: sectionMeta.serviceIds || [],
-            locationIds: sectionMeta.locationIds || []
+    const saveSectionContent = async (sectionKey) => {
+      await SectionContent.findOneAndUpdate(
+        {
+          projectId,
+          ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+          sectionId: sectionKey,
+          locationId: locationId || null
+        },
+        {
+          $set: {
+            pageId: normalizedPageId,
+            data: resultToSave,
+            status: "generated",
+            error: null,
+            locationId: locationId || null,
+            meta: {
+              ...sectionMeta,
+              generatedFrom:
+                sectionMeta.generatedFrom ||
+                sectionMeta.copySource ||
+                (dbSectionPayload?.data ? "database" : "openai"),
+              serviceIds: sectionMeta.serviceIds || [],
+              locationIds: sectionMeta.locationIds || []
+            }
           }
-        }
-      },
-      { upsert: true }
-    );
-    if (locationId) {
-      await SectionContent.deleteMany({
+        },
+        { upsert: true }
+      );
+      if (locationId) {
+        await SectionContent.deleteMany({
+          projectId,
+          ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+          sectionId: sectionKey,
+          locationId: null,
+          status: "pending"
+        });
+      }
+      const sameScopeRows = await SectionContent.find({
         projectId,
         ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
-        sectionId: normalizedSectionId,
-        locationId: null,
-        status: "pending"
-      });
+        sectionId: sectionKey,
+        locationId: locationId || null
+      })
+        .select("_id updatedAt")
+        .sort({ updatedAt: -1, _id: -1 })
+        .lean();
+      if (sameScopeRows.length > 1) {
+        const staleIds = sameScopeRows.slice(1).map((r) => r._id);
+        if (staleIds.length) await SectionContent.deleteMany({ _id: { $in: staleIds } });
+      }
+    };
+
+    await saveSectionContent(normalizedSectionId);
+
+    // Location pages: dual-write GenieBuild location* ↔ homepage ids so both UIs share content
+    const onLocationPage = Boolean(
+      pageDoc?.locationId ||
+        String(pageDoc?.name || "").toLowerCase().startsWith("location-")
+    );
+    const locTwin = onLocationPage ? locationHomeTwinId(normalizedSectionId) : null;
+    if (locTwin && locTwin !== normalizedSectionId) {
+      await saveSectionContent(locTwin);
     }
-    const sameScopeRows = await SectionContent.find({
-      projectId,
-      ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
-      sectionId: normalizedSectionId,
-      locationId: locationId || null
-    })
-      .select("_id updatedAt")
-      .sort({ updatedAt: -1, _id: -1 })
-      .lean();
-    if (sameScopeRows.length > 1) {
-      const staleIds = sameScopeRows.slice(1).map((r) => r._id);
-      if (staleIds.length) await SectionContent.deleteMany({ _id: { $in: staleIds } });
+
+    // Legal pages: dual-write GenieBuild split ↔ legacy combined blob
+    const legalIds = new Set([
+      "legalhero",
+      "legalcontent",
+      "legalprivacy",
+      "legalterms",
+      "legaldisclaimer",
+    ]);
+    if (legalIds.has(normalizedSectionId) && resultToSave) {
+      const docType = resolveLegalDocType({
+        sectionId: normalizedSectionId,
+        pageName,
+        pageSlug: String(pageDoc?.slug || "").trim(),
+        extraData,
+      });
+      const split = splitLegalPayload(resultToSave, docType);
+      const legacyId = split.legacySectionId;
+
+      if (
+        normalizedSectionId === "legalprivacy" ||
+        normalizedSectionId === "legalterms" ||
+        normalizedSectionId === "legaldisclaimer"
+      ) {
+        const prev = resultToSave;
+        resultToSave = split.hero;
+        await saveSectionContent("legalhero");
+        resultToSave = split.content;
+        await saveSectionContent("legalcontent");
+        resultToSave = prev;
+      } else if (normalizedSectionId === "legalhero" || normalizedSectionId === "legalcontent") {
+        // Merge into legacy combined document for Multicolor consumers
+        let existingLegacy = null;
+        try {
+          existingLegacy = await SectionContent.findOne({
+            projectId,
+            ...(pageIdCandidates.length
+              ? { pageId: { $in: pageIdCandidates } }
+              : { pageId: normalizedPageId }),
+            sectionId: legacyId,
+            locationId: locationId || null,
+            isDeleted: { $ne: true },
+          })
+            .select("data")
+            .lean();
+        } catch (_) {
+          existingLegacy = null;
+        }
+        const merged = {
+          ...(existingLegacy?.data && typeof existingLegacy.data === "object"
+            ? existingLegacy.data
+            : {}),
+          ...(normalizedSectionId === "legalhero" ? split.hero : {}),
+          ...(normalizedSectionId === "legalcontent"
+            ? { sections: split.content.sections }
+            : {}),
+        };
+        const prev = resultToSave;
+        resultToSave = splitLegalPayload(merged, docType).combined;
+        await saveSectionContent(legacyId);
+        resultToSave = prev;
+      }
     }
   }
 
@@ -1417,7 +2418,7 @@ Rules:
 // WORKER PROCESS
 // =========================
 
-sectionGenerationQueue.process("generate-section", 2, async (job) => {
+runSectionGenerationJob = async (job) => {
   const {
     projectId,
     locations = [],
@@ -1559,6 +2560,8 @@ sectionGenerationQueue.process("generate-section", 2, async (job) => {
   let skipped = 0;
   const pageSummaries = [];
   const generatedServiceSectionKeys = new Set();
+  /** @type {Array<{kind:string,pageId:any,sectionId:string,location:any,locationId:any,pageMeta?:any,pageSummary?:any,servicePage?:any,serviceTemplateSummary?:any}>} */
+  const plannedUnits = [];
 
   if (!servicesWizardOnly) for (const page of designData.pages) {
     const normalizedSections = ensureHeaderFooterComponents(getPageSections(page));
@@ -1636,82 +2639,23 @@ sectionGenerationQueue.process("generate-section", 2, async (job) => {
 
       for (const location of pageLocationList) {
         const locationId = location?._id || null;
-        const normalizedPageId = normalizeMixedIdForStorage(pageId);
-        const pageIdCandidates = buildMixedIdCandidates(pageId);
-
-        try {
-          const generationResult = await generateSingleSection({
-            project,
-            designData,
-            projectId,
-            userId,
-            pageId,
-            sectionId,
-            location,
-            locationId,
-            serviceNames
-          });
-
-          if (generationResult?.skipped) {
-            skipped++;
-            pageSummary.skipped.push({
-              sectionId,
-              locationId: locationId || null,
-              reason: "generator_skipped"
-            });
-            continue;
-          }
-
-          success++;
-          pageSummary.saved.push({
-            sectionId,
-            locationId: locationId || null
-          });
-          if (
-            String(pageMeta?.pageType || "").toLowerCase() === "service" &&
-            pageMeta?.serviceId
-          ) {
-            generatedServiceSectionKeys.add(`${String(pageId)}::${sectionId}`);
-          }
-        } catch (err) {
-          failed++;
-          pageSummary.failed.push({
-            sectionId,
-            locationId: locationId || null,
-            error: err.message
-          });
-
-          await SectionContent.findOneAndUpdate(
-            {
-              projectId,
-              ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
-              sectionId,
-              locationId: locationId || null
-            },
-            {
-              $set: {
-                pageId: normalizedPageId,
-                status: "failed",
-                error: err.message,
-                locationId: locationId || null
-              }
-            },
-            { upsert: true }
-          );
-        }
+        plannedUnits.push({
+          kind: "page",
+          pageId,
+          sectionId,
+          location,
+          locationId,
+          pageMeta,
+          pageSummary,
+        });
       }
     }
-    pageSummaries.push({
-      ...pageSummary,
-      selectedSectionsCount: pageSummary.selectedSections.length,
-      savedCount: pageSummary.saved.length,
-      failedCount: pageSummary.failed.length,
-      skippedCount: pageSummary.skipped.length,
-    });
+    pageSummaries.push(pageSummary);
   }
 
   // Service template sections (Step 6 "Service" page) are not saved on WebsiteDesignsData
   // because that row is templateOnly. Generate them for every pageType=service page instead.
+  let serviceTemplateSummary = null;
   if ((isBusinessProject || isBulkProject) && selectedSet.size > 0) {
     const serviceTemplateSectionIds = [...selectedSet].filter((id) =>
       isServiceDetailSection(id)
@@ -1823,7 +2767,7 @@ sectionGenerationQueue.process("generate-section", 2, async (job) => {
         };
       };
 
-      const serviceTemplateSummary = {
+      serviceTemplateSummary = {
         pageId: "service-template",
         pageName: "Service pages (single service template)",
         selectedSections: serviceTemplateSectionIds,
@@ -1853,86 +2797,410 @@ sectionGenerationQueue.process("generate-section", 2, async (job) => {
         const locationPayload = formatLoc(locDoc);
 
         for (const sectionId of serviceTemplateSectionIds) {
-          const dedupeKey = `${String(sp._id)}::${sectionId}`;
-          if (generatedServiceSectionKeys.has(dedupeKey)) {
-            serviceTemplateSummary.skipped.push({
-              sectionId,
-              locationId: sp.locationId,
-              servicePageId: sp._id,
-              reason: "already_generated_on_design_page",
-            });
-            continue;
-          }
-
-          try {
-            const generationResult = await generateSingleSection({
-              project,
-              designData,
-              projectId,
-              userId,
-              pageId: sp._id,
-              sectionId,
-              location: locationPayload,
-              locationId: sp.locationId,
-              serviceNames,
-            });
-
-            if (generationResult?.skipped) {
-              skipped++;
-              serviceTemplateSummary.skipped.push({
-                sectionId,
-                locationId: sp.locationId,
-                servicePageId: sp._id,
-                reason: "generator_skipped",
-              });
-              continue;
-            }
-
-            success++;
-            generatedServiceSectionKeys.add(dedupeKey);
-            serviceTemplateSummary.saved.push({
-              sectionId,
-              locationId: sp.locationId,
-              servicePageId: sp._id,
-            });
-          } catch (err) {
-            failed++;
-            serviceTemplateSummary.failed.push({
-              sectionId,
-              locationId: sp.locationId,
-              servicePageId: sp._id,
-              error: err.message,
-            });
-
-            await SectionContent.findOneAndUpdate(
-              {
-                projectId,
-                pageId: sp.serviceId,
-                serviceId: sp.serviceId,
-                sectionId: "service_sections",
-                locationId: sp.locationId || null,
-              },
-              {
-                $set: {
-                  status: "failed",
-                  error: err.message,
-                  locationId: sp.locationId || null,
-                },
-              },
-              { upsert: true }
-            ).catch(() => {});
-          }
+          plannedUnits.push({
+            kind: "service",
+            pageId: sp._id,
+            sectionId,
+            location: locationPayload,
+            locationId: sp.locationId,
+            servicePage: sp,
+            serviceTemplateSummary,
+          });
         }
       }
-
-      pageSummaries.push({
-        ...serviceTemplateSummary,
-        selectedSectionsCount: serviceTemplateSummary.selectedSections.length,
-        savedCount: serviceTemplateSummary.saved.length,
-        failedCount: serviceTemplateSummary.failed.length,
-        skippedCount: serviceTemplateSummary.skipped.length,
-      });
     }
+  }
+
+  const progress = { total: plannedUnits.length, done: 0, failed: 0, skipped: 0 };
+  const parallelWorkers = getDefaultParallelWorkers();
+  const claimingServiceKeys = new Set();
+  const activeSectionKeys = new Set();
+
+  const persistProjectProgress = async (snapshot) => {
+    try {
+      await UserProject.updateOne(
+        { _id: projectId },
+        { $set: { contentGeneration: snapshot } }
+      );
+    } catch (err) {
+      console.warn("[sectionGenerationQueue] persist contentGeneration failed:", err?.message || err);
+    }
+  };
+
+  startProgress(projectId, {
+    total: progress.total,
+    parallelWorkers,
+    message: `Generating ${progress.total} sections with ${parallelWorkers} parallel workers`,
+  });
+  await persistProjectProgress({
+    status: "generating",
+    total: progress.total,
+    done: 0,
+    failed: 0,
+    skipped: 0,
+    pending: progress.total,
+    percent: 0,
+    parallelWorkers,
+    activeWorkers: 0,
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    message: `Generating ${progress.total} sections with ${parallelWorkers} parallel workers`,
+  });
+
+  console.log("📊 Section generation plan:", {
+    projectId,
+    total: progress.total,
+    pending: progress.total,
+    done: 0,
+    failed: 0,
+    parallelWorkers,
+    status: "starting",
+  });
+
+  const syncLiveProgress = (event = null) => {
+    const snapshot = patchProgress(projectId, {
+      total: progress.total,
+      done: progress.done,
+      failed: progress.failed,
+      skipped: progress.skipped,
+      parallelWorkers,
+      activeWorkers: activeSectionKeys.size,
+      currentSections: [...activeSectionKeys],
+      ...(event ? { event } : {}),
+    });
+    // Throttle DB writes: every 3 completions or when idle workers
+    if (
+      !event ||
+      event.status === "done" ||
+      event.status === "failed" ||
+      event.status === "skipped"
+    ) {
+      const finished = progress.done + progress.failed + progress.skipped;
+      if (finished === progress.total || finished % 3 === 0 || activeSectionKeys.size === 0) {
+        persistProjectProgress(snapshot).catch(() => {});
+      }
+    }
+    return snapshot;
+  };
+
+  await mapWithConcurrency(plannedUnits, parallelWorkers, async (unit) => {
+    const { pageId, sectionId, location, locationId } = unit;
+    const normalizedPageId = normalizeMixedIdForStorage(pageId);
+    const pageIdCandidates = buildMixedIdCandidates(pageId);
+    const sectionKey = `${String(pageId)}::${sectionId}::${locationId || "null"}`;
+    const progressExtra = () => ({
+      __progress: {
+        total: progress.total,
+        done: progress.done,
+        failed: progress.failed,
+        skipped: progress.skipped,
+      },
+    });
+
+    if (unit.kind === "service") {
+      const sp = unit.servicePage;
+      const dedupeKey = `${String(sp._id)}::${sectionId}`;
+      if (generatedServiceSectionKeys.has(dedupeKey) || claimingServiceKeys.has(dedupeKey)) {
+        skipped++;
+        progress.skipped++;
+        unit.serviceTemplateSummary.skipped.push({
+          sectionId,
+          locationId: sp.locationId,
+          servicePageId: sp._id,
+          reason: "already_generated_on_design_page",
+        });
+        syncLiveProgress({
+          status: "skipped",
+          sectionId,
+          pageId: String(sp._id),
+          message: `Skipped ${sectionId} (already generated)`,
+        });
+        return;
+      }
+      claimingServiceKeys.add(dedupeKey);
+      activeSectionKeys.add(sectionKey);
+      syncLiveProgress({
+        status: "generating",
+        sectionId,
+        pageId: String(sp._id),
+        message: `Generating ${sectionId}`,
+      });
+
+      try {
+        const generationResult = await generateSingleSection({
+          project,
+          designData,
+          projectId,
+          userId,
+          pageId: sp._id,
+          sectionId,
+          location,
+          locationId: sp.locationId,
+          serviceNames,
+          extraData: progressExtra(),
+        });
+
+        if (generationResult?.skipped) {
+          skipped++;
+          progress.skipped++;
+          unit.serviceTemplateSummary.skipped.push({
+            sectionId,
+            locationId: sp.locationId,
+            servicePageId: sp._id,
+            reason: "generator_skipped",
+          });
+          syncLiveProgress({
+            status: "skipped",
+            sectionId,
+            pageId: String(sp._id),
+            message: `Skipped ${sectionId}`,
+          });
+          return;
+        }
+
+        success++;
+        progress.done++;
+        generatedServiceSectionKeys.add(dedupeKey);
+        unit.serviceTemplateSummary.saved.push({
+          sectionId,
+          locationId: sp.locationId,
+          servicePageId: sp._id,
+        });
+        console.log("✅ Section generated:", {
+          sectionId,
+          pageId: sp._id,
+          location: location?.name || "DEFAULT",
+          locationId: sp.locationId,
+          progress: `${progress.done}/${progress.total}`,
+          pending: Math.max(0, progress.total - progress.done - progress.failed - progress.skipped),
+          status: "done",
+        });
+        syncLiveProgress({
+          status: "done",
+          sectionId,
+          pageId: String(sp._id),
+          message: `Generated ${sectionId}`,
+        });
+      } catch (err) {
+        failed++;
+        progress.failed++;
+        unit.serviceTemplateSummary.failed.push({
+          sectionId,
+          locationId: sp.locationId,
+          servicePageId: sp._id,
+          error: err.message,
+        });
+        console.error("❌ Section failed:", {
+          sectionId,
+          pageId: sp._id,
+          error: err.message,
+          progress: `${progress.done}/${progress.total}`,
+          pending: Math.max(0, progress.total - progress.done - progress.failed - progress.skipped),
+          status: "failed",
+        });
+        syncLiveProgress({
+          status: "failed",
+          sectionId,
+          pageId: String(sp._id),
+          message: `Failed ${sectionId}: ${err.message}`,
+        });
+
+        await SectionContent.findOneAndUpdate(
+          {
+            projectId,
+            pageId: sp.serviceId,
+            serviceId: sp.serviceId,
+            sectionId: "service_sections",
+            locationId: sp.locationId || null,
+          },
+          {
+            $set: {
+              status: "failed",
+              error: err.message,
+              locationId: sp.locationId || null,
+            },
+          },
+          { upsert: true }
+        ).catch(() => {});
+      } finally {
+        claimingServiceKeys.delete(dedupeKey);
+        activeSectionKeys.delete(sectionKey);
+        syncLiveProgress();
+      }
+      return;
+    }
+
+    // kind === "page"
+    const pageSummary = unit.pageSummary;
+    const pageMeta = unit.pageMeta;
+    activeSectionKeys.add(sectionKey);
+    syncLiveProgress({
+      status: "generating",
+      sectionId,
+      pageId: String(pageId),
+      message: `Generating ${sectionId}`,
+    });
+
+    try {
+      const generationResult = await generateSingleSection({
+        project,
+        designData,
+        projectId,
+        userId,
+        pageId,
+        sectionId,
+        location,
+        locationId,
+        serviceNames,
+        extraData: progressExtra(),
+      });
+
+      if (generationResult?.skipped) {
+        skipped++;
+        progress.skipped++;
+        pageSummary.skipped.push({
+          sectionId,
+          locationId: locationId || null,
+          reason: "generator_skipped",
+        });
+        syncLiveProgress({
+          status: "skipped",
+          sectionId,
+          pageId: String(pageId),
+          message: `Skipped ${sectionId}`,
+        });
+        return;
+      }
+
+      success++;
+      progress.done++;
+      pageSummary.saved.push({
+        sectionId,
+        locationId: locationId || null,
+      });
+      if (
+        String(pageMeta?.pageType || "").toLowerCase() === "service" &&
+        pageMeta?.serviceId
+      ) {
+        generatedServiceSectionKeys.add(`${String(pageId)}::${sectionId}`);
+      }
+      console.log("✅ Section generated:", {
+        sectionId,
+        pageId,
+        location: location?.name || location?.areaName || "DEFAULT",
+        locationId,
+        progress: `${progress.done}/${progress.total}`,
+        pending: Math.max(0, progress.total - progress.done - progress.failed - progress.skipped),
+        status: "done",
+      });
+      syncLiveProgress({
+        status: "done",
+        sectionId,
+        pageId: String(pageId),
+        message: `Generated ${sectionId}`,
+      });
+    } catch (err) {
+      failed++;
+      progress.failed++;
+      pageSummary.failed.push({
+        sectionId,
+        locationId: locationId || null,
+        error: err.message,
+      });
+      console.error("❌ Section failed:", {
+        sectionId,
+        pageId,
+        error: err.message,
+        progress: `${progress.done}/${progress.total}`,
+        pending: Math.max(0, progress.total - progress.done - progress.failed - progress.skipped),
+        status: "failed",
+      });
+      syncLiveProgress({
+        status: "failed",
+        sectionId,
+        pageId: String(pageId),
+        message: `Failed ${sectionId}: ${err.message}`,
+      });
+
+      await SectionContent.findOneAndUpdate(
+        {
+          projectId,
+          ...(pageIdCandidates.length ? { pageId: { $in: pageIdCandidates } } : { pageId: normalizedPageId }),
+          sectionId,
+          locationId: locationId || null,
+        },
+        {
+          $set: {
+            pageId: normalizedPageId,
+            status: "failed",
+            error: err.message,
+            locationId: locationId || null,
+          },
+        },
+        { upsert: true }
+      );
+    } finally {
+      activeSectionKeys.delete(sectionKey);
+      syncLiveProgress();
+    }
+  });
+
+  const finalStatus =
+    failed > 0 && success === 0 ? "failed" : failed > 0 ? "completed_with_errors" : "completed";
+  const finalSnapshot = finishProgress(projectId, {
+    status: finalStatus === "failed" ? "failed" : "completed",
+    message:
+      finalStatus === "failed"
+        ? `Generation failed (${failed} errors)`
+        : `Generation complete: ${success} done, ${failed} failed, ${skipped} skipped`,
+  });
+  await persistProjectProgress({
+    ...(finalSnapshot || {}),
+    status: finalStatus === "failed" ? "failed" : "completed",
+    total: progress.total,
+    done: progress.done,
+    failed: progress.failed,
+    skipped: progress.skipped,
+    pending: 0,
+    percent: progress.total
+      ? Math.round(((progress.done + progress.failed + progress.skipped) / progress.total) * 100)
+      : 100,
+    parallelWorkers,
+    activeWorkers: 0,
+    finishedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  console.log("📊 Section generation finished:", {
+    projectId,
+    total: progress.total,
+    done: progress.done,
+    failed: progress.failed,
+    skipped: progress.skipped,
+    pending: 0,
+    parallelWorkers,
+    status: "complete",
+  });
+
+  // Finalize per-page summary counts
+  for (let i = 0; i < pageSummaries.length; i++) {
+    const pageSummary = pageSummaries[i];
+    pageSummaries[i] = {
+      ...pageSummary,
+      selectedSectionsCount: pageSummary.selectedSections.length,
+      savedCount: pageSummary.saved.length,
+      failedCount: pageSummary.failed.length,
+      skippedCount: pageSummary.skipped.length,
+    };
+  }
+  if (serviceTemplateSummary) {
+    pageSummaries.push({
+      ...serviceTemplateSummary,
+      selectedSectionsCount: serviceTemplateSummary.selectedSections.length,
+      savedCount: serviceTemplateSummary.saved.length,
+      failedCount: serviceTemplateSummary.failed.length,
+      skippedCount: serviceTemplateSummary.skipped.length,
+    });
   }
 
   try {
@@ -2062,7 +3330,7 @@ sectionGenerationQueue.process("generate-section", 2, async (job) => {
   });
 
   return { success, failed, skipped, pages: pageSummaries, seo: seoSummary };
-});
+};
 
 // =========================
 // EXPORTS
@@ -2071,5 +3339,8 @@ sectionGenerationQueue.process("generate-section", 2, async (job) => {
 module.exports = {
   sectionGenerationQueue,
   enqueueSectionGeneration,
-  SECTION_GENERATION_QUEUE
+  SECTION_GENERATION_QUEUE,
+  getLiveProgress: require("../services/sectionGenerationProgress").getLiveProgress,
+  getLiveProgressMap: require("../services/sectionGenerationProgress").getLiveProgressMap,
+  getDefaultParallelWorkers: require("../services/sectionGenerationProgress").getDefaultParallelWorkers,
 };

@@ -21,7 +21,7 @@ module.exports = {
   },
 
   prompt(ctx) {
-    const { project, location, extraData = {} } = ctx;
+    const { project, location, extraData = {}, pageName = "" } = ctx;
 
     const projectName = project.projectName || "";
     const mainCategory = project.mainCategory || "";
@@ -33,10 +33,26 @@ module.exports = {
     const state = location?.state || "";
 
     const finalLocation = `${locationName || city || ""} ${state || ""}`.trim();
+    const isAreasListing =
+      String(pageName || extraData?.pageName || "")
+        .toLowerCase()
+        .trim() === "areas" ||
+      String(extraData?.pageSlug || "")
+        .toLowerCase()
+        .includes("areas");
+
+    const areasHint = isAreasListing
+      ? `
+PAGE CONTEXT: ALL AREAS DIRECTORY (/areas)
+- This hero introduces a multi-city areas listing page (not a single-location landing).
+- Title/subtitle should invite visitors to find their city / browse coverage areas.
+- Avoid sounding like a single-neighborhood home hero; emphasize "areas we serve" / coverage map / find your location.
+`
+      : "";
 
     return `
 You are generating HERO SECTION content for a professional business website.
-
+${areasHint}
 Website Name: ${projectName}
 Primary Category: ${mainCategory}
 Focus Keyword: ${focusKeyword}

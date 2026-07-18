@@ -85,6 +85,18 @@ function formatBusinessLocationsForGeneration(locationsData = []) {
  * First-entered main parent for business websites:
  * manual business location (locationType 4) → else first root → else first row.
  */
+function isRootLocation(loc) {
+  const parent =
+    loc?.parentId != null
+      ? loc.parentId
+      : loc?.parent_id != null
+        ? loc.parent_id
+        : null;
+  if (parent) return false;
+  // Prefer explicit parent areas; treat missing type as root-capable
+  return Number(loc?.type ?? 0) === 0;
+}
+
 function resolveMainParentLocation(incomingLocations = [], { isBusinessProject = true } = {}) {
   const list = Array.isArray(incomingLocations) ? incomingLocations : [];
   if (!list.length) return null;
@@ -93,9 +105,7 @@ function resolveMainParentLocation(incomingLocations = [], { isBusinessProject =
     const manual = list.find((loc) => Number(loc?.locationType) === 4);
     if (manual) return manual;
 
-    const firstRoot = list.find(
-      (loc) => !loc?.parent_id && (Number(loc?.type) === 0 || loc?.parent_id == null)
-    );
+    const firstRoot = list.find((loc) => isRootLocation(loc));
     if (firstRoot) return firstRoot;
   }
 

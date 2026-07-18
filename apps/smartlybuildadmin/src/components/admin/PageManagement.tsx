@@ -36,8 +36,17 @@ import {
   History,
   Search,
   EyeOff,
+  Layout,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { http } from "../../config.js";
 import { useToast } from "@/hooks/use-toast";
 import { PageSeoSettingsDialog } from "./PageSeoSettingsDialog";
@@ -73,6 +82,13 @@ interface SlugHistoryData {
   history: SlugHistoryEntry[];
 }
 
+interface PageListCounts {
+  total: number;
+  live: number;
+  inactive: number;
+  redirects301: number;
+}
+
 export function PageManagement() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -80,6 +96,15 @@ export function PageManagement() {
 
   const [pages, setPages] = useState<WebsitePage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageLimit] = useState(15);
+  const [totalPages, setTotalPages] = useState(1);
+  const [listCounts, setListCounts] = useState<PageListCounts>({
+    total: 0,
+    live: 0,
+    inactive: 0,
+    redirects301: 0,
+  });
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingPage, setEditingPage] = useState<WebsitePage | null>(null);
@@ -99,19 +124,19 @@ export function PageManagement() {
   // Fetch pages
   useEffect(() => {
     if (projectId) {
-      fetchPages();
+      fetchPages(currentPage);
     }
-  }, [projectId]);
+  }, [projectId, currentPage]);
 
   useEffect(() => {
     const onSeoUpdated = () => {
-      if (projectId) fetchPages();
+      if (projectId) fetchPages(currentPage);
     };
     window.addEventListener("website-page-seo-updated", onSeoUpdated);
     return () => window.removeEventListener("website-page-seo-updated", onSeoUpdated);
-  }, [projectId]);
+  }, [projectId, currentPage]);
 
-  const fetchPages = async () => {
+  const fetchPages = async (page = 1) => {
     if (!projectId) return;
 
     try {
@@ -128,10 +153,26 @@ export function PageManagement() {
 
       const response = await http.get(`/getWebsitePages/${projectId}`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: { page, limit: pageLimit },
       });
 
       if (response.data?.data) {
         setPages(response.data.data);
+      }
+      const counts = response.data?.counts;
+      if (counts) {
+        setListCounts({
+          total: Number(counts.total) || 0,
+          live: Number(counts.live) || 0,
+          inactive: Number(counts.inactive) || 0,
+          redirects301: Number(counts.redirects301) || 0,
+        });
+      }
+      const pagination = response.data?.pagination;
+      if (pagination) {
+        setTotalPages(Math.max(1, Number(pagination.totalPages) || 1));
+      } else {
+        setTotalPages(1);
       }
     } catch (error: any) {
       console.error("[PageManagement] Error fetching pages:", error);
@@ -195,7 +236,8 @@ export function PageManagement() {
 
       setIsCreateDialogOpen(false);
       resetForm();
-      fetchPages();
+      setCurrentPage(1);
+      fetchPages(1);
     } catch (error: any) {
       console.error("[PageManagement] Error creating page:", error);
       toast({
@@ -228,6 +270,15 @@ export function PageManagement() {
           getPageId(p) === pageId ? { ...p, isPublished } : p
         )
       );
+      setListCounts((prev) => {
+        const wasLive = page.isPublished !== false;
+        if (wasLive === isPublished) return prev;
+        return {
+          ...prev,
+          live: prev.live + (isPublished ? 1 : -1),
+          inactive: prev.inactive + (isPublished ? -1 : 1),
+        };
+      });
       toast({
         title: isPublished ? "Page visible" : "Page hidden",
         description: isPublished
@@ -344,7 +395,7 @@ export function PageManagement() {
 
       setIsEditDialogOpen(false);
       resetForm();
-      fetchPages();
+      fetchPages(currentPage);
     } catch (error: any) {
       console.error("[PageManagement] Error updating page:", error);
       toast({
@@ -425,6 +476,45 @@ export function PageManagement() {
         </div>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2">
+              <Layout className="h-4 w-4" />
+              Total pages
+            </CardDescription>
+            <CardTitle className="text-3xl">{listCounts.total}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2 text-green-700">
+              <Eye className="h-4 w-4" />
+              Live pages
+            </CardDescription>
+            <CardTitle className="text-3xl text-green-700">{listCounts.live}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2 text-slate-600">
+              <EyeOff className="h-4 w-4" />
+              Inactive pages
+            </CardDescription>
+            <CardTitle className="text-3xl">{listCounts.inactive}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-2 text-amber-800">
+              <ArrowRightLeft className="h-4 w-4" />
+              301 redirects
+            </CardDescription>
+            <CardTitle className="text-3xl text-amber-800">{listCounts.redirects301}</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Website Pages</CardTitle>
@@ -435,15 +525,17 @@ export function PageManagement() {
         <CardContent>
           {pages.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              No pages found. Create your first page to get started.
+              {listCounts.total === 0
+                ? "No pages found. Create your first page to get started."
+                : "No pages on this page. Try another page number."}
             </div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Display Name</TableHead>
                   <TableHead>URL Slug</TableHead>
-                  <TableHead>Description</TableHead>
                   <TableHead>SEO</TableHead>
                   <TableHead>Visible</TableHead>
                   <TableHead>Actions</TableHead>
@@ -462,9 +554,6 @@ export function PageManagement() {
                             /{page.slug || page.name}
                           </code>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-500">
-                        {page.description || "-"}
                       </TableCell>
                       <TableCell>
                         {page.hasSeo ? (
@@ -577,6 +666,43 @@ export function PageManagement() {
                 })}
               </TableBody>
             </Table>
+            {totalPages > 1 && (
+              <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Page {currentPage} of {totalPages} · {listCounts.total} total
+                </p>
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+                    {[...Array(totalPages)].map((_, i) => (
+                      <PaginationItem key={i}>
+                        <PaginationLink
+                          onClick={() => setCurrentPage(i + 1)}
+                          isActive={currentPage === i + 1}
+                          className="cursor-pointer"
+                        >
+                          {i + 1}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ))}
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        className={
+                          currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"
+                        }
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>

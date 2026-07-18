@@ -22,14 +22,21 @@ const mongoose = require('mongoose');
 
 // After DB connection and before starting the server
 require('./crons/scheduler');
-// ✅ ADD THIS LINE
+// Section AI worker (Bull) — must share Redis with only THIS backend checkout
 require('./queue/sectionGeneration.queue');
+const { checkRuntimeHealth, printRuntimeHealthBanner } = require('./config/runtimeHealth');
 const socketIo = require('socket.io');
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: { origin: '*' },
 });
 app.set('io', io);
+try {
+  const { setSectionGenerationIo } = require('./services/sectionGenerationProgress');
+  setSectionGenerationIo(io);
+} catch (err) {
+  console.warn('[sectionGenerationProgress] io wire failed:', err?.message || err);
+}
 
 io.on('connection', (socket) => {
   console.log('Connected:', socket.id);
@@ -59,11 +66,24 @@ app.use(cors({
   credentials: true,
 }));
 
-// Redis Setup
+// Redis Setup (utility client for /api/queues admin helpers — Bull uses ioredis via bullRedis.js)
 const redis = require('redis');
-const client = redis.createClient();
+const client = redis.createClient({
+  socket: {
+    host: process.env.redisHost || '127.0.0.1',
+    port: Number(process.env.redisPort || 6379),
+  },
+});
+client.on('error', (err) => {
+  console.error('[redis-client] error:', err?.message || err);
+});
+client.on('ready', () => {
+  console.log(
+    `[redis-client] ready ${process.env.redisHost || '127.0.0.1'}:${process.env.redisPort || 6379}`
+  );
+});
 client.connect().catch((err) => {
-  console.error('Error connecting to Redis:', err);
+  console.error('[redis-client] connect failed:', err?.message || err);
 });
 
 async function scanKeys(pattern) {
@@ -208,12 +228,27 @@ app.use(function (err, req, res, next) {
   }
 });
 
-// Start server
+// Start server — connect Mongo first, then health banner (Redis + Mongo + Bull queue)
 const port = process.env.PORT || '1111';
 const APIsMode = process.env.ProductionMode || 'N/A';
 server.listen(port, async () => {
   console.log(`Server is running on port ${port}, Production Mode: ${APIsMode}`);
-  await connectDB();
+  try {
+    await connectDB();
+  } catch (err) {
+    console.error('[startup] Mongo connect threw:', err?.message || err);
+  }
+  try {
+    const health = await checkRuntimeHealth();
+    printRuntimeHealthBanner(health);
+    if (!health.ok) {
+      console.error(
+        '[startup] CRITICAL: fix Mongo/Redis before creating projects — section content will not generate.'
+      );
+    }
+  } catch (err) {
+    console.error('[startup] health check failed:', err?.message || err);
+  }
 });
 
 

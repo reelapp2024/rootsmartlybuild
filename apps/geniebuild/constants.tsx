@@ -1451,6 +1451,14 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
     content: {
       title: 'Frequently Asked Questions',
       subtitle: 'Straight answers about our services, pricing and guarantees — from the team you\'ll actually talk to.',
+      items: [
+        { question: 'Do you offer 24/7 emergency plumbing services?', answer: 'Yes — burst pipes, major leaks and blocked drains don\'t wait for office hours. Our emergency team is on call 24 hours a day, 365 days a year with a typical arrival time of under 60 minutes.' },
+        { question: 'Are your plumbers fully licensed and insured?', answer: 'Every plumber on our team is fully licensed, background-checked and covered by comprehensive liability insurance. We\'ll gladly show credentials on arrival.' },
+        { question: 'Do you provide upfront pricing before starting work?', answer: 'Always. We diagnose the issue, walk you through the options and give you a firm written quote before any work begins. No surprises, no hidden fees.' },
+        { question: 'What does your workmanship guarantee cover?', answer: 'All repairs and installations are backed by a 10-year workmanship guarantee. If anything we installed or repaired fails under normal use, we come back and fix it at no charge.' },
+        { question: 'Can you handle both residential and commercial jobs?', answer: 'From a single leaking faucet in a family home to full commercial bathroom and kitchen fit-outs, our team has the tools and experience to deliver.' },
+        { question: 'Do you offer free estimates for larger projects?', answer: 'For renovations, repiping and new installations, we provide free in-home estimates with detailed scope, materials and timeline so you can compare with confidence.' },
+      ],
     },
     styles: {
       variant: 'FAQPlumbing',
@@ -1699,21 +1707,14 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
     }
   },
 
-  /** Service page — related services cards grid. */
+  /** Service page — related services cards grid (items filled at resolve from catalog). */
   relatedservices: {
     type: 'relatedservices',
     content: {
         badgeText: 'More Services',
         title: 'Related Services',
         subtitle: 'Explore other services we offer to keep your home running smoothly.',
-        items: [
-            { icon: 'fa-toilet-paper', title: 'Drain Cleaning', description: 'Professional drain cleaning using the latest hydro-jetting technology to clear blockages fast.' },
-            { icon: 'fa-fire-burner', title: 'Water Heater Services', description: 'Installation, repair and replacement of all water heater brands — tank & tankless options.' },
-            { icon: 'fa-droplet', title: 'Leak Detection & Repair', description: 'Advanced equipment to locate and fix hidden leaks before they cause costly damage.' },
-            { icon: 'fa-bath', title: 'Bathroom Plumbing', description: 'Complete bathroom plumbing installations and renovations, from faucets to full remodels.' },
-            { icon: 'fa-faucet', title: 'Faucet & Fixture Repair', description: 'Fast repair and replacement of leaky faucets, taps and fixtures throughout your home.' },
-            { icon: 'fa-house-flood-water', title: 'Emergency Plumbing', description: 'Round-the-clock emergency response for burst pipes, floods and urgent plumbing failures.' }
-        ]
+        items: []
     },
     styles: {
         paddingTop: 'pt-16 lg:pt-24',
@@ -1749,10 +1750,10 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
         title: 'Ways to Reach Us',
         subtitle: 'Choose whatever way works best for you — we\'re always happy to help.',
         items: [
-            { icon: 'fa-phone', title: 'Call Us', description: '(555) 123-4567 — available 24/7 for emergencies.' },
-            { icon: 'fa-envelope', title: 'Email Us', description: 'hello@yourcompany.com — we reply within a few hours.' },
-            { icon: 'fa-location-dot', title: 'Visit Us', description: '123 Main Street, Your City, ST 12345.' },
-            { icon: 'fa-clock', title: 'Office Hours', description: 'Mon–Sat: 7am – 8pm. Sunday: emergency only.' }
+            { kind: 'phone', icon: 'fa-phone', title: 'Call Us', helperText: 'Available for bookings and emergencies.', description: '' },
+            { kind: 'email', icon: 'fa-envelope', title: 'Email Us', helperText: 'We reply as soon as we can.', description: '' },
+            { kind: 'address', icon: 'fa-location-dot', title: 'Visit Us', helperText: '', description: '' },
+            { kind: 'hours', icon: 'fa-clock', title: 'Office Hours', helperText: '', description: '' },
         ]
     },
     styles: {
@@ -1930,7 +1931,18 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
   /** About page — own FAQ. */
   aboutfaq: {
     type: 'aboutfaq',
-    content: { title: 'Frequently Asked Questions', subtitle: 'Everything you might want to know about our company and team.' },
+    content: {
+      title: 'Frequently Asked Questions',
+      subtitle: 'Everything you might want to know about our company and team.',
+      items: [
+        { question: 'How long have you been in business?', answer: 'We have proudly served the local community for many years, building a reputation for quality workmanship, honesty and dependable service you can count on.' },
+        { question: 'What areas do you serve?', answer: 'We cover the greater metro area and surrounding neighborhoods. If you\'re unsure whether we reach your location, just give us a call and we\'ll be happy to confirm.' },
+        { question: 'Is your team licensed and insured?', answer: 'Absolutely. Every member of our team is fully licensed, background-checked and covered by comprehensive liability insurance for your complete peace of mind.' },
+        { question: 'What makes your company different?', answer: 'It\'s our people and our promise. We combine deep experience with a genuine, customer-first approach and back every job with a workmanship guarantee.' },
+        { question: 'Do you offer free consultations or estimates?', answer: 'Yes. For most projects we provide a no-obligation consultation so you understand the scope, timeline and cost before any work begins.' },
+        { question: 'How can I get in touch with your team?', answer: 'The fastest way to reach us is by phone, but you can also use the contact form on our website. We aim to respond to every inquiry promptly.' },
+      ],
+    },
     styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'AboutFaqDefault' }
   },
 
@@ -1943,7 +1955,17 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
   /** Contact page — own FAQ. */
   contactfaq: {
     type: 'contactfaq',
-    content: { title: 'Contact FAQs', subtitle: 'Answers to common questions about getting in touch.' },
+    content: {
+      title: 'Contact FAQs',
+      subtitle: 'Answers to common questions about getting in touch.',
+      items: [
+        { question: 'What is the fastest way to reach you?', answer: 'Calling us is usually fastest for urgent needs. For non-urgent questions, the contact form works great and we reply as soon as we can.' },
+        { question: 'What hours can I call or message?', answer: 'Our team monitors messages throughout business hours, and emergency calls are covered around the clock when available for your service type.' },
+        { question: 'Do I need an appointment to get a quote?', answer: 'Many quotes can start with a quick call or form submission. For larger jobs we may schedule an on-site visit so pricing is accurate.' },
+        { question: 'How soon will someone respond?', answer: 'We aim to respond to form inquiries the same day during business hours. Phone messages are returned as quickly as our schedule allows.' },
+        { question: 'Can I request service for a specific location?', answer: 'Yes — include your city or neighborhood when you contact us so we can route you to the right local team.' },
+      ],
+    },
     styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ContactFaqDefault' }
   },
 
@@ -1985,7 +2007,17 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
   },
   serviceslistfaq: {
     type: 'serviceslistfaq',
-    content: { title: 'Services FAQs', subtitle: 'Common questions about the services we offer.' },
+    content: {
+      title: 'Services FAQs',
+      subtitle: 'Common questions about the services we offer.',
+      items: [
+        { question: 'How do I choose the right service?', answer: 'Browse the services on this page and open the one that matches your need. Each service page explains what\'s included and how booking works.' },
+        { question: 'Are estimates free?', answer: 'For most standard jobs we provide clear upfront pricing. Larger projects may include a free or low-cost on-site assessment before work begins.' },
+        { question: 'Do you handle residential and commercial work?', answer: 'Yes. We support homes and businesses — open the relevant service for details on scope and scheduling.' },
+        { question: 'Can I book online?', answer: 'You can start from any service page or contact us directly. We\'ll confirm the job, timing, and next steps with you.' },
+        { question: 'What if I need more than one service?', answer: 'Many customers book related services together. Tell us what you need and we\'ll recommend the cleanest scope and schedule.' },
+      ],
+    },
     styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServicesListFaqDefault' }
   },
 
@@ -2032,129 +2064,32 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
   },
   servicedetailfaq: {
     type: 'servicedetailfaq',
-    content: { title: 'Service FAQs', subtitle: 'Answers to common questions about this service.' },
+    content: {
+      title: 'Service FAQs',
+      subtitle: 'Answers to common questions about this service.',
+      items: [
+        { question: 'What does this service include?', answer: 'Each service page outlines the typical scope. Your quote confirms exact inclusions based on your home or business needs.' },
+        { question: 'How long does the job usually take?', answer: 'Timing depends on scope and access. After a quick assessment we share a clear window so you can plan the day.' },
+        { question: 'Do you provide upfront pricing?', answer: 'Yes. We explain options and pricing before work starts so there are no surprise charges.' },
+        { question: 'Is the work guaranteed?', answer: 'Quality workmanship is backed by our satisfaction promise. Ask your technician about the guarantee for this specific service.' },
+        { question: 'Can I book for a specific area?', answer: 'Absolutely — choose your location when booking so we assign the closest available team.' },
+      ],
+    },
     styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServiceDetailFaqDefault' }
   },
 
-  /** Location page — hero (own component). */
-  locationhero: {
-    type: 'locationhero',
+  /** All Areas listing — hero (`allareas/areashero`). */
+  areashero: {
+    type: 'areashero',
     content: {
-        badgeText: 'Serving Your Area',
-        serviceHeroBadge: 'Serving Your Area',
-        serviceHeroTitle: 'Trusted Local Experts in Your City',
-        serviceHeroSubtitle: 'Fast, reliable and fully licensed service for homes and businesses right across your neighborhood — available 24/7.'
+      badgeText: 'Areas We Serve',
+      title: 'Find Service Near You',
+      subtitle: 'Browse every city and neighborhood we cover — pick your area for local details and response times.',
     },
-    styles: { paddingTop: 'pt-24 lg:pt-32', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationHeroDefault' }
+    styles: { paddingTop: 'pt-24 lg:pt-32', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'AreasHeroDefault' }
   },
 
-  /** Location page — about (own component). */
-  locationabout: {
-    type: 'locationabout',
-    content: {
-        badgeText: 'About This Location',
-        title: 'Proudly Serving Your Community',
-        service_name: 'Proudly Serving Your Community'
-    },
-    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'left', variant: 'LocationAboutDefault' }
-  },
-
-  /** Location page — services grid (own component). */
-  locationservices: {
-    type: 'locationservices',
-    content: {
-        badgeText: 'Our Services',
-        title: 'Services We Offer Here',
-        subtitle: 'Full-service solutions for every home and business in your area.'
-    },
-    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationServicesDefault' }
-  },
-
-  /** Location page — why choose us (own component). */
-  locationwhychoose: {
-    type: 'locationwhychoose',
-    content: {
-        badgeText: 'Why Us',
-        title: 'Why Locals Choose Us',
-        subtitle: 'We\'re your trusted neighbors — here\'s what sets us apart in your area.'
-    },
-    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationWhyChooseDefault' }
-  },
-
-  /** Location page — process (own component). */
-  locationprocess: {
-    type: 'locationprocess',
-    content: {
-        title: 'How We Work in Your Area',
-        subtitle: 'A simple, transparent process from your first call to the finished job.'
-    },
-    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationProcessDefault' }
-  },
-
-  /** Location page — CTA (own component). */
-  locationcta: {
-    type: 'locationcta',
-    content: {
-        title: 'Need Service in Your Area Today?',
-        subtitle: 'Our local team is standing by. Book now and we\'ll be on our way.',
-        ctaText: 'Book Your Local Visit'
-    },
-    styles: { paddingTop: 'pt-20 lg:pt-28', paddingBottom: 'pb-20 lg:pb-28', paddingX: 'px-6', textAlign: 'center', variant: 'LocationCtaDefault' }
-  },
-
-  /** Location page — guarantee (own component). */
-  locationguarantee: {
-    type: 'locationguarantee',
-    content: {
-        badgeText: 'Our Promise',
-        title: 'Our Local Satisfaction Guarantee',
-        subtitle: 'We stand behind every job we do in your neighborhood — guaranteed.'
-    },
-    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'left', variant: 'LocationGuaranteeDefault' }
-  },
-
-  /** Location page — promise (own component). */
-  locationpromise: {
-    type: 'locationpromise',
-    content: {
-        badgeText: 'Our Promise',
-        title: 'A Promise to Your Neighborhood',
-        subtitle: 'Honest work, fair pricing and a job done right the first time — for every home in your area.'
-    },
-    styles: { paddingTop: 'pt-14 lg:pt-20', paddingBottom: 'pb-14 lg:pb-20', paddingX: 'px-6', textAlign: 'center', variant: 'LocationPromiseDefault' }
-  },
-
-  /** Location page — testimonials (own component). */
-  locationtestimonials: {
-    type: 'locationtestimonials',
-    content: {
-        title: 'What Your Neighbors Say',
-        subtitle: 'Real reviews from real customers right in your area.'
-    },
-    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationTestimonialsDefault' }
-  },
-
-  /** Location page — areas (own component). */
-  locationareas: {
-    type: 'locationareas',
-    content: {
-        title: 'Neighborhoods We Cover',
-        subtitle: 'We provide fast, reliable service across all these areas. Not sure if we cover yours? Just ask!'
-    },
-    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationAreasDefault' }
-  },
-
-  /** Location page — FAQ (own component). */
-  locationfaq: {
-    type: 'locationfaq',
-    content: {
-        title: 'Local Service FAQs',
-        subtitle: 'Answers to the questions we hear most from customers in your area.'
-    },
-    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationFaqDefault' }
-  },
-
-  /** Location page — sub-locations (states / cities / areas) grid. */
+  /** All Areas listing — grid (`allareas/sublocations`). */
   sublocations: {
     type: 'sublocations',
     content: {
@@ -2175,7 +2110,7 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
     styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'SubLocationsDefault' }
   },
 
-  /** Location page — embedded map (renders when lat/lng or mapEmbedUrl exists). */
+  /** All Areas listing — map (`allareas/locationmap`). */
   locationmap: {
     type: 'locationmap',
     content: {
@@ -2185,6 +2120,41 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
         lng: '-74.0060'
     },
     styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationMapDefault' }
+  },
+
+  /** All Areas listing — reviews (`allareas/areastestimonials`). */
+  areastestimonials: {
+    type: 'areastestimonials',
+    content: {
+      badgeText: 'Local Reviews',
+      title: 'What Locals Are Saying',
+      subtitle: 'Real reviews from homes and businesses across the areas we serve.',
+      items: [
+        { id: '1', author: 'James Harrington', role: 'Austin, TX', title: 'Emergency Pipe Repair', description: 'Our main pipe burst at 2am and they were at our door within 45 minutes. Fixed everything cleanly and the price was fair.', avatar: 'https://i.pravatar.cc/80?img=11' },
+        { id: '2', author: 'Maria Gonzalez', role: 'Houston, TX', title: 'Drain Cleaning', description: 'They found the root cause in minutes with a camera and cleared it permanently. Finally fixed for good. Outstanding service.', avatar: 'https://i.pravatar.cc/80?img=5' },
+        { id: '3', author: 'David Chen', role: 'Dallas, TX', title: 'Water Heater Install', description: 'Installed our new tankless water heater quickly and professionally. Noticed a small gas leak and fixed it at no extra cost.', avatar: 'https://i.pravatar.cc/80?img=33' },
+      ],
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'AreasTestimonialsDefault' }
+  },
+
+  /** All Areas listing — FAQ (`allareas/areasfaq`). */
+  areasfaq: {
+    type: 'areasfaq',
+    content: {
+      badgeText: 'FAQ',
+      title: 'Areas FAQ',
+      subtitle: 'Common questions about coverage, travel, and booking by location.',
+      items: [
+        { question: 'Which cities and neighborhoods do you cover?', answer: 'Browse the full list on this page — each card links to a local page with details for that area. If you do not see your city, call us and we will confirm coverage.' },
+        { question: 'Do response times differ by area?', answer: 'Yes. Travel and scheduling can vary by location. Opening your area page shows local availability and the best way to book nearby.' },
+        { question: 'Can I book service from this page?', answer: 'Pick your city or neighborhood below, then request service from that area page so we route you to the right local team.' },
+        { question: 'What if my area is not listed?', answer: 'We expand coverage regularly. Contact us with your ZIP or city name and we will tell you if we can reach you today or soon.' },
+        { question: 'Are prices the same in every area?', answer: 'Base rates are similar, but travel and local conditions can affect estimates. Your area page and quote will reflect that clearly.' },
+        { question: 'How do I find the closest team?', answer: 'Use the areas grid or map on this page. Choosing your location unlocks the local contact options and service details.' },
+      ],
+    },
+    styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'AreasFaqDefault' }
   },
 
   navbar: {

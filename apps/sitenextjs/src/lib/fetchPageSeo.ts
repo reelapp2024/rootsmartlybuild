@@ -1,20 +1,10 @@
 import { normalizePageSeoFromApi, formatSeoMetadata, type PageSeoRecord } from './seo';
 import { getDefaultProjectId } from './projectConfig';
+import { resolveSiteNextJsApiUrl } from './resolveSiteNextApiUrl';
 import type { Metadata } from 'next';
 
 function getSiteNextJsApiUrl(): string {
-  const explicit = (process.env.NEXT_PUBLIC_SITENEXTJS_API_URL || '').trim();
-  if (explicit) return explicit.replace(/\/+$/, '');
-  const adminUrl = (process.env.NEXT_PUBLIC_API_URL || '').trim();
-  if (adminUrl) {
-    try {
-      const u = new URL(adminUrl.includes('://') ? adminUrl : `https://${adminUrl}`);
-      return `${u.origin}/sitenextjs/v1`;
-    } catch {
-      /* fall through */
-    }
-  }
-  return 'https://apis.smartlybuild.dev/sitenextjs/v1';
+  return resolveSiteNextJsApiUrl();
 }
 
 /**

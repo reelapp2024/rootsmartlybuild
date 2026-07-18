@@ -116,7 +116,12 @@ export const ServicesListGridDefault: React.FC<Props> = ({
     const id = `${section.id}-slg-title`;
     const existing = section.elements?.find(e => e.id === id);
     const cc = (existing?.content || {}) as any;
-    const sourceText: string = (cc.text || content.title || 'Our Services').toString().replace(/<[^>]+>/g, '').trim();
+    const sourceText: string = (
+      (readOnly ? String(content.title || '').trim() : '') ||
+      cc.text ||
+      content.title ||
+      'Our Services'
+    ).toString().replace(/<[^>]+>/g, '').trim();
     const words = sourceText.split(/\s+/).filter(Boolean);
     let textBefore = '';
     let highlightedText = sourceText;

@@ -77,12 +77,15 @@ export const CoreValuesDefault: React.FC<Props> = ({
 
   // Backend `corevalues` schema: { intro, items: [{ title, iconClass, description }] }
   const rawValues = (content.items && content.items.length > 0)
-    ? content.items.map((item: any, i: number) => ({
-        icon:        String(item.iconClass || item.icon || VALUES[i % 6].icon).replace(/^fas?\s+/, '').trim() || VALUES[i % 6].icon,
-        title:       item.title       || VALUES[i % 6].title,
-        description: item.description || VALUES[i % 6].description,
-      }))
-    : VALUES;
+    ? content.items.map((item: any, i: number) => {
+        const iconFallback = VALUES[i % 6].icon;
+        return {
+          icon: String(item.iconClass || item.icon || iconFallback).replace(/^fas?\s+/, '').trim() || iconFallback,
+          title: String(item.title || '').trim() || `Value ${i + 1}`,
+          description: String(item.description || item.subText || '').trim(),
+        };
+      }).filter((it: any) => it.title && it.description)
+    : (readOnly ? [] : VALUES);
 
   const themeColors = {
     ...tc,

@@ -4829,27 +4829,27 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 ? (content as any).items
                 : [];
 
-            // Static MOCK data for `selectSource` items — keyed by source name.
-            // Replace `resolveSourceChildren` with an API call to wire to backend.
-            const SOURCE_MOCK: Record<string, Array<{ label: string; link: string; icon?: string }>> = {
+            // Builder-only MOCK for `selectSource` when navSources are empty.
+            // Live/published (readOnly) must never show Austin/Dallas-style placeholders.
+            const SOURCE_MOCK: Record<string, Array<{ label: string; link: string; icon?: string; linkNewTab?: boolean }>> = {
                 locations: [
-                    { label: 'Austin, TX',      link: '/areas/austin' },
-                    { label: 'Dallas, TX',      link: '/areas/dallas' },
-                    { label: 'Houston, TX',     link: '/areas/houston' },
-                    { label: 'San Antonio, TX', link: '/areas/san-antonio' },
-                    { label: 'Fort Worth, TX',  link: '/areas/fort-worth' },
+                    { label: 'Austin, TX',      link: '/areas/austin', linkNewTab: false },
+                    { label: 'Dallas, TX',      link: '/areas/dallas', linkNewTab: false },
+                    { label: 'Houston, TX',     link: '/areas/houston', linkNewTab: false },
+                    { label: 'San Antonio, TX', link: '/areas/san-antonio', linkNewTab: false },
+                    { label: 'Fort Worth, TX',  link: '/areas/fort-worth', linkNewTab: false },
                 ],
                 services: [
-                    { label: 'Drain Cleaning',    link: '/services/drain-cleaning' },
-                    { label: 'Water Heaters',     link: '/services/water-heaters' },
-                    { label: 'Pipe Repair',       link: '/services/pipe-repair' },
-                    { label: 'Bathroom Plumbing', link: '/services/bathroom' },
-                    { label: 'Emergency Repairs', link: '/services/emergency' },
+                    { label: 'Drain Cleaning',    link: '/services/drain-cleaning', linkNewTab: false },
+                    { label: 'Water Heaters',     link: '/services/water-heaters', linkNewTab: false },
+                    { label: 'Pipe Repair',       link: '/services/pipe-repair', linkNewTab: false },
+                    { label: 'Bathroom Plumbing', link: '/services/bathroom', linkNewTab: false },
+                    { label: 'Emergency Repairs', link: '/services/emergency', linkNewTab: false },
                 ],
                 categories: [
-                    { label: 'Residential', link: '/categories/residential' },
-                    { label: 'Commercial',  link: '/categories/commercial' },
-                    { label: 'Industrial',  link: '/categories/industrial' },
+                    { label: 'Residential', link: '/categories/residential', linkNewTab: false },
+                    { label: 'Commercial',  link: '/categories/commercial', linkNewTab: false },
+                    { label: 'Industrial',  link: '/categories/industrial', linkNewTab: false },
                 ],
             };
             const navSources = (content as any).navSources || {};
@@ -4860,7 +4860,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                   ? window.location.pathname || '/'
                   : '';
             const resolveSourceChildren = (source: string | undefined) => {
-                if (!source) return [] as Array<{ label: string; link: string; icon?: string }>;
+                if (!source) return [] as Array<{ label: string; link: string; icon?: string; linkNewTab?: boolean }>;
                 const key = String(source).toLowerCase();
                 const live =
                     key === 'services'
@@ -4873,8 +4873,11 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         label: row.label || row.name || '',
                         link: row.link || row.url || '#',
                         icon: row.icon,
+                        // Internal SPA links must stay same-tab so projectId soft-nav works.
+                        linkNewTab: row.linkNewTab === undefined ? false : !!row.linkNewTab,
                     }));
                 }
+                if (readOnly) return [];
                 return SOURCE_MOCK[key] || [];
             };
 
@@ -5094,7 +5097,11 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                             />
                                             {dropdownItems.map((sub: any, j: number) => {
                                                 const subLink = (sub.link || '').trim();
-                                                const subNewTab = sub.linkNewTab === undefined ? true : !!sub.linkNewTab;
+                                                const subIsExternal = /^https?:\/\//i.test(subLink);
+                                                // Internal dropdown links default same-tab (SPA + stored projectId).
+                                                const subNewTab = sub.linkNewTab === undefined
+                                                    ? subIsExternal
+                                                    : !!sub.linkNewTab;
                                                 return (
                                                     <a key={j} href={subLink || '#'}
                                                         target={subLink && subNewTab ? '_blank' : undefined}

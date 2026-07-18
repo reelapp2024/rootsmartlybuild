@@ -78,12 +78,15 @@ export const USPDefault: React.FC<Props> = ({
     : Array.isArray(content.difference) && content.difference.length > 0 ? content.difference
     : null;
   const rawUsps = source
-    ? source.map((item: any, i: number) => ({
-        icon:        String(item.iconClass || item.icon || USPS[i % 6].icon).replace(/^fas?\s+/, '').trim() || USPS[i % 6].icon,
-        title:       item.title       || USPS[i % 6].title,
-        description: item.description || USPS[i % 6].description,
-      }))
-    : USPS;
+    ? source.map((item: any, i: number) => {
+        const iconFallback = USPS[i % 6].icon;
+        return {
+          icon: String(item.iconClass || item.icon || iconFallback).replace(/^fas?\s+/, '').trim() || iconFallback,
+          title: String(item.title || '').trim() || `Differentiator ${i + 1}`,
+          description: String(item.description || item.subText || '').trim(),
+        };
+      }).filter((it: any) => it.title && it.description)
+    : (readOnly ? [] : USPS);
 
   const themeColors = {
     ...tc,
@@ -109,6 +112,10 @@ export const USPDefault: React.FC<Props> = ({
     themeColors,
   } as const;
 
+  const apiBadgeText = String(content.badgeText || '').trim();
+  const apiTitleText = String(content.title || content.heading || '').trim();
+  const apiIntroText = String((content as any).intro || content.subtitle || content.description || '').trim();
+
   const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-usp-badge`) || {
     id: `${section.id}-usp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Why We\'re Different', icon: 'fa-wand-magic-sparkles', iconPosition: 'left', iconSize: '0.65rem' },
@@ -118,12 +125,24 @@ export const USPDefault: React.FC<Props> = ({
       textAlign: 'center' as any,
     },
   };
+  const badgeElResolved: WebsiteElement = {
+    ...badgeEl,
+    content: {
+      ...(badgeEl.content || {}),
+      text: apiBadgeText || String((badgeEl.content as any)?.text || '').trim() || "Why We're Different",
+    },
+  };
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-usp-title`;
     const existing = section.elements?.find(e => e.id === id);
     const cc = (existing?.content || {}) as any;
-    const sourceText: string = (cc.text || content.title || 'What Makes Us Different').toString().replace(/<[^>]+>/g, '').trim();
+    const sourceText: string = (
+      (readOnly ? apiTitleText : '') ||
+      cc.text ||
+      content.title ||
+      'What Makes Us Different'
+    ).toString().replace(/<[^>]+>/g, '').trim();
     const words = sourceText.split(/\s+/).filter(Boolean);
     let textBefore = '';
     let highlightedText = sourceText;
@@ -140,6 +159,16 @@ export const USPDefault: React.FC<Props> = ({
     id: `${section.id}-usp-desc`, type: 'text',
     content: { text: String((content as any).intro || content.subtitle || 'The advantages that set us apart from everyone else in the industry.'), textSize: 'large' },
     style: { textAlign: 'center' as any, maxWidth: '580px', margin: '0 auto', lineHeight: '1.65' },
+  };
+  const descElResolved: WebsiteElement = {
+    ...descEl,
+    content: {
+      ...(descEl.content || {}),
+      text:
+        (readOnly ? apiIntroText : '') ||
+        String((descEl.content as any)?.text || '').trim() ||
+        'The advantages that set us apart from everyone else in the industry.',
+    },
   };
 
   // Left-icon list card (same style as WhyChoose): accent left-stripe + tint bg.
@@ -189,14 +218,14 @@ export const USPDefault: React.FC<Props> = ({
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
           transition={{ duration: 0.6 }} className="text-center mb-4">
           <div className="flex justify-center mb-4">
-            <ElementsSection section={{ ...section, elements: [badgeEl] }} {...passThrough} />
+            <ElementsSection section={{ ...section, elements: [badgeElResolved] }} {...passThrough} />
           </div>
           <ElementsSection section={{ ...section, elements: [titleEl] }} {...passThrough} />
         </motion.div>
 
         <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.1 }} className="flex justify-center mb-10 sm:mb-14">
-          <ElementsSection section={{ ...section, elements: [descEl] }} {...passThrough} />
+          <ElementsSection section={{ ...section, elements: [descElResolved] }} {...passThrough} />
         </motion.div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">

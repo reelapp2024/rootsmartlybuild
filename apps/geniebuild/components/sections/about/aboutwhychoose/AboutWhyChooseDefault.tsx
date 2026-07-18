@@ -69,12 +69,15 @@ export const AboutWhyChooseDefault: React.FC<Props> = ({
   const hideAllIcons = !!(content as any).hideIcons;
 
   const rawReasons = (content.items && content.items.length > 0)
-    ? content.items.map((item: any, i: number) => ({
-        icon:        item.icon        || REASONS[i % 6].icon,
-        title:       item.title       || REASONS[i % 6].title,
-        description: item.description || REASONS[i % 6].description,
-      }))
-    : REASONS;
+    ? content.items.map((item: any, i: number) => {
+        const iconFallback = REASONS[i % 6].icon;
+        return {
+          icon: String(item.icon || item.iconClass || iconFallback).replace(/^fas?\s+/, '').trim() || iconFallback,
+          title: String(item.title || '').trim() || `Reason ${i + 1}`,
+          description: String(item.description || item.subText || '').trim(),
+        };
+      }).filter((it: any) => it.title && it.description)
+    : (readOnly ? [] : REASONS);
 
   const themeColors = {
     ...tc,
@@ -88,6 +91,10 @@ export const AboutWhyChooseDefault: React.FC<Props> = ({
     featureBoxTextColor:  textColor,
   };
 
+  const apiBadgeText = String(content.badgeText || '').trim();
+  const apiTitleText = String(content.title || content.heading || '').trim();
+  const apiSubtitleText = String(content.subtitle || content.description || '').trim();
+
   const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-awc-badge`) || {
     id: `${section.id}-awc-badge`, type: 'badge',
     content: { text: content.badgeText || 'Why Choose Us', icon: 'fa-star', iconPosition: 'left', iconSize: '0.65rem' },
@@ -99,12 +106,24 @@ export const AboutWhyChooseDefault: React.FC<Props> = ({
       color: accent,
     },
   };
+  const badgeElResolved: WebsiteElement = {
+    ...badgeEl,
+    content: {
+      ...(badgeEl.content || {}),
+      text: apiBadgeText || String((badgeEl.content as any)?.text || '').trim() || 'Why Choose Us',
+    },
+  };
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-awc-title`;
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
-    const sourceText: string = (c.text || content.title || 'Why Homeowners Trust Us').toString().replace(/<[^>]+>/g, '').trim();
+    const sourceText: string = (
+      (readOnly ? apiTitleText : '') ||
+      c.text ||
+      content.title ||
+      'Why Homeowners Trust Us'
+    ).toString().replace(/<[^>]+>/g, '').trim();
     const words = sourceText.split(/\s+/).filter(Boolean);
     let textBefore = '';
     let highlightedText = sourceText;
@@ -124,6 +143,16 @@ export const AboutWhyChooseDefault: React.FC<Props> = ({
     id: `${section.id}-awc-desc`, type: 'text',
     content: { text: content.subtitle || "Homeowners keep choosing us for one reason — we do what we say and stand behind every job.", textSize: 'large' },
     style: { textAlign: 'center' as any, maxWidth: '580px', margin: '0 auto', lineHeight: '1.65' },
+  };
+  const descElResolved: WebsiteElement = {
+    ...descEl,
+    content: {
+      ...(descEl.content || {}),
+      text:
+        (readOnly ? apiSubtitleText : '') ||
+        String((descEl.content as any)?.text || '').trim() ||
+        "Homeowners keep choosing us for one reason — we do what we say and stand behind every job.",
+    },
   };
 
   const getReasonEl = (i: number): WebsiteElement => {
@@ -172,7 +201,7 @@ export const AboutWhyChooseDefault: React.FC<Props> = ({
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
           transition={{ duration: 0.6 }} className="text-center mb-4">
           <div className="flex justify-center mb-4">
-            <ElementsSection section={{ ...section, elements: [badgeEl] }} onTextEdit={onTextEdit}
+            <ElementsSection section={{ ...section, elements: [badgeElResolved] }} onTextEdit={onTextEdit}
               onElementUpdate={onElementUpdate || (() => {})} onElementSelect={onElementSelect}
               selectedElementId={selectedElementId} readOnly={readOnly} isWrapped={false}
               buttonClass={buttonClass} themeColors={themeColors} />
@@ -185,7 +214,7 @@ export const AboutWhyChooseDefault: React.FC<Props> = ({
 
         <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.1 }} className="flex justify-center mb-10 sm:mb-14">
-          <ElementsSection section={{ ...section, elements: [descEl] }} onTextEdit={onTextEdit}
+          <ElementsSection section={{ ...section, elements: [descElResolved] }} onTextEdit={onTextEdit}
             onElementUpdate={onElementUpdate || (() => {})} onElementSelect={onElementSelect}
             selectedElementId={selectedElementId} readOnly={readOnly} isWrapped={false}
             buttonClass={buttonClass} themeColors={themeColors} />

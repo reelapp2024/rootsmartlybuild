@@ -8,6 +8,10 @@ const SECTION_GEO_HINTS = {
     "REQUIRED: serviceHeroTitle must pair the service name with the area or city once (e.g. \"{Service} in {Area}\", \"{Area} {Service}\").",
     "Subtitle: one more natural geo reference with different phrasing (serving, across, properties in, near).",
   ],
+  servicedetailhero: [
+    "REQUIRED: serviceHeroTitle must pair the service name with the area or city once (e.g. \"{Service} in {Area}\", \"{Area} {Service}\").",
+    "Subtitle: one more natural geo reference with different phrasing (serving, across, properties in, near).",
+  ],
   about: [
     "Include area name or city in title OR subtitle once for local relevance.",
     "One featureBox description may mention the area; use a different phrase than the title (e.g. \"serving {Area}\", \"{Area} homes\").",
@@ -16,7 +20,15 @@ const SECTION_GEO_HINTS = {
     "Mention the area or city 2–3 times across the three paragraphs — each time with different wording (serving, homeowners in, properties across, near {Area}).",
     "Paragraph 2 should carry the strongest local/practical angle.",
   ],
+  servicedetailabout: [
+    "Mention the area or city 2–3 times across the three paragraphs — each time with different wording (serving, homeowners in, properties across, near {Area}).",
+    "Paragraph 2 should carry the strongest local/practical angle.",
+  ],
   faq: [
+    "heading OR descriptionText: include area or city once (e.g. \"{Category} FAQs — {Area}\" or \"Common questions for {Area} customers\").",
+    "Across FAQ items: 3–5 answers should mention the area or city naturally; at most 2 questions should include the area name — never every question.",
+  ],
+  servicedetailfaq: [
     "heading OR descriptionText: include area or city once (e.g. \"{Category} FAQs — {Area}\" or \"Common questions for {Area} customers\").",
     "Across FAQ items: 3–5 answers should mention the area or city naturally; at most 2 questions should include the area name — never every question.",
   ],

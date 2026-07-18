@@ -1,3 +1,13 @@
+import {
+  defaultBusinessHours,
+  normalizeBusinessHours,
+  type BusinessHours,
+} from "./businessHoursUtils";
+
+export type { BusinessHours };
+
+export { defaultBusinessHours, normalizeBusinessHours };
+
 export const SOCIAL_PRESET_PLATFORMS = [
   { key: "facebook", label: "Facebook", placeholder: "https://facebook.com/yourpage" },
   { key: "instagram", label: "Instagram", placeholder: "https://instagram.com/yourhandle" },
@@ -117,6 +127,7 @@ export function applyAboutUsToContactState(aboutUsData: any): {
   presetSocialUrls: Record<SocialPresetKey, string>;
   customSocialLinks: CustomSocialLinkRow[];
   mainLocation: string;
+  businessHours: BusinessHours;
 } {
   const normalizedEmails =
     Array.isArray(aboutUsData?.emails) && aboutUsData.emails.length > 0
@@ -142,6 +153,7 @@ export function applyAboutUsToContactState(aboutUsData: any): {
     presetSocialUrls: presetUrls,
     customSocialLinks: customRows,
     mainLocation: String(aboutUsData?.mainLocation || aboutUsData?.address || "").trim(),
+    businessHours: normalizeBusinessHours(aboutUsData?.businessHours),
   };
 }
 

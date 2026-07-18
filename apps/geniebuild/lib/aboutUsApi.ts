@@ -1,9 +1,11 @@
 import { API_BASE_URL } from '../config';
 import type { AboutUsContact } from './contactResolver';
+import { resolveClientProjectId } from './projectIdStorage';
 
 function readProjectId(): string | null {
   if (typeof window === 'undefined') return null;
-  return new URLSearchParams(window.location.search).get('projectId');
+  const fromQuery = new URLSearchParams(window.location.search).get('projectId');
+  return resolveClientProjectId(fromQuery);
 }
 
 function readToken(): string | null {

@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import HomePageClientV2 from '../components/HomePageClientV2';
-import { getDefaultProjectId } from '@/lib/projectConfig';
+import { getDefaultProjectId, isDemoMode } from '@/lib/projectConfig';
 
 /** Static export: only `/` HTML; other paths use SPA + .htaccess. Dev: all paths render the app shell. */
 export function generateStaticParams() {
@@ -9,6 +9,7 @@ export function generateStaticParams() {
 
 export default function CatchAllPage() {
   const defaultProjectId = getDefaultProjectId();
+  const demoMode = isDemoMode();
   return (
     <div className="full-width min-h-screen">
       <Suspense
@@ -16,7 +17,7 @@ export default function CatchAllPage() {
           <div className="flex items-center justify-center min-h-screen">Loading...</div>
         }
       >
-        <HomePageClientV2 defaultProjectId={defaultProjectId} />
+        <HomePageClientV2 defaultProjectId={defaultProjectId} demoMode={demoMode} />
       </Suspense>
     </div>
   );

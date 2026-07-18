@@ -93,21 +93,35 @@ export const MissionVisionDefault: React.FC<MissionVisionProps> = ({
   } as const;
 
   // Backend `mission` / `vision` schema: { line, subHeadings: string[] }
-  const missionLine = String(c.mission?.line || c.missionLine || 'Quality service, every time.');
-  const visionLine  = String(c.vision?.line  || c.visionLine  || 'Setting the industry standard.');
-  const missionSubs: string[] = Array.isArray(c.mission?.subHeadings) ? c.mission.subHeadings
-    : Array.isArray(c.missionSubHeadings) ? c.missionSubHeadings
-    : ['Customer-focused solutions', 'Reliable expert workmanship', 'Honest transparent pricing'];
-  const visionSubs: string[] = Array.isArray(c.vision?.subHeadings) ? c.vision.subHeadings
-    : Array.isArray(c.visionSubHeadings) ? c.visionSubHeadings
-    : ['Innovating for tomorrow', 'Building lasting community trust', 'Sustainable responsible growth'];
+  const hasMission = Boolean(c.mission?.line || c.missionLine);
+  const hasVision = Boolean(c.vision?.line || c.visionLine);
+  const missionLine = String(
+    c.mission?.line ||
+      c.missionLine ||
+      (!readOnly ? 'Quality service, every time.' : '')
+  ).trim();
+  const visionLine = String(
+    c.vision?.line ||
+      c.visionLine ||
+      (!readOnly ? 'Setting the industry standard.' : '')
+  ).trim();
+  const missionSubs: string[] = Array.isArray(c.mission?.subHeadings) && c.mission.subHeadings.length
+    ? c.mission.subHeadings
+    : Array.isArray(c.missionSubHeadings) && c.missionSubHeadings.length
+      ? c.missionSubHeadings
+      : (readOnly || hasMission ? [] : ['Customer-focused solutions', 'Reliable expert workmanship', 'Honest transparent pricing']);
+  const visionSubs: string[] = Array.isArray(c.vision?.subHeadings) && c.vision.subHeadings.length
+    ? c.vision.subHeadings
+    : Array.isArray(c.visionSubHeadings) && c.visionSubHeadings.length
+      ? c.visionSubHeadings
+      : (readOnly || hasVision ? [] : ['Innovating for tomorrow', 'Building lasting community trust', 'Sustainable responsible growth']);
 
   // Heading element (highlighted last word) — matches homepage sections
   const headingEl = (key: string, text: string): WebsiteElement => {
     const id = `${section.id}-${key}`;
     const existing = section.elements?.find(e => e.id === id);
     const cc = (existing?.content || {}) as any;
-    const sourceText: string = (cc.text || text).toString().replace(/<[^>]+>/g, '').trim();
+    const sourceText: string = ((readOnly ? text : '') || cc.text || text).toString().replace(/<[^>]+>/g, '').trim();
     const words = sourceText.split(/\s+/).filter(Boolean);
     let textBefore = '';
     let highlightedText = sourceText;
@@ -120,7 +134,17 @@ export const MissionVisionDefault: React.FC<MissionVisionProps> = ({
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: 'clamp(1.5rem, 3vw, 2.25rem)', lineHeight: '1.2', letterSpacing: '-0.02em', textAlign: 'left' as any },
     };
-    return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
+    return {
+      ...base,
+      content: {
+        ...(base.content || {}),
+        text: sourceText,
+        textBefore,
+        highlightedText,
+        textAfter: '',
+        htmlTag: base.content?.htmlTag || 'h2',
+      },
+    };
   };
 
   // Line (lead paragraph) element
@@ -132,7 +156,13 @@ export const MissionVisionDefault: React.FC<MissionVisionProps> = ({
       content: { text, textSize: 'large' },
       style: { lineHeight: '1.6', fontWeight: '600', fontSize: '1.125rem', textAlign: 'left' as any },
     };
-    return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || text } };
+    return {
+      ...base,
+      content: {
+        ...(base.content || {}),
+        text: (readOnly ? text : '') || String((existing?.content as any)?.text || '').trim() || text,
+      },
+    };
   };
 
   // Sub-heading row — a real feature-box element (icon + text) so it is editable

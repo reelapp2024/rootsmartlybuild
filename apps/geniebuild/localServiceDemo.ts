@@ -69,8 +69,15 @@ export function isLocalBlogDetailDemoPath(pathname: string): boolean {
   return /(^|\/)blog\/[^/]+$/.test(lower);
 }
 
+/** All Areas listing page (`/areas`) — only allareas sections. */
+export function isLocalAreasListDemoPath(pathname: string): boolean {
+  const normalized = (pathname || '').replace(/\\/g, '/').replace(/\/+$/, '') || '/';
+  const lower = normalized.toLowerCase();
+  return lower === '/areas' || lower.endsWith('/areas');
+}
+
 /** When GenieBuild runs without `projectId`, `/location/:name` (or `/locations/:name`)
- *  shows the full Location page (all combined sections). Requires a location name
+ *  shows Area Detail = same as Home (homepage sections). Requires a location name
  *  segment. */
 export function isLocalLocationDemoPath(pathname: string): boolean {
   const normalized = (pathname || '').replace(/\\/g, '/').replace(/\/+$/, '') || '/';
@@ -118,47 +125,109 @@ function sectionFromTemplate(type: string, id: string, variantOverride?: string)
   return section;
 }
 
+/** Demo-site header links so every page can navigate the full demo sitemap. */
+const DEMO_SITE_NAV_ITEMS = [
+  { label: 'Home', link: '/', linkNewTab: false },
+  { label: 'About', link: '/about', linkNewTab: false },
+  {
+    label: 'Services',
+    link: '/services',
+    selectSource: 'services',
+    viewAllLabel: 'View All Services',
+    viewAllLink: '/services',
+    linkNewTab: false,
+  },
+  {
+    label: 'Areas',
+    link: '/areas',
+    selectSource: 'locations',
+    viewAllLabel: 'View All Areas',
+    viewAllLink: '/areas',
+    linkNewTab: false,
+  },
+  { label: 'Blog', link: '/blogs', linkNewTab: false },
+  { label: 'Contact', link: '/contact', linkNewTab: false },
+];
+
+/**
+ * Ensure demo pages have navigable header/footer chrome and real route links.
+ */
+export function applyFullSiteDemoChrome(data: WebsiteData): WebsiteData {
+  const next = cloneDeep(data);
+  next.sections = (next.sections || []).map((section) => {
+    if (section.type === 'header') {
+      return {
+        ...section,
+        content: {
+          ...(section.content as any),
+          menuItems: DEMO_SITE_NAV_ITEMS,
+          navItems: DEMO_SITE_NAV_ITEMS,
+          ctaText: (section.content as any)?.ctaText || 'Book Now',
+          ctaLink: '/contact',
+          phoneText: (section.content as any)?.phoneText || '(555) 123-4567',
+          phoneLink: (section.content as any)?.phoneLink || 'tel:5551234567',
+          sticky: true,
+        },
+      };
+    }
+    if (section.type === 'footer') {
+      return {
+        ...section,
+        content: {
+          ...(section.content as any),
+          ctaButtonLink: '/contact',
+          phoneText: (section.content as any)?.phoneText || '(555) 123-4567',
+          phoneLink: (section.content as any)?.phoneLink || 'tel:5551234567',
+          emailText: (section.content as any)?.emailText || 'hello@proflow.com',
+          emailLink: (section.content as any)?.emailLink || 'mailto:hello@proflow.com',
+        },
+      };
+    }
+    return section;
+  });
+  return next;
+}
+
+/**
+ * Resolve full dummy WebsiteData for a path (home / about / services / etc.).
+ * Used by GenieBuild standalone preview and SiteNextJS DEMOMODE.
+ */
+export function resolveDemoWebsiteDataByPath(pathname: string): WebsiteData {
+  const p = pathname || '/';
+  let data: WebsiteData = INITIAL_TEMPLATE;
+  if (isLocalAboutDemoPath(p)) data = buildLocalAboutDemoWebsiteData();
+  else if (isLocalContactDemoPath(p)) data = buildLocalContactDemoWebsiteData();
+  else {
+    const legalTitle = getLocalLegalDemoTitle(p);
+    if (legalTitle) data = buildLocalLegalDemoWebsiteData(legalTitle);
+    else if (isLocalAreasListDemoPath(p)) data = buildLocalAllAreasDemoWebsiteData();
+    else if (isLocalLocationDemoPath(p)) data = buildLocalLocationDemoWebsiteData();
+    else if (isLocalBlogDetailDemoPath(p)) data = buildLocalBlogDetailDemoWebsiteData();
+    else if (isLocalBlogsDemoPath(p)) data = buildLocalBlogsDemoWebsiteData();
+    else if (isLocalServiceDetailDemoPath(p)) data = buildLocalServiceDetailDemoWebsiteData();
+    else if (isLocalServicesListDemoPath(p)) data = buildLocalServicesListDemoWebsiteData();
+    else if (isLocalServiceDemoPath(p)) data = buildLocalServiceDemoWebsiteData();
+    else data = cloneDeep(INITIAL_TEMPLATE);
+  }
+  return applyFullSiteDemoChrome(data);
+}
+
+/** SiteNextJS DEMOMODE entry — full site demo with dummy content per route. */
+export function buildSiteNextDemoWebsiteData(pathname: string): WebsiteData {
+  return resolveDemoWebsiteDataByPath(pathname);
+}
+
 /** Initial canvas when opening GenieBuild without `projectId` (dummy / local preview). */
 export function getStandaloneInitialWebsiteData(): WebsiteData {
-  if (typeof window === 'undefined') return INITIAL_TEMPLATE;
+  if (typeof window === 'undefined') return applyFullSiteDemoChrome(cloneDeep(INITIAL_TEMPLATE));
   try {
     const params = new URLSearchParams(window.location.search);
     if (params.get('projectId')) return INITIAL_TEMPLATE;
-    if (isLocalAboutDemoPath(window.location.pathname)) {
-      return buildLocalAboutDemoWebsiteData();
-    }
-    if (isLocalContactDemoPath(window.location.pathname)) {
-      return buildLocalContactDemoWebsiteData();
-    }
-    const legalTitle = getLocalLegalDemoTitle(window.location.pathname);
-    if (legalTitle) {
-      return buildLocalLegalDemoWebsiteData(legalTitle);
-    }
-    if (isLocalLocationDemoPath(window.location.pathname)) {
-      return buildLocalLocationDemoWebsiteData();
-    }
-    // Check blog DETAIL (/blog/:slug) before blogs LISTING (/blogs).
-    if (isLocalBlogDetailDemoPath(window.location.pathname)) {
-      return buildLocalBlogDetailDemoWebsiteData();
-    }
-    if (isLocalBlogsDemoPath(window.location.pathname)) {
-      return buildLocalBlogsDemoWebsiteData();
-    }
-    // Order matters: `/services/:serviceName` (detail) before bare `/services`
-    // (listing) before `/service` (singular preview).
-    if (isLocalServiceDetailDemoPath(window.location.pathname)) {
-      return buildLocalServiceDetailDemoWebsiteData();
-    }
-    if (isLocalServicesListDemoPath(window.location.pathname)) {
-      return buildLocalServicesListDemoWebsiteData();
-    }
-    if (isLocalServiceDemoPath(window.location.pathname)) {
-      return buildLocalServiceDemoWebsiteData();
-    }
+    return resolveDemoWebsiteDataByPath(window.location.pathname);
   } catch {
     /* ignore */
   }
-  return INITIAL_TEMPLATE;
+  return applyFullSiteDemoChrome(cloneDeep(INITIAL_TEMPLATE));
 }
 
 export function buildLocalServiceDemoWebsiteData(): WebsiteData {
@@ -307,6 +376,8 @@ export function buildLocalLegalDemoWebsiteData(legalTitle: string = 'Privacy Pol
 
   // Legal page: hero + document content. The hero title comes from the route
   // (Privacy Policy / Terms of Service / Disclaimer).
+  // Full Legal page — GenieBuild legalhero + legalcontent.
+  // Backend maps privacy/terms/disclaimer page context into the right document body.
   const hero = sectionFromTemplate('legalhero', 'demo-legal-hero-1');
   (hero.content as any) = { ...(hero.content as any), heroTitle: legalTitle, breadcrumbLabel: legalTitle };
   const content = sectionFromTemplate('legalcontent', 'demo-legal-content-1');
@@ -327,45 +398,37 @@ export function buildLocalLegalDemoWebsiteData(legalTitle: string = 'Privacy Pol
   };
 }
 
-export function buildLocalLocationDemoWebsiteData(): WebsiteData {
+/** All Areas directory (`/areas`) — dedicated allareas sections. */
+export function buildLocalAllAreasDemoWebsiteData(): WebsiteData {
   const base = cloneDeep(INITIAL_TEMPLATE);
   const header = base.sections.find((s) => s.type === 'header');
   const footer = base.sections.find((s) => s.type === 'footer');
 
-  // Full Location page (all combined) — now uses the Location page's OWN section
-  // components so its content is independent and its variants don't collide with
-  // Home / Service pages.
-  const locationPlan: Array<[string, string, string?]> = [
-    ['locationhero',         'hero'],
-    ['locationabout',        'about'],
-    ['locationservices',     'services'],
-    ['sublocations',         'sublocations'],
-    ['locationwhychoose',    'whychoose'],
-    ['locationprocess',      'process'],
-    ['locationcta',          'cta1'],
-    ['locationguarantee',    'guarantee'],
-    ['locationpromise',      'promise'],
-    ['locationtestimonials', 'testimonials'],
-    ['locationareas',        'areas'],
-    ['locationmap',          'map'],
-    ['locationcta',          'cta2'],
-    ['locationfaq',          'faq'],
-  ];
-
   const sections: Section[] = [];
   if (header) sections.push({ ...cloneDeep(header), id: 'demo-header-1' });
-  locationPlan.forEach(([type, suffix, variant], i) => {
-    sections.push(sectionFromTemplate(type, `demo-location-${suffix}-${i + 1}`, variant));
-  });
+  sections.push(sectionFromTemplate('areashero', 'demo-allareas-hero-1'));
+  sections.push(sectionFromTemplate('sublocations', 'demo-allareas-list-1'));
+  sections.push(sectionFromTemplate('locationmap', 'demo-allareas-map-1'));
+  sections.push(sectionFromTemplate('areastestimonials', 'demo-allareas-reviews-1'));
+  sections.push(sectionFromTemplate('areasfaq', 'demo-allareas-faq-1'));
   if (footer) sections.push({ ...cloneDeep(footer), id: 'demo-footer-1' });
 
   return {
     ...base,
-    name: 'GenieBuild — Location (local demo)',
+    name: 'GenieBuild — All Areas (listing)',
     sections,
     pages: undefined,
     currentPageId: undefined,
     globalSections: base.globalSections ? cloneDeep(base.globalSections) : undefined,
+  };
+}
+
+/** Area detail (`/location/:name`) — same as Home (homepage sections). */
+export function buildLocalLocationDemoWebsiteData(): WebsiteData {
+  const base = applyFullSiteDemoChrome(cloneDeep(INITIAL_TEMPLATE));
+  return {
+    ...base,
+    name: 'GenieBuild — Area Detail (same as Home)',
   };
 }
 

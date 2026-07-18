@@ -606,6 +606,60 @@ module.exports = {
         }
     },
 
+    /**
+     * Public published blogs for a project (site / GenieBuild blogs page).
+     * Query: projectId (required), page, limit, search, type
+     */
+    list_published_blogs: async (req, res) => {
+        try {
+            const projectId = String(
+                req.query?.projectId || req.body?.projectId || ""
+            ).trim();
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+            if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                return res.status(400).json({ message: "Invalid projectId" });
+            }
+
+            const page = Number(req.query?.page || req.body?.page || 1) || 1;
+            const limit = Number(req.query?.limit || req.body?.limit || 9) || 9;
+            const search = String(req.query?.search || req.body?.search || "").trim();
+            const type = String(req.query?.type || req.body?.type || "").trim();
+
+            const {
+                buildBlogListSectionData,
+            } = require("../services/blogSectionDynamics");
+
+            const payload = await buildBlogListSectionData(projectId, {
+                page,
+                limit,
+                search,
+                type,
+            });
+            const data = payload?.data || {};
+            const pagination = data.pagination || payload?.meta?.pagination || {};
+
+            return res.status(200).json({
+                message: "OK",
+                data: {
+                    items: Array.isArray(data.items) ? data.items : [],
+                    emptyStateMessage: data.emptyStateMessage || "No blogs found",
+                    page: Number(pagination.page || page),
+                    limit: Number(pagination.limit || limit),
+                    total: Number(pagination.total || 0),
+                    pages: Number(pagination.pages || 1),
+                },
+            });
+        } catch (error) {
+            console.error("list_published_blogs error:", error);
+            return res.status(500).json({
+                message: "Failed to list published blogs",
+                error: String(error?.message || error),
+            });
+        }
+    },
+
     related_blogs: async (req, res) => {
         try {
 

@@ -382,15 +382,81 @@ function applySectionContactContent(content = {}, sectionType = "", aboutUs = nu
   if (type === "hero") {
     c = resolveSecondaryPhoneOnContent(c, aboutUs);
   }
-  if (type === "cta") {
+  if (type === "cta" || type === "contactcta" || type === "aboutcta" || type === "serviceslistcta") {
     c = resolveCtaPhoneOnContent(c, aboutUs);
   }
   if (type === "areas") {
     if (c.phoneHref && !c.phoneLink) c.phoneLink = c.phoneHref;
     if (c.phoneLink && !c.phoneHref) c.phoneHref = c.phoneLink;
   }
+  if (type === "contactinfo") {
+    c = enrichContactInfoItemsOnContent(c, aboutUs);
+  }
 
   c = resolveSectionLinkRules(c, aboutUs);
+  return c;
+}
+
+function joinValueAndHelper(value, helper) {
+  const v = String(value || "").trim();
+  const h = String(helper || "").trim();
+  if (v && h) return `${v} — ${h}`;
+  return v || h || "";
+}
+
+/** Live-resolve contactinfo card descriptions from AboutUs (no AI invention). */
+function enrichContactInfoItemsOnContent(content = {}, aboutUs = null) {
+  const c = { ...(content || {}) };
+  const phone = resolvePhone({ source: DEFAULT_SOURCE }, aboutUs).text;
+  const email = resolveEmail({ source: DEFAULT_SOURCE }, aboutUs).text;
+  const address = String(aboutUs?.address || aboutUs?.mainLocation || "").trim();
+  let hoursLine = "";
+  try {
+    const { formatBusinessHoursText } = require("./businessHours");
+    hoursLine = formatBusinessHoursText(aboutUs?.businessHours);
+  } catch {
+    hoursLine = "";
+  }
+  const items = Array.isArray(c.items) ? c.items : [];
+  if (!items.length) {
+    c.phoneText = phone;
+    c.phoneNumber = phone;
+    c.emailText = email;
+    c.addressText = address;
+    c.hoursText = hoursLine;
+    return c;
+  }
+
+  c.items = items.map((it) => {
+    const kind = String(it?.kind || "").toLowerCase();
+    const helper = String(it?.helperText || "").trim();
+    if (kind === "phone" && phone) {
+      return { ...it, value: phone, description: joinValueAndHelper(phone, helper) };
+    }
+    if (kind === "email" && email) {
+      return { ...it, value: email, description: joinValueAndHelper(email, helper) };
+    }
+    if (kind === "address" && address) {
+      return { ...it, value: address, description: joinValueAndHelper(address, helper) };
+    }
+    if (kind === "hours" && hoursLine) {
+      return {
+        ...it,
+        value: hoursLine,
+        helperText: String(aboutUs?.businessHours?.note || "").trim(),
+        description: hoursLine,
+      };
+    }
+    return it;
+  });
+  c.phoneText = phone;
+  c.phoneNumber = phone;
+  c.phoneLink = phone ? telHref(phone) : c.phoneLink;
+  c.phoneHref = c.phoneLink;
+  c.emailText = email;
+  c.emailLink = email ? mailtoHref(email) : c.emailLink;
+  c.addressText = address;
+  c.hoursText = hoursLine;
   return c;
 }
 
@@ -429,7 +495,7 @@ function applySectionContactDynamics(section = {}, aboutUs = null) {
 async function fetchAboutUsForContact(projectId) {
   if (!projectId) return null;
   return AboutUs.findOne({ projectId })
-    .select("phone phones email emails address mainLocation socialLinks")
+    .select("phone phones email emails address mainLocation socialLinks businessHours")
     .lean();
 }
 

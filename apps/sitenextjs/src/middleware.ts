@@ -1,24 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { resolveProjectId } from '@/lib/projectConfig';
-
-function resolveSiteNextJsApiUrl(): string {
-  const explicit = (process.env.NEXT_PUBLIC_SITENEXTJS_API_URL || '').trim();
-  if (explicit) return explicit.replace(/\/+$/, '');
-
-  const adminUrl = (process.env.NEXT_PUBLIC_API_URL || '').trim();
-  if (adminUrl) {
-    try {
-      const normalized = adminUrl.replace(/\/+$/, '');
-      const u = new URL(normalized.includes('://') ? normalized : `https://${normalized}`);
-      return `${u.origin}/sitenextjs/v1`;
-    } catch {
-      /* fall through */
-    }
-  }
-
-  return 'https://apis.smartlybuild.dev/sitenextjs/v1';
-}
+import { PROJECT_ID_COOKIE_KEY, resolveProjectId } from '@/lib/projectConfig';
+import { resolveSiteNextJsApiUrl } from '@/lib/resolveSiteNextApiUrl';
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -31,13 +14,26 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const projectId = resolveProjectId(
-    request.nextUrl.searchParams.get('projectId')
-  );
+  const projectIdFromQuery = (request.nextUrl.searchParams.get('projectId') || '').trim();
+  const projectId = resolveProjectId(projectIdFromQuery, {
+    cookie: request.cookies.get(PROJECT_ID_COOKIE_KEY)?.value,
+  });
+
+  const continueWithProjectCookie = (response: NextResponse) => {
+    if (projectIdFromQuery) {
+      response.cookies.set(PROJECT_ID_COOKIE_KEY, projectIdFromQuery, {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 365,
+        sameSite: 'lax',
+      });
+    }
+    return response;
+  };
+
   if (!projectId) return NextResponse.next();
 
   const slug = pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-  if (!slug) return NextResponse.next();
+  if (!slug) return continueWithProjectCookie(NextResponse.next());
 
   try {
     const apiUrl = resolveSiteNextJsApiUrl();
@@ -48,7 +44,7 @@ export async function middleware(request: NextRequest) {
       cache: 'no-store',
     });
 
-    if (!response.ok) return NextResponse.next();
+    if (!response.ok) return continueWithProjectCookie(NextResponse.next());
 
     const payload = await response.json();
     if (payload?.kind === 'redirect' && payload?.redirect?.to) {
@@ -56,13 +52,15 @@ export async function middleware(request: NextRequest) {
       request.nextUrl.searchParams.forEach((value, key) => {
         if (key !== 'pageId') destination.searchParams.set(key, value);
       });
-      return NextResponse.redirect(destination, payload.redirect.statusCode || 301);
+      return continueWithProjectCookie(
+        NextResponse.redirect(destination, payload.redirect.statusCode || 301)
+      );
     }
   } catch {
     // Allow client-side resolution if middleware lookup fails.
   }
 
-  return NextResponse.next();
+  return continueWithProjectCookie(NextResponse.next());
 }
 
 export const config = {

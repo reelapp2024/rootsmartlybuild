@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Eye, ExternalLink, Pencil, Search, Server, Trash, Plus, Zap, Globe, Laptop, Wrench, Link, Settings, CheckCircle, BarChart3, MoreVertical, Layout, FileText } from "lucide-react";
+import { Eye, ExternalLink, Pencil, Search, Server, Trash, Plus, Zap, Globe, Laptop, Wrench, Link, Settings, CheckCircle, BarChart3, MoreVertical, Layout, FileText, Info, CheckCircle2, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -33,6 +33,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { DeploymentDialog } from "./DeploymentDialog";
 import { GoogleSiteVerificationDialog } from "./GoogleSiteVerificationDialog";
+import {
+  SectionGenerationInfoDialog,
+  type ContentGenerationProgress,
+} from "./SectionGenerationInfoDialog";
 import socket from "../../socket.js";
 
 interface ProjectListProps {
@@ -61,8 +65,27 @@ export function ProjectList({
   const [Activeprojects, setActiveProjects] = useState([]);
   const [deploymentDialog, setDeploymentDialog] = useState({ open: false, projectId: '', projectName: '', hostingId: '' });
   const [googleVerificationDialog, setGoogleVerificationDialog] = useState({ open: false, projectId: '', projectName: '', verificationCode: '', htmlFileName: '' });
+  const [infoDialog, setInfoDialog] = useState<{
+    open: boolean;
+    projectId: string;
+    projectName: string;
+  }>({ open: false, projectId: "", projectName: "" });
+  const [defaultParallelWorkers, setDefaultParallelWorkers] = useState(6);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const mergeContentGeneration = (
+    projectId: string,
+    next: ContentGenerationProgress
+  ) => {
+    setProjects((prev) =>
+      prev.map((proj) =>
+        String(proj._id) === String(projectId)
+          ? { ...proj, contentGeneration: { ...(proj.contentGeneration || {}), ...next } }
+          : proj
+      )
+    );
+  };
 
   // Fetch projects from API with pagination and search (socket handles live status updates)
   useEffect(() => {
@@ -126,6 +149,9 @@ export function ProjectList({
         setActiveProjects(res.data.totalActiveProjects || []);
         setTotalPages(res.data.totalPages || 1);
         setTotalProjects(projectType === "all" ? (res.data.total || projectList.length || 0) : projectList.length);
+        if (res.data?.generationMeta?.defaultParallelWorkers) {
+          setDefaultParallelWorkers(Number(res.data.generationMeta.defaultParallelWorkers) || 6);
+        }
 
         // Join unique socket room for each project
         projectList.forEach((project) => {
@@ -153,12 +179,57 @@ export function ProjectList({
       );
     };
 
+    const onSectionGenerationProgress = (payload: ContentGenerationProgress) => {
+      if (!payload?.projectId) return;
+      mergeContentGeneration(String(payload.projectId), payload);
+    };
+
     socket.on("projectStatusUpdate", onProjectStatusUpdate);
+    socket.on("sectionGenerationProgress", onSectionGenerationProgress);
 
     return () => {
       socket.off("projectStatusUpdate", onProjectStatusUpdate);
+      socket.off("sectionGenerationProgress", onSectionGenerationProgress);
     };
   }, [navigate, currentPage, limit, searchTerm, projectType]);
+
+  // Poll progress for projects still generating (socket backup).
+  useEffect(() => {
+    const generatingIds = projects
+      .filter((p) => String(p?.contentGeneration?.status || "") === "generating")
+      .map((p) => String(p._id));
+    if (!generatingIds.length) return;
+
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+        const res = await http.post(
+          "getProjectsSectionGenerationProgress",
+          { projectIds: generatingIds },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (cancelled) return;
+        const data = res.data?.data || {};
+        if (res.data?.defaultParallelWorkers) {
+          setDefaultParallelWorkers(Number(res.data.defaultParallelWorkers) || 6);
+        }
+        Object.entries(data).forEach(([projectId, progress]) => {
+          mergeContentGeneration(projectId, progress as ContentGenerationProgress);
+        });
+      } catch {
+        /* ignore poll errors */
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [projects.map((p) => `${p._id}:${p?.contentGeneration?.status}`).join("|")]);
 
   // Handle page change
   const handlePageChange = (pageNumber) => {
@@ -460,12 +531,25 @@ export function ProjectList({
               <TableRow className="bg-gray-50 hover:bg-gray-50">
                 <TableHead className="font-bold text-gray-900 text-sm min-w-[200px]">Project</TableHead>
                 <TableHead className="font-bold text-gray-900 text-sm">Service Type</TableHead>
+                <TableHead className="font-bold text-gray-900 text-sm min-w-[220px]">Content generation</TableHead>
                 <TableHead className="font-bold text-gray-900 text-sm">Status</TableHead>
                 <TableHead className="text-right font-bold text-gray-900 text-sm">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {projects.map((project) => {
+                const gen = (project.contentGeneration || {}) as ContentGenerationProgress;
+                const genStatus = String(gen.status || "idle");
+                const isGenerating = genStatus === "generating";
+                const isComplete =
+                  genStatus === "completed" || genStatus === "completed_with_errors";
+                const total = Number(gen.total || 0);
+                const done = Number(gen.done || 0);
+                const pending = Number(
+                  gen.pending ?? Math.max(0, total - done - Number(gen.failed || 0) - Number(gen.skipped || 0))
+                );
+                const percent = Number(gen.percent || (isComplete ? 100 : 0));
+
                 return (
                   <TableRow 
                     key={project._id} 
@@ -491,6 +575,63 @@ export function ProjectList({
                     </TableCell>
                     <TableCell>
                       <span className="text-sm text-gray-600">{project.serviceType}</span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-start gap-2 min-w-[200px]">
+                        <div className="flex-1 space-y-1">
+                          {isGenerating ? (
+                            <>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-amber-700 font-medium flex items-center gap-1">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  Generating…
+                                </span>
+                                <span className="font-semibold text-gray-800">{percent}%</span>
+                              </div>
+                              <div className="h-1.5 w-full rounded-full bg-amber-100 overflow-hidden">
+                                <div
+                                  className="h-full bg-amber-500 transition-all duration-500"
+                                  style={{ width: `${Math.max(2, percent)}%` }}
+                                />
+                              </div>
+                              <div className="text-[11px] text-gray-500">
+                                {done}/{total || "—"} done · {pending} left
+                                {gen.parallelWorkers
+                                  ? ` · ${gen.activeWorkers || 0}/${gen.parallelWorkers} workers`
+                                  : ""}
+                              </div>
+                            </>
+                          ) : isComplete ? (
+                            <div className="flex items-center gap-1.5 text-green-700 text-sm font-medium">
+                              <CheckCircle2 className="h-4 w-4" />
+                              Generated
+                              {total > 0 ? (
+                                <span className="text-xs text-green-600/80 font-normal">
+                                  ({done || total} sections)
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">Not generated yet</span>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 shrink-0"
+                          title="Generation details"
+                          onClick={() =>
+                            setInfoDialog({
+                              open: true,
+                              projectId: String(project._id),
+                              projectName: project.projectName || "Project",
+                            })
+                          }
+                        >
+                          <Info className="h-4 w-4 text-blue-600" />
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell className="pointer-events-none">
                       <Badge className={`text-xs px-2 py-1 ${getBadgeVariant(project.status)}`}>
@@ -686,6 +827,17 @@ export function ProjectList({
           };
           fetchProjects();
         }}
+      />
+
+      <SectionGenerationInfoDialog
+        open={infoDialog.open}
+        onOpenChange={(open) => setInfoDialog((prev) => ({ ...prev, open }))}
+        projectName={infoDialog.projectName}
+        defaultParallelWorkers={defaultParallelWorkers}
+        progress={
+          (projects.find((p) => String(p._id) === infoDialog.projectId)
+            ?.contentGeneration as ContentGenerationProgress) || null
+        }
       />
 
     </div>

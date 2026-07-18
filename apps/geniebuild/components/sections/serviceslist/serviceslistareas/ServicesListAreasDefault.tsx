@@ -106,7 +106,12 @@ export const ServicesListAreasDefault: React.FC<Props> = ({
     const id = `${section.id}-sla-title`;
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
-    const sourceText: string = (c.text || content.title || 'Service Areas').toString().replace(/<[^>]+>/g, '').trim();
+    const sourceText: string = (
+      (readOnly ? String(content.title || '').trim() : '') ||
+      c.text ||
+      content.title ||
+      'Service Areas'
+    ).toString().replace(/<[^>]+>/g, '').trim();
     const words = sourceText.split(/\s+/).filter(Boolean);
     let textBefore = '';
     let highlightedText = sourceText;
@@ -151,13 +156,21 @@ export const ServicesListAreasDefault: React.FC<Props> = ({
   // add/remove tiles (like ServicesPlumbing2) manage the list count.
   const itemsAreMaterialized = Array.isArray(content.items) && content.items.length > 0;
   const cityItems = itemsAreMaterialized
-    ? (content.items as any[]).map((it: any, i: number) => ({
-        id: it.id || `area-${i + 1}`,
-        city: it.title || it.city || DEFAULT_AREAS[i % DEFAULT_AREAS.length].city,
-        link: String(it.link || it.href || it.url || '').trim(),
-        locationId: it.locationId ? String(it.locationId) : '',
-      }))
-    : DEFAULT_AREAS.map((a, i) => ({ id: `sla-city-${i}`, city: a.city, link: '', locationId: '' }));
+    ? (content.items as any[])
+        .map((it: any, i: number) => {
+          const city = String(it.title || it.city || it.name || it.label || '').trim();
+          if (!city && readOnly) return null;
+          return {
+            id: it.id || `area-${i + 1}`,
+            city: city || DEFAULT_AREAS[i % DEFAULT_AREAS.length].city,
+            link: String(it.link || it.href || it.url || '').trim(),
+            locationId: it.locationId ? String(it.locationId) : '',
+          };
+        })
+        .filter(Boolean)
+    : readOnly
+      ? []
+      : DEFAULT_AREAS.map((a, i) => ({ id: `sla-city-${i}`, city: a.city, link: '', locationId: '' }));
 
   const materializeIfNeeded = (): any[] => {
     if (itemsAreMaterialized) return cityItems;

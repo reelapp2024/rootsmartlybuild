@@ -1381,7 +1381,7 @@ export default function ServicesManagement({ projectId: propProjectId }: Service
       selectAll: selectAllLocations,
       selectedLocationIds: selectAllLocations ? [] : selectedLocationIds,
       generateContent: true,
-      selectedSectionIds: ["servicehero", "aboutservice", "faq"],
+      selectedSectionIds: ["servicedetailhero", "servicedetailabout", "servicedetailfaq"],
     };
     try {
       setWizardLoading(true);

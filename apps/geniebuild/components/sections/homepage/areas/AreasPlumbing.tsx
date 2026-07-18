@@ -149,15 +149,24 @@ export const AreasPlumbing: React.FC<Props> = ({
   // ── Cities — each city is its own editable `badge` element so the user
   // can click any pill to edit text/icon/colors individually. Section's own
   // add/remove tiles (like ServicesPlumbing2) manage the list count.
+  // Live site: never invent Austin/Dallas demo cities when API sent no items.
   const itemsAreMaterialized = Array.isArray(content.items) && content.items.length > 0;
   const cityItems = itemsAreMaterialized
-    ? (content.items as any[]).map((it: any, i: number) => ({
-        id: it.id || `area-${i + 1}`,
-        city: it.title || it.city || DEFAULT_AREAS[i % DEFAULT_AREAS.length].city,
-        link: String(it.link || it.href || it.url || '').trim(),
-        locationId: it.locationId ? String(it.locationId) : '',
-      }))
-    : DEFAULT_AREAS.map((a, i) => ({ id: `ap-city-${i}`, city: a.city, link: '', locationId: '' }));
+    ? (content.items as any[])
+        .map((it: any, i: number) => {
+          const city = String(it.title || it.city || it.name || it.label || '').trim();
+          if (!city && readOnly) return null;
+          return {
+            id: it.id || `area-${i + 1}`,
+            city: city || DEFAULT_AREAS[i % DEFAULT_AREAS.length].city,
+            link: String(it.link || it.href || it.url || '').trim(),
+            locationId: it.locationId ? String(it.locationId) : '',
+          };
+        })
+        .filter(Boolean)
+    : readOnly
+      ? []
+      : DEFAULT_AREAS.map((a, i) => ({ id: `ap-city-${i}`, city: a.city, link: '', locationId: '' }));
 
   const materializeIfNeeded = (): any[] => {
     if (itemsAreMaterialized) return cityItems;

@@ -178,8 +178,18 @@ export function Step6PagesSections({
             </p>
             <div className="max-h-[500px] overflow-y-auto space-y-3 pr-2">
               {selectedPages.map((page: any) => {
-                const pageSectionsList = pageSections[page.id] || [];
+                const isLocationPage = page.id === "location";
+                const homePage = defaultPages.find((p: any) => p.id === "home");
+                const sectionsCatalog =
+                  isLocationPage && homePage?.sections?.length
+                    ? homePage.sections
+                    : page.sections;
+                // Location landings always mirror Home section selection
+                const pageSectionsList = isLocationPage
+                  ? pageSections.home || []
+                  : pageSections[page.id] || [];
                 const pageRoleLabel = String(page.pageRoleLabel || "").trim();
+                const perLocationKey = isLocationPage ? "home" : page.id;
 
                 return (
                   <div key={page.id} className="border rounded-lg p-3 bg-gray-50">
@@ -195,7 +205,7 @@ export function Step6PagesSections({
                           ) : null}
                         </div>
                         <Badge variant="secondary" className="text-xs h-5 px-1.5 shrink-0">
-                          {pageSectionsList.length}/{page.sections.length}
+                          {pageSectionsList.length}/{sectionsCatalog.length}
                         </Badge>
                       </div>
                       <div className="flex gap-1">
@@ -205,10 +215,19 @@ export function Step6PagesSections({
                           size="sm"
                           className="h-6 text-xs px-2"
                           onClick={() => {
-                            setPageSections({
-                              ...pageSections,
-                              [page.id]: page.sections.filter((s: any) => s.defaultSelected),
-                            });
+                            const next = sectionsCatalog.filter((s: any) => s.defaultSelected);
+                            if (isLocationPage) {
+                              setPageSections({
+                                ...pageSections,
+                                home: next,
+                                location: next.map((s: any) => ({ ...s })),
+                              });
+                            } else {
+                              setPageSections({
+                                ...pageSections,
+                                [page.id]: next,
+                              });
+                            }
                           }}
                         >
                           Reset
@@ -219,16 +238,35 @@ export function Step6PagesSections({
                           size="sm"
                           className="h-6 text-xs px-2"
                           onClick={() => {
-                            setPageSections({
-                              ...pageSections,
-                              [page.id]: [...page.sections],
-                            });
+                            const next = [...sectionsCatalog];
+                            if (isLocationPage) {
+                              setPageSections({
+                                ...pageSections,
+                                home: next,
+                                location: next.map((s: any) => ({ ...s })),
+                              });
+                            } else {
+                              setPageSections({
+                                ...pageSections,
+                                [page.id]: next,
+                              });
+                            }
                           }}
                         >
                           All
                         </Button>
                       </div>
                     </div>
+                    {isLocationPage ? (
+                      <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5">
+                        <p className="text-xs font-medium text-amber-900">
+                          Same sections as Home
+                        </p>
+                        <p className="text-[10px] text-amber-800 leading-tight">
+                          Location pages reuse the Home layout. Changing sections here also updates Home — content is generated per area when location-specific content is on.
+                        </p>
+                      </div>
+                    ) : null}
                     <div className="flex items-center justify-between gap-2 mb-2 rounded border border-blue-100 bg-blue-50/50 px-2 py-1.5">
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-gray-900">Location-specific content</p>
@@ -237,22 +275,27 @@ export function Step6PagesSections({
                         </p>
                       </div>
                       <Switch
-                        checked={Boolean(perLocationByPage[page.id])}
-                        onCheckedChange={(checked) =>
-                          setPerLocationByPage({
+                        checked={Boolean(perLocationByPage[perLocationKey])}
+                        onCheckedChange={(checked) => {
+                          const next = {
                             ...perLocationByPage,
-                            [page.id]: Boolean(checked),
-                          })
-                        }
+                            [perLocationKey]: Boolean(checked),
+                          };
+                          if (isLocationPage || page.id === "home") {
+                            next.home = Boolean(checked);
+                            next.location = Boolean(checked);
+                          }
+                          setPerLocationByPage(next);
+                        }}
                         aria-label={`Location-specific content for ${page.name}`}
                       />
                     </div>
                     <div className="max-h-64 overflow-y-auto border rounded bg-white p-2">
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                        {page.sections.map((section: any) => {
+                        {sectionsCatalog.map((section: any) => {
                           const isLockedServiceAbout =
                             page.id === "service" &&
-                            String(section.id).toLowerCase() === "aboutservice";
+                            String(section.id).toLowerCase() === "servicedetailabout";
 
                           const isSelected = pageSectionsList.some(
                             (sel: any) => sel.id === section.id
@@ -260,18 +303,47 @@ export function Step6PagesSections({
 
                           const toggleSection = () => {
                             if (isLockedServiceAbout) return;
-                            const pageKey = page.id === "service" ? "service" : "home";
+                            const pageKey =
+                              page.id === "service"
+                                ? "service"
+                                : page.id === "services"
+                                  ? "services"
+                                  : page.id === "areas"
+                                    ? "areas"
+                                    : page.id === "about"
+                                      ? "about"
+                                      : page.id === "contact"
+                                        ? "contact"
+                                        : page.id === "legal"
+                                          ? "legal"
+                                          : page.id === "blog"
+                                            ? "blog"
+                                            : page.id === "blogdetail"
+                                              ? "blogdetail"
+                                              : "home";
+                            const baseList = isLocationPage
+                              ? pageSections.home || []
+                              : pageSectionsList;
                             const nextList = isSelected
-                              ? pageSectionsList.filter((sel: any) => sel.id !== section.id)
-                              : [...pageSectionsList, section];
-                            setPageSections({
-                              ...pageSections,
-                              [page.id]: sortSectionObjectsByCanonicalOrder(
-                                pageKey,
-                                nextList,
-                                (s: any) => s.id
-                              ),
-                            });
+                              ? baseList.filter((sel: any) => sel.id !== section.id)
+                              : [...baseList, section];
+                            const ordered = sortSectionObjectsByCanonicalOrder(
+                              pageKey,
+                              nextList,
+                              (s: any) => s.id
+                            );
+                            if (isLocationPage || page.id === "home") {
+                              setPageSections({
+                                ...pageSections,
+                                home: ordered,
+                                location: ordered.map((s: any) => ({ ...s })),
+                              });
+                            } else {
+                              setPageSections({
+                                ...pageSections,
+                                [page.id]: ordered,
+                              });
+                            }
                           };
 
                           const label = String(section.name || section.id);

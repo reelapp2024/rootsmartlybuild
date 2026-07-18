@@ -23,25 +23,18 @@ module.exports = {
     const { project, location, extraData = {} } = ctx;
 
     const projectName = project.projectName || "";
-    const mainCategory = project.mainCategory || "";
+    const mainCategory = project.mainCategory || project.serviceType || "";
     const focusKeyword = project.focusKeyword || "";
     const seoKeywords = project.projectKeywordsText || "";
 
-    const locationName = location?.name || "";
+    const locationName = location?.name || location?.areaName || "";
     const city = location?.city || "";
     const state = location?.state || "";
 
     const finalLocation = `${locationName || city || ""} ${state || ""}`.trim();
 
     return `
-You are generating GUARANTEE section content for the website builder variant "GuaranteeSimple".
-
-Layout in the UI (exactly one of each, top to bottom):
-1) One icon (Font Awesome class string)
-2) Optional small badge (uppercase label) — may be empty string if not needed
-3) One main heading (plain text, no HTML unless you use one <span> for a highlighted phrase)
-4) One body paragraph (trust / quality promise)
-5) One primary button label + optional href
+You are generating GUARANTEE section content for "${projectName}" (${mainCategory}).
 
 Website Name: ${projectName}
 Primary Category: ${mainCategory}
@@ -49,7 +42,7 @@ Focus Keyword: ${focusKeyword}
 SEO Keywords: ${seoKeywords}
 
 Location context:
-${finalLocation || "No specific location"}
+${finalLocation || "service area"}
 
 Extra context:
 ${JSON.stringify(extraData)}
@@ -57,53 +50,53 @@ ${JSON.stringify(extraData)}
 Return STRICT JSON ONLY (NO markdown, NO explanation):
 
 {
-  "badgeText": "TRUSTED GUARANTEE",
-  "title": "5-10 word compelling guarantee headline",
-  "subtitle": "20-45 words, professional, SEO-aware, category-specific",
+  "badgeText": "2-5 word badge unique to ${projectName}",
+  "title": "5-10 word guarantee headline naming ${projectName} or ${mainCategory}",
+  "subtitle": "20-45 words trust promise specific to this business",
   "statCard": {
-    "icon": "fas fa-shield-halved",
-    "label": "On-time completion",
-    "value": "98%",
-    "description": "Based on recent job performance"
+    "icon": "fa-shield-halved",
+    "label": "Short metric label unique to this business",
+    "value": "Short metric value unique to this business",
+    "description": "8-16 words explaining the metric for ${projectName}"
   },
   "guaranteeList": [
-    { "icon": "fas fa-check-circle", "line": "Line 1" },
-    { "icon": "fas fa-check-circle", "line": "Line 2" },
-    { "icon": "fas fa-check-circle", "line": "Line 3" }
+    { "icon": "fa-check-circle", "line": "Concrete guarantee line" }
   ]
 }
 
 ================ RULES ================
 
 badgeText:
-- OPTIONAL: may be "" (empty string) if a badge would feel redundant
-- If non-empty: 2–5 words, uppercase tone, no phone/email/address
+- OPTIONAL: may be "" if redundant
+- If set: 2–5 words, no phone/email/address
 
 title:
-- REQUIRED, non-empty
-- 5–10 words, strong and specific to ${mainCategory}
-- You may include ONE optional highlight using HTML: last word or phrase in <span style="color: #E11D48">...</span> — or plain text only
+- REQUIRED, 5–10 words, specific to ${mainCategory} / ${projectName}
 
 subtitle:
-- REQUIRED, non-empty
-- 20-45 words, concise and strong
-- Builds trust; mentions quality, satisfaction, or standing behind the work
-- Location-aware only if natural; no street addresses
-- NO phone numbers, emails, URLs, or "call us" / "contact us" wording
+- REQUIRED, 20-45 words
+- Builds trust for ${projectName}; location-aware once if natural
+- NO phone, email, URL, or "call us"
 
-statCard:
-- REQUIRED with keys: icon, label, value, description
-- value should be realistic stat-style text like "98%" or "24/7"
+statCard (CRITICAL — must be unique per project):
+- REQUIRED keys: icon, label, value, description
+- value: short punchy metric (examples of STYLE only — invent a fresh one): percentages, years, "24/7", "Same-day", "4.9★", "100%"
+- label: 2–4 words describing what the value means for THIS ${mainCategory} business
+- description: 8–16 words, mention ${projectName} or ${mainCategory} naturally
+- FORBIDDEN stock defaults — never output exactly:
+  - value "98%" with label "On-time completion"
+  - value "10" with label "Year Guarantee"
+  - generic copy reused across unrelated businesses
+- Pick a metric that fits ${mainCategory} (response time, satisfaction, warranty years, availability, local jobs completed, rating, etc.)
 
 guaranteeList:
-- REQUIRED array with 4-8 objects
-- each object: icon + line
-- line should be 6-16 words
+- 4–8 objects { icon, line }
+- Each line 6–16 words, UNIQUE, specific to ${projectName} / ${mainCategory}
+- icon = FA6 token without "fas" (e.g. fa-check-circle)
 
 GLOBAL:
 - Do NOT add extra keys
-- Output MUST be valid JSON
-- No markdown fences
+- Output MUST be valid JSON only
 `;
   },
 };

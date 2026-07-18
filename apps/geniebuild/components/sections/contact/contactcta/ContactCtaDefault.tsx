@@ -64,7 +64,7 @@ export const ContactCtaDefault: React.FC<Props> = ({
 
   const phoneEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cct-phone`) || {
     id: `${section.id}-cct-phone`, type: 'heading',
-    content: { text: (content as any).phoneNumber || '(555) 123-4567', htmlTag: 'div' as any },
+    content: { text: (content as any).phoneNumber || (content as any).phoneText || '', htmlTag: 'div' as any },
     style: { color: accent, fontWeight: '900', fontSize: 'clamp(1.75rem, 5vw, 3rem)', letterSpacing: '-0.02em', textAlign: 'center' as any },
   };
 

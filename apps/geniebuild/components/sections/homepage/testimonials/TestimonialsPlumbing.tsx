@@ -77,22 +77,22 @@ export const TestimonialsPlumbing: React.FC<Props> = ({
   };
   const textAlignClass = s.textAlign === 'left' ? 'text-left' : s.textAlign === 'right' ? 'text-right' : 'text-center';
 
-  // Reviews driven by content.items length — user can add/remove via the "+" / trash buttons.
-  // When empty we fall back to all 6 defaults so the section isn't blank on fresh page.
+  // Reviews from content.items. Live site: never invent stock plumbing service badges.
   const sourceItems: any[] = (content.items && content.items.length > 0) ? content.items : [];
   const itemsAreMaterialized = sourceItems.length > 0;
-  const reviews = (sourceItems.length > 0 ? sourceItems : REVIEWS).map((item: any, i: number) => {
+  const reviews = (sourceItems.length > 0 ? sourceItems : (readOnly ? [] : REVIEWS)).map((item: any, i: number) => {
     const fallback = REVIEWS[i % REVIEWS.length];
+    const service = String(item?.service || item?.title || item?.badge || '').trim();
     return {
       id:      item?.id     || `tp-rev-${i}`,
-      author:  item?.author  || fallback.author,
-      role:    item?.role    || fallback.role,
-      service: item?.service || item?.title || fallback.service,
-      rating:  item?.rating ?? fallback.rating,
-      avatar:  item?.avatar  || fallback.avatar,
-      quote:   item?.quote   || item?.description || fallback.quote,
+      author:  item?.author  || (readOnly ? 'Customer' : fallback.author),
+      role:    item?.role    || (readOnly ? '' : fallback.role),
+      service: service || (readOnly ? '' : fallback.service),
+      rating:  item?.rating ?? (readOnly ? 5 : fallback.rating),
+      avatar:  item?.avatar  || (readOnly ? '' : fallback.avatar),
+      quote:   item?.quote   || item?.description || (readOnly ? '' : fallback.quote),
     };
-  });
+  }).filter((r: any) => r.quote);
 
   // Materialize defaults to content.items if user has never edited.
   const materializeIfNeeded = (): any[] => {
@@ -203,9 +203,11 @@ export const TestimonialsPlumbing: React.FC<Props> = ({
       showAvatar: true,
     };
     if (existing) {
+      // Live/API content (rev.*) wins over stale element shells that still hold
+      // stock badges like "Drain Cleaning" from the GenieBuild demo.
       return {
         ...existing,
-        content: { ...defaultContent, ...(existing.content || {}) },
+        content: { ...(existing.content || {}), ...defaultContent },
         style: { ...(existing.style || {}) } as any,
       };
     }

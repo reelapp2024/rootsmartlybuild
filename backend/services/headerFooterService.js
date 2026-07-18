@@ -5,6 +5,7 @@ const SiteHeaderFooter = require("../models/siteHeaderFooter");
 const Service = require("../models/service");
 const UserProject = require("../models/userProjects");
 const { toPublicPath, normalizeSlugInput } = require("./pageSlugService");
+const { buildBusinessLocationPathMap } = require("../additional/businessLocationPaths");
 const {
   DEFAULT_SOURCE,
   resolveElementContact,
@@ -63,7 +64,7 @@ function pickContactList(items = [], mode = "primary") {
 async function fetchAboutUsForProject(projectId) {
   if (!projectId) return null;
   return AboutUs.findOne({ projectId })
-    .select("phone phones email emails address mainLocation socialLinks")
+    .select("phone phones email emails address mainLocation socialLinks businessHours")
     .lean();
 }
 
@@ -428,7 +429,7 @@ function plumbingLinkItem({
  * @param {string|null} contextLocationId - Current page's locationId (null for homepage)
  * @returns {Array} Array of location nav items {label, link, pageId, locationId}
  */
-function buildContextualAreasForHeader(businessLocations, locationPageByLocId, contextLocationId) {
+function buildContextualAreasForHeader(businessLocations, locationPageByLocId, contextLocationId, pathByLocationId = new Map()) {
   if (!businessLocations?.length) return [];
 
   // Build lookup maps for fast access
@@ -443,17 +444,24 @@ function buildContextualAreasForHeader(businessLocations, locationPageByLocId, c
     childrenByParentId.get(parentKey).push(loc);
   }
 
-  // Helper to convert locations to nav items
+  // Prefer WebsitePage slug; fall back to hierarchical BusinessLocation path so
+  // Areas dropdown is never empty / non-clickable when pages are missing.
   const locsToNavItems = (locs) => {
     return locs
       .map((loc) => {
-        const page = locationPageByLocId.get(String(loc._id));
-        if (!page) return null;
+        const locId = String(loc._id);
+        const page = locationPageByLocId.get(locId);
+        const pathFallback = pathByLocationId?.get?.(locId)
+          ? `/${String(pathByLocationId.get(locId)).replace(/^\/+/, "")}`
+          : "";
+        const link = page ? pagePath(page) : pathFallback;
+        if (!link || link === "#") return null;
         return {
-          label: loc.areaName || page.displayName || page.name || "Area",
-          link: pagePath(page),
-          pageId: String(page._id),
-          locationId: String(loc._id),
+          label: loc.areaName || page?.displayName || page?.name || "Area",
+          link,
+          pageId: page ? String(page._id) : null,
+          locationId: locId,
+          linkNewTab: false,
         };
       })
       .filter(Boolean)
@@ -550,11 +558,13 @@ async function buildNavSources(projectId, options = {}) {
     }
   });
 
-  // Use smart contextual area selection
+  // Use smart contextual area selection (page slug or hierarchical path fallback)
+  const pathByLocationId = buildBusinessLocationPathMap(businessLocations);
   const locations = buildContextualAreasForHeader(
     businessLocations,
     locationPageByLocId,
-    contextLocationId
+    contextLocationId,
+    pathByLocationId
   );
 
   const findListingPage = (candidates = [], preferredLocationId = null) => {
@@ -583,7 +593,8 @@ async function buildNavSources(projectId, options = {}) {
     ["services", "service", "our-services"],
     contextLocationId
   );
-  const areasListing = findListingPage(["areas", "area", "locations", "location"]);
+  // All Areas directory only — never treat Area Detail template (`location`) as the listing.
+  const areasListing = findListingPage(["areas", "area", "all-areas", "allareas"]);
 
   return {
     services,
@@ -703,10 +714,14 @@ async function buildDefaultSiteMenu(projectId, options = {}) {
   const home = findPageByHints(pages, ["", "home", "homepage"]);
   const about = findPageByHints(pages, ["about", "about-us", "aboutus"]);
   const contact = findPageByHints(pages, ["contact", "contact-us"]);
+  const blogs = findPageByHints(pages, ["blogs", "blog", "news"]);
   const menu = [];
   let order = 0;
 
-  // Home remains the primary entry even if missing from WebsitePage table.
+  // Canonical business-site nav (matches SiteNext / GenieBuild demo chrome):
+  // Home → About → Services → Areas → Blog → Contact — only include pages that exist
+  // (or Services/Areas when catalog/locations make those menus meaningful).
+
   menu.push(
     menuLinkItem({
       id: "home",
@@ -717,12 +732,11 @@ async function buildDefaultSiteMenu(projectId, options = {}) {
     })
   );
 
-  // About/Contact should only appear when those pages actually exist for the project.
   if (about?._id) {
     menu.push(
       menuLinkItem({
         id: "about",
-        label: about.displayName || "About Us",
+        label: about.displayName || "About",
         url: pagePath(about),
         pageId: about._id,
         order: order++,
@@ -730,7 +744,9 @@ async function buildDefaultSiteMenu(projectId, options = {}) {
     );
   }
 
-  if (navSources.servicesListing?.pageId || (navSources.services || []).length) {
+  const hasServicesNav =
+    Boolean(navSources.servicesListing?.pageId) || (navSources.services || []).length > 0;
+  if (hasServicesNav) {
     menu.push(
       menuLinkItem({
         id: "services",
@@ -753,13 +769,17 @@ async function buildDefaultSiteMenu(projectId, options = {}) {
     );
   }
 
-  if (navSources.areasListing?.pageId || (navSources.locations || []).length) {
+  // Areas nav → All Areas listing (`/areas`), never Area Detail template (`/location`).
+  const hasAreasNav =
+    Boolean(navSources.areasListing?.pageId) || (navSources.locations || []).length > 0;
+  if (hasAreasNav) {
+    const areasUrl = navSources.areasListing?.link || "/areas";
     menu.push(
       menuLinkItem({
         id: "areas",
         label: navSources.areasListing?.label || "Areas",
-        url: navSources.areasListing?.link || "/areas",
-        pageId: navSources.areasListing?.pageId,
+        url: areasUrl,
+        pageId: navSources.areasListing?.pageId || null,
         order: order++,
         children: (navSources.locations || []).map((row, idx) =>
           menuLinkItem({
@@ -770,6 +790,18 @@ async function buildDefaultSiteMenu(projectId, options = {}) {
             order: idx,
           })
         ),
+      })
+    );
+  }
+
+  if (blogs?._id) {
+    menu.push(
+      menuLinkItem({
+        id: "blog",
+        label: blogs.displayName || "Blog",
+        url: pagePath(blogs),
+        pageId: blogs._id,
+        order: order++,
       })
     );
   }
@@ -808,7 +840,7 @@ function buildPlumbingNavItems(menu = [], navSources = {}) {
       ? menu
       : [
           plumbingLinkItem({ label: "Home", link: "/" }),
-          plumbingLinkItem({ label: "About Us", link: "/about" }),
+          plumbingLinkItem({ label: "About", link: "/about" }),
           plumbingLinkItem({
             label: "Services",
             link: navSources.servicesListing?.link || "/services",
@@ -823,6 +855,7 @@ function buildPlumbingNavItems(menu = [], navSources = {}) {
             viewAllLabel: "View All Areas",
             viewAllLink: navSources.areasListing?.link || "/areas",
           }),
+          plumbingLinkItem({ label: "Blog", link: "/blogs" }),
           plumbingLinkItem({ label: "Contact", link: "/contact" }),
         ];
 
@@ -846,7 +879,9 @@ function buildPlumbingNavItems(menu = [], navSources = {}) {
     if (
       baseItem.selectSource === "locations" ||
       label.includes("area") ||
-      link === "areas"
+      link === "areas" ||
+      link === "location" ||
+      link === "locations"
     ) {
       // Always use live generated area links from current project pages/locations.
       const dropdown = areasDropdown;
@@ -864,6 +899,17 @@ function buildPlumbingNavItems(menu = [], navSources = {}) {
       const aboutPage = findPageByHints(navSources.pages || [], ["about", "about-us", "aboutus"]);
       if (aboutPage) {
         return { ...baseItem, link: pagePath(aboutPage), pageId: String(aboutPage._id), label: aboutPage.displayName || baseItem.label };
+      }
+    }
+    if (label.includes("blog") || link === "blogs" || link === "blog" || link === "news") {
+      const blogsPage = findPageByHints(navSources.pages || [], ["blogs", "blog", "news"]);
+      if (blogsPage) {
+        return {
+          ...baseItem,
+          link: pagePath(blogsPage),
+          pageId: String(blogsPage._id),
+          label: blogsPage.displayName || baseItem.label || "Blog",
+        };
       }
     }
     if (label.includes("contact")) {
@@ -1383,6 +1429,21 @@ function applyDynamicsToResolvedSection(section = {}, bundle = {}, createPayload
       content.emailSub = footerLayout.contact?.emailSub || content.emailSub;
       content.hoursText = footerLayout.contact?.hoursText || content.hoursText;
       content.hoursSub = footerLayout.contact?.hoursSub || content.hoursSub;
+      // Live AboutUs availability overrides footer free-text when structured hours exist
+      if (aboutUs?.businessHours) {
+        try {
+          const {
+            formatBusinessHoursText,
+            formatBusinessHoursSub,
+          } = require("./businessHours");
+          const liveHours = formatBusinessHoursText(aboutUs.businessHours);
+          if (liveHours) content.hoursText = liveHours;
+          const liveSub = formatBusinessHoursSub(aboutUs.businessHours);
+          if (liveSub) content.hoursSub = liveSub;
+        } catch {
+          /* keep layout hours */
+        }
+      }
       const resolved = applySectionContactContent(content, type, aboutUs);
       Object.assign(content, resolved);
       content.addressText = dynamic.address || content.addressText;
@@ -1569,30 +1630,60 @@ async function prepareDefaultHeaderFooterPayload(projectId, type = 0) {
       children: [],
       style: {},
     },
-    ...(catalogNav.services?.length
+    {
+      id: "about",
+      name: "About",
+      url: "/about",
+      icon: "",
+      target: "_self",
+      order: 1,
+      children: [],
+      style: {},
+    },
+    ...(catalogNav.services?.length || catalogNav.servicesListing?.pageId
       ? [{
           id: "services",
           name: "Services",
-          url: "/services",
+          url: catalogNav.servicesListing?.link || "/services",
           icon: "",
           target: "_self",
-          order: 1,
+          order: 2,
           children: catalogRowsToFooterServiceMenuItems(catalogNav.services || []),
           style: {},
         }]
       : []),
-    ...(catalogNav.locations?.length
+    ...(catalogNav.locations?.length || catalogNav.areasListing?.pageId
       ? [{
           id: "areas",
           name: "Areas",
-          url: "/areas",
+          url: catalogNav.areasListing?.link || "/areas",
           icon: "",
           target: "_self",
-          order: 2,
+          order: 3,
           children: [],
           style: {},
         }]
       : []),
+    {
+      id: "blog",
+      name: "Blog",
+      url: "/blogs",
+      icon: "",
+      target: "_self",
+      order: 4,
+      children: [],
+      style: {},
+    },
+    {
+      id: "contact",
+      name: "Contact",
+      url: "/contact",
+      icon: "",
+      target: "_self",
+      order: 5,
+      children: [],
+      style: {},
+    },
   ];
   const menu = siteMenu.length
     ? sortMenuByOrder(mergeMenuWithNavSources(siteMenu, catalogNav))
@@ -1785,8 +1876,111 @@ async function applyHeaderFooterDynamicsToSections(sections = [], projectId, opt
     if (type === "navbar" || type === "header") {
       return applyDynamicsToResolvedSection(section, headerBundle, headerCreate);
     }
+    // Expose WebsitePage service/location nav rows on content sections so
+    // services grids can resolve per-service slugs (business + bulk).
+    if (
+      type === "services" ||
+      type === "servicesgrid" ||
+      type === "serviceslistgrid" ||
+      type === "relatedservices" ||
+      type === "locationservices" ||
+      type === "servicedetailservices"
+    ) {
+      const data =
+        section?.data && typeof section.data === "object" && !Array.isArray(section.data)
+          ? { ...section.data }
+          : {};
+      data.navSources = {
+        services: headerBundle?.navSources?.services || [],
+        locations: headerBundle?.navSources?.locations || [],
+        servicesListing: headerBundle?.navSources?.servicesListing || null,
+        areasListing: headerBundle?.navSources?.areasListing || null,
+      };
+      return { ...section, data };
+    }
     return section;
   });
+}
+
+/**
+ * Rebuild header (+ footer quick links) from current WebsitePage rows.
+ * Use after wizard page upsert so About / Services / Areas / Blog / Contact
+ * appear in the menu like the SiteNext demo chrome.
+ */
+async function rebuildProjectHeaderFooterMenus(projectId, options = {}) {
+  if (!projectId) return { updated: 0 };
+
+  const catalogNav = await buildNavSources(projectId, { catalogOnly: true });
+  let siteMenu = [];
+  try {
+    siteMenu = await buildDefaultSiteMenu(projectId, { catalogOnly: true });
+  } catch (err) {
+    console.warn("[rebuildProjectHeaderFooterMenus] buildDefaultSiteMenu:", err.message);
+  }
+  const menu = sortMenuByOrder(mergeMenuWithNavSources(siteMenu, catalogNav));
+  let updated = 0;
+
+  const header = await SiteHeaderFooter.findOne({
+    projectId,
+    type: 0,
+    status: "active",
+  });
+  if (header) {
+    header.menu = menu;
+    header.markModified("menu");
+    await header.save();
+    updated += 1;
+  }
+
+  const footer = await SiteHeaderFooter.findOne({
+    projectId,
+    type: 1,
+    status: "active",
+  });
+  if (footer) {
+    const footerLayout =
+      menu.length > 0
+        ? buildFooterLayoutFromDefaultMenu(menu, catalogNav.services || [])
+        : buildEmptyDefaultFooterLayout();
+    if (!(catalogNav.services || []).length && footerLayout.services) {
+      footerLayout.services.children = [];
+    }
+    const project = await UserProject.findById(projectId)
+      .select(
+        "projectName mainCategory serviceType welcomeLine projectSlogan description promiseLine callToAction cta"
+      )
+      .lean();
+    const footerMarketing = pickFooterMarketingFromProject(project || {});
+    const resolvedLayout = resolveFooterLayoutForEditor(footerLayout, footerMarketing);
+    const nextSettings = mergeFooterLayoutIntoSettings(footer.settings || {}, resolvedLayout);
+    footer.menu = sortMenuByOrder(
+      mergeMenuWithNavSources(syncLegacyMenuFromFooterLayout(resolvedLayout), catalogNav)
+    );
+    footer.settings = nextSettings;
+    footer.markModified("menu");
+    footer.markModified("settings");
+    await footer.save();
+    updated += 1;
+  }
+
+  let syncResult = null;
+  if (options.syncSections !== false) {
+    try {
+      const { syncHeaderFooterSectionsForProject } = require("./headerFooterSectionSync");
+      syncResult = await syncHeaderFooterSectionsForProject(projectId, {
+        skipFooterAi: true,
+      });
+    } catch (err) {
+      console.warn("[rebuildProjectHeaderFooterMenus] section sync:", err.message);
+    }
+  }
+
+  return {
+    updated,
+    menuCount: menu.length,
+    menu,
+    sync: syncResult,
+  };
 }
 
 module.exports = {
@@ -1814,6 +2008,7 @@ module.exports = {
   normalizeFooterLayout,
   syncLegacyMenuFromFooterLayout,
   prepareDefaultHeaderFooterPayload,
+  rebuildProjectHeaderFooterMenus,
   DEFAULT_SHELL_CONTACT,
   DEFAULT_SHELL_STYLE,
   SOCIAL_PLATFORM_ICONS,

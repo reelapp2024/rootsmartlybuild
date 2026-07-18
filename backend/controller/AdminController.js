@@ -62,6 +62,7 @@ const ProjectDeployment = require("../models/ProjectDeployment");
 const Slug = require("../models/slug")
 const SiteHeaderFooter = require("../models/siteHeaderFooter")
 const WebsitePage = require("../models/WebsitePage")
+const PageSlugRedirect = require("../models/PageSlugRedirect")
 const {
     normalizeSlugInput,
     assertSlugAvailable,
@@ -81,6 +82,7 @@ const {
     normalizeFooterLayout,
     syncLegacyMenuFromFooterLayout,
     prepareDefaultHeaderFooterPayload,
+    rebuildProjectHeaderFooterMenus,
 } = require("../services/headerFooterService")
 const {
     mergeFooterLayoutIntoSettings,
@@ -196,10 +198,21 @@ const projectBackgroundQueue = require("../queue/projectBackgroundQueue");
 const redislatlngqueueQueue = require("../queue/queuelatlng")
 const { sectionGenerationQueue, enqueueSectionGeneration } = require("../queue/sectionGeneration.queue");
 const {
+    getLiveProgressMap,
+    getLiveProgress,
+    getDefaultParallelWorkers,
+    normalizeProgress,
+} = require("../services/sectionGenerationProgress");
+const {
     getSectionResolver,
     isServiceBundleSection
 } = require("../additional/sectionResolverRegistry");
-const { buildServiceRenderSections } = require("../additional/siteSectionOrder.cjs");
+const {
+    buildServiceRenderSections,
+    sortSectionObjectsByCanonicalOrder,
+    applyCanonicalSectionOrderToPageSections,
+    resolveCanonicalPageKey,
+} = require("../additional/siteSectionOrder.cjs");
 
 function ensureHeaderFooterComponents(componentIds = []) {
     const list = Array.isArray(componentIds) ? [...componentIds] : [];
@@ -551,6 +564,18 @@ function mergeServicesGridWithBundle(savedContent = {}, bundleContent = {}) {
             // Bundle description (from aboutservice.about_service) takes priority
             // since it's AI-generated and location-specific
             console.log(`[mergeServicesGridWithBundle] item[${idx}] serviceId=${sid} savedDesc=${savedDesc ? "YES" : "NO"} bundleDesc=${bundleDesc ? "YES" : "NO"} using=${bundleDesc ? "BUNDLE" : "SAVED"}`);
+            const pickLink = (...candidates) => {
+                for (const c of candidates) {
+                    const s = String(c || "").trim();
+                    if (!s || s === "#") continue;
+                    // Listing path is not a service detail URL.
+                    if (s === "/services" || s.toLowerCase() === "services") continue;
+                    return s;
+                }
+                return "#";
+            };
+            // Prefer live WebsitePage links from the bundle over stale saved "#" links.
+            const mergedLink = pickLink(bundle.link, bundle.href, saved.link, saved.href);
             return {
                 ...bundle,
                 ...saved,
@@ -558,7 +583,10 @@ function mergeServicesGridWithBundle(savedContent = {}, bundleContent = {}) {
                 serviceId: sid || String(bundle.serviceId || ""),
                 title: bundleDesc ? (bundle.title || saved.title || "").trim() : (saved.title || bundle.title || "").trim(),
                 description: bundleDesc || savedDesc,
-                link: String(saved.link || bundle.link || "#").trim() || "#",
+                link: mergedLink,
+                href: mergedLink,
+                pageId: bundle.pageId || saved.pageId || null,
+                slug: bundle.slug || saved.slug || "",
                 imageUrl: String(bundle.imageUrl || saved.imageUrl || "").trim(),
                 icon: saved.icon || bundle.icon,
                 locationId:
@@ -734,9 +762,18 @@ async function buildServicesGridContentFromBundle({ projectId, locationId = null
             scopeLoc || "",
             serviceLoc && serviceLoc === String(scopeLoc || "") ? serviceLoc : "",
         ].filter(Boolean));
-        const aboutContent = bundleData?.sections?.aboutservice || {};
-        const heroContent = bundleData?.sections?.servicehero || {};
-        const faqContent = bundleData?.sections?.faq || {};
+        const aboutContent =
+            bundleData?.sections?.aboutservice ||
+            bundleData?.sections?.servicedetailabout ||
+            {};
+        const heroContent =
+            bundleData?.sections?.servicehero ||
+            bundleData?.sections?.servicedetailhero ||
+            {};
+        const faqContent =
+            bundleData?.sections?.faq ||
+            bundleData?.sections?.servicedetailfaq ||
+            {};
         const bundleSlug = String(bundleData?.servicePageSlug || "").trim().replace(/^\/+/, "");
         const finalServiceLink =
             serviceLink !== "#"
@@ -763,6 +800,10 @@ async function buildServicesGridContentFromBundle({ projectId, locationId = null
             id: `service-${idx + 1}`,
             serviceId: String(svc?._id || ""),
             locationId: itemLocationId,
+            pageId: servicePage?._id ? String(servicePage._id) : null,
+            slug: servicePage?.slug
+                ? String(servicePage.slug).trim().replace(/^\/+/, "")
+                : String(svc?.slug || "").trim(),
             icon: [
                 "fas fa-screwdriver-wrench",
                 "fas fa-shield-halved",
@@ -783,12 +824,29 @@ async function buildServicesGridContentFromBundle({ projectId, locationId = null
                 ).trim() ||
                 `Service ${idx + 1}`,
             link: finalServiceLink,
+            href: finalServiceLink,
             imageUrl:
                 aboutContent?.imageUrl ||
                 (Array.isArray(aboutContent?.images) ? aboutContent.images[0]?.url || "" : ""),
             description: aboutPlain,
         };
     });
+
+    // Re-attach links from ALL service WebsitePages for this project (not only
+    // the location-scoped subset). Exact location → global → any fallback.
+    const allServicePagesForLinks = await WebsitePage.find({
+        projectId,
+        pageType: "service",
+        serviceId: { $exists: true, $ne: null },
+        isPublished: { $ne: false },
+    })
+        .select("_id serviceId locationId slug pageType isPublished")
+        .lean();
+    const linkedItems = attachServicePageLinksToGridItems(
+        items,
+        allServicePagesForLinks,
+        scopeLoc
+    );
 
     const projectLean = await UserProject.findById(projectId)
         .select("serviceType projectName")
@@ -821,7 +879,7 @@ async function buildServicesGridContentFromBundle({ projectId, locationId = null
         heading: dbHeader.heading,
         subtitle: dbHeader.descriptionText,
         description: dbHeader.descriptionText,
-        items
+        items: linkedItems,
     };
 }
 
@@ -908,12 +966,16 @@ async function propagateServicesGridItemsToServiceBundles({
         if (cardDesc) {
             $set["data.sections.aboutservice.about_service"] = cardDesc;
             $set["data.sections.aboutservice.description"] = cardDesc;
+            $set["data.sections.servicedetailabout.about_service"] = cardDesc;
+            $set["data.sections.servicedetailabout.description"] = cardDesc;
         }
         if (imageUrl) {
             $set["data.sections.aboutservice.imageUrl"] = imageUrl;
+            $set["data.sections.servicedetailabout.imageUrl"] = imageUrl;
         }
         if (title) {
             $set["data.sections.aboutservice.service_name"] = title;
+            $set["data.sections.servicedetailabout.service_name"] = title;
         }
 
         if (!Object.keys($set).length) continue;
@@ -989,7 +1051,7 @@ async function propagateServicePageEditsToServicesGrid({
         if (idx === -1) continue;
 
         const $set = {};
-        if (sectionType === "aboutservice") {
+        if (sectionType === "aboutservice" || sectionType === "servicedetailabout") {
             const desc =
                 String(content.about_service || content.description || "").trim();
             const title = String(content.service_name || content.title || "").trim();
@@ -997,7 +1059,7 @@ async function propagateServicePageEditsToServicesGrid({
             if (desc) $set[`data.items.${idx}.description`] = desc;
             if (title) $set[`data.items.${idx}.title`] = title;
             if (imageUrl) $set[`data.items.${idx}.imageUrl`] = imageUrl;
-        } else if (sectionType === "servicehero") {
+        } else if (sectionType === "servicehero" || sectionType === "servicedetailhero") {
             const title =
                 String(content.serviceHeroTitle || content.title || "").trim();
             if (title) $set[`data.items.${idx}.title`] = title;
@@ -1133,7 +1195,12 @@ function sanitizeSectionDataForStorage(sectionId, value) {
     const normalizedSectionId = normalizeSectionIdForStorage(sectionId);
     if (!value || typeof value !== "object" || Array.isArray(value)) return value;
     const next = { ...value };
-    if (normalizedSectionId === "areas") {
+    if (
+        normalizedSectionId === "areas" ||
+        normalizedSectionId === "sublocations" ||
+        normalizedSectionId === "serviceslistareas" ||
+        normalizedSectionId === "locationareas"
+    ) {
         delete next.items;
     }
     return next;
@@ -1201,6 +1268,62 @@ function isHomepageMeta(pageMeta = {}) {
     );
 }
 
+/**
+ * Site-wide listing/core pages (no page.locationId) whose SectionContent is still
+ * generated under the business primary parent — same as homepage.
+ * Without this, resolve asks for locationId:null and misses parent-scoped AI rows,
+ * so /services and /areas fall back to GenieBuild static placeholders.
+ */
+function isSiteWideListingPageMeta(pageMeta = {}) {
+    if (pageMeta?.locationId) return false;
+    const pageType = String(pageMeta?.pageType || "").toLowerCase().trim();
+    const name = String(pageMeta?.name || "").toLowerCase().trim().replace(/\s+/g, "-");
+    const slug = String(pageMeta?.slug || "")
+        .toLowerCase()
+        .trim()
+        .replace(/^\/+|\/+$/g, "");
+    const listingTypes = new Set([
+        "services",
+        "serviceslist",
+        "areas",
+        "allareas",
+        "about",
+        "contact",
+        "blog",
+        "blogs",
+        "legal",
+        "default",
+    ]);
+    const listingNames = new Set([
+        "services",
+        "areas",
+        "allareas",
+        "all-areas",
+        "about",
+        "about-us",
+        "aboutus",
+        "contact",
+        "contact-us",
+        "blog",
+        "blogs",
+        "legal",
+        "privacy",
+        "privacy-policy",
+        "terms",
+        "terms-of-service",
+        "disclaimer",
+    ]);
+    if (listingNames.has(name) || listingNames.has(slug)) return true;
+    if (pageType === "default" && (listingNames.has(name) || listingNames.has(slug))) return true;
+    if (listingTypes.has(pageType) && pageType !== "default") return true;
+    return false;
+}
+
+function resolvePrimaryParentLocationId(businessLocations = []) {
+    const parentLocation = (businessLocations || []).find((loc) => Number(loc?.type) === 0);
+    return parentLocation?._id ? String(parentLocation._id) : null;
+}
+
 function resolveLocationPreferenceForPage({
     preferredLocationId = null,
     projectType = 0,
@@ -1215,26 +1338,36 @@ function resolveLocationPreferenceForPage({
         return pageLocationId;
     }
 
+    // Home-scoped service page (no locationId): business sites use primary parent
+    // catalog — same pool as homepage services. Bulk home-scoped keeps null.
+    if (pageType === "service" && !pageLocationId && Number(projectType) === 1) {
+        const parentId = resolvePrimaryParentLocationId(businessLocations);
+        if (parentId) return parentId;
+    }
+
     // Location landing pages: content must match the page's own location, not a child from query.
     if (pageLocationId && !isHomepageMeta(pageMeta)) {
         return pageLocationId;
     }
 
-    // Business projects (projectType: 1): homepage content uses parent location (type: 0)
-    // when no explicit locationId is set on the page or in the request.
-    if (Number(projectType) === 1 && isHomepageMeta(pageMeta) && !pageLocationId && !preferredLocationId) {
-        const parentLocation = (businessLocations || []).find(
-            (loc) => Number(loc?.type) === 0
-        );
-        if (parentLocation?._id) {
-            return String(parentLocation._id);
-        }
+    // Business projects: homepage + site-wide listing pages (/services, /areas, about, …)
+    // store SectionContent under the primary parent — resolve must match that scope.
+    if (
+        Number(projectType) === 1 &&
+        !pageLocationId &&
+        !preferredLocationId &&
+        (isHomepageMeta(pageMeta) || isSiteWideListingPageMeta(pageMeta))
+    ) {
+        const parentId = resolvePrimaryParentLocationId(businessLocations);
+        if (parentId) return parentId;
     }
 
     if (!preferredLocationId) {
         return pageLocationId || null;
     }
-    if (!isHomepageMeta(pageMeta)) return preferredLocationId;
+    if (!isHomepageMeta(pageMeta) && !isSiteWideListingPageMeta(pageMeta)) {
+        return preferredLocationId;
+    }
     return Number(projectType) === 1 ? preferredLocationId : null;
 }
 
@@ -1543,6 +1676,61 @@ function resolveSectionContentWithPriority({
         locationParentMap
     );
 
+    // Location pages: GenieBuild location* ids share content with homepage section ids
+    if (!pickedDoc?.data || !isMeaningfulSectionData(pickedDoc.data)) {
+        try {
+            const { locationHomeTwinId } = require("../additional/locationHomeSectionMap.cjs");
+            const twin = locationHomeTwinId(sectionType);
+            if (twin && twin !== sectionType) {
+                const twinKey = `${pageIdStr}::${twin}`;
+                const twinDoc = pickBestSectionDocByLocation(
+                    sectionContentRowsByKey.get(twinKey) || [],
+                    scopedPreferredLocationId,
+                    locationParentMap
+                );
+                if (twinDoc) pickedDoc = twinDoc;
+            }
+        } catch (_) {
+            /* twin map optional */
+        }
+    }
+
+    // Legal: GenieBuild legalhero/legalcontent can fall back to legacy combined packs
+    if (
+        (!pickedDoc?.data || !isMeaningfulSectionData(pickedDoc.data)) &&
+        (sectionType === "legalhero" || sectionType === "legalcontent")
+    ) {
+        try {
+            const { resolveLegalDocType, splitLegalPayload } = require("../services/legalSectionDynamics");
+            const docType = resolveLegalDocType({
+                sectionId: sectionType,
+                pageName: pageMeta?.name || pageMeta?.displayName || "",
+                pageSlug: pageMeta?.slug || "",
+            });
+            const legacyId =
+                docType === "terms"
+                    ? "legalterms"
+                    : docType === "disclaimer"
+                        ? "legaldisclaimer"
+                        : "legalprivacy";
+            const legacyKey = `${pageIdStr}::${legacyId}`;
+            const legacyDoc = pickBestSectionDocByLocation(
+                sectionContentRowsByKey.get(legacyKey) || [],
+                scopedPreferredLocationId,
+                locationParentMap
+            );
+            if (legacyDoc?.data) {
+                const split = splitLegalPayload(legacyDoc.data, docType);
+                pickedDoc = {
+                    ...legacyDoc,
+                    data: sectionType === "legalhero" ? split.hero : split.content,
+                };
+            }
+        } catch (_) {
+            /* optional */
+        }
+    }
+
     const useServiceBundleResolver =
         resolverType === "service_bundle" ||
         String(contentRef?.scope || "").toLowerCase() === "service_bundle" ||
@@ -1559,7 +1747,10 @@ function resolveSectionContentWithPriority({
         let pickedFromServicesGrid = null;
         if (
             serviceId &&
-            (targetSection === "aboutservice" || targetSection === "servicehero")
+            (targetSection === "aboutservice" ||
+                targetSection === "servicedetailabout" ||
+                targetSection === "servicehero" ||
+                targetSection === "servicedetailhero")
         ) {
             const serviceLocationId = bundleLocationId || pageMeta?.locationId || scopedPreferredLocationId || null;
             const servicesGridCandidates = (sectionContentDocs || []).filter((doc) => {
@@ -1583,7 +1774,7 @@ function resolveSectionContentWithPriority({
             const itemHit = matchedItem;
             const parentBadge = servicesGridDoc?.data?.badgeText || resolvedServicesGridContent?.badgeText || "";
             if (itemHit) {
-                if (targetSection === "aboutservice") {
+                if (targetSection === "aboutservice" || targetSection === "servicedetailabout") {
                     pickedFromServicesGrid = {
                         status: "generated",
                         data: {
@@ -1594,7 +1785,7 @@ function resolveSectionContentWithPriority({
                             service_name: itemHit.title || "",
                         }
                     };
-                } else if (targetSection === "servicehero") {
+                } else if (targetSection === "servicehero" || targetSection === "servicedetailhero") {
                     pickedFromServicesGrid = {
                         status: "generated",
                         data: {
@@ -1621,8 +1812,18 @@ function resolveSectionContentWithPriority({
                 bundleLoc,
                 locationParentMap
             );
+            const twinSection = (() => {
+                try {
+                    const { serviceDetailBundleTwinId } = require("../additional/siteSectionOrder.cjs");
+                    return serviceDetailBundleTwinId(targetSection);
+                } catch {
+                    return null;
+                }
+            })();
             if (bundleDoc?.data?.sections?.[targetSection]) {
                 pickedFromBundle = { status: bundleDoc.status, data: bundleDoc.data.sections[targetSection] };
+            } else if (twinSection && bundleDoc?.data?.sections?.[twinSection]) {
+                pickedFromBundle = { status: bundleDoc.status, data: bundleDoc.data.sections[twinSection] };
             }
         }
 
@@ -1633,21 +1834,39 @@ function resolveSectionContentWithPriority({
 
     let resolvedContent = normalizePickedSectionContentData(pickedDoc?.data);
 
-    // Areas must always come from BusinessLocation rows for the current project context.
-    // This prevents stale/static items saved in SectionContent from leaking into SiteNextJS.
-    if (sectionType === "areas" && resolverType === "business_locations") {
+    // Area grids must always come from BusinessLocation rows (headers stay from SectionContent).
+    // Prevents stale Downtown/# seed items in SectionContent from leaking into SiteNextJS.
+    const forceHydrateAreaItems =
+        sectionType === "areas" ||
+        sectionType === "sublocations" ||
+        sectionType === "serviceslistareas" ||
+        sectionType === "locationareas";
+    if (
+        forceHydrateAreaItems &&
+        (resolverType === "business_locations" || forceHydrateAreaItems)
+    ) {
         const dynamicItems = buildAreaItemsFromLocations({
             allLocations: businessLocations || [],
             pageMeta,
             websitePages,
             projectType,
-        });
-        resolvedContent = { ...resolvedContent, items: dynamicItems };
+        }).map((item) => ({
+            ...item,
+            // SubLocationsDefault expects name/meta; AreasPlumbing expects title
+            name: item.title,
+            meta: "Service area",
+            href: item.link,
+            url: item.link,
+        }));
+        resolvedContent = {
+            ...(resolvedContent && typeof resolvedContent === "object" ? resolvedContent : {}),
+            items: dynamicItems,
+        };
     }
 
     // Priority fallback after SectionContent: deterministic DB sources.
     if (
-        sectionType !== "areas" &&
+        !forceHydrateAreaItems &&
         !isMeaningfulSectionData(resolvedContent) &&
         resolverType === "business_locations"
     ) {
@@ -1670,7 +1889,9 @@ function resolveSectionContentWithPriority({
         };
     }
     if (
-        (sectionType === "services" || sectionType === "servicesgrid") &&
+        (sectionType === "services" ||
+            sectionType === "servicesgrid" ||
+            sectionType === "serviceslistgrid") &&
         resolvedServicesGridContent
     ) {
         resolvedContent = mergeServicesGridWithBundle(
@@ -1681,9 +1902,78 @@ function resolveSectionContentWithPriority({
         if (Array.isArray(resolvedContent?.items) && resolvedContent.items.length > 0) {
             resolvedContent.items = attachServicePageLinksToGridItems(
                 resolvedContent.items,
-                websitePages
+                websitePages,
+                scopedPreferredLocationId
             );
         }
+    }
+
+    // Related Services on service detail: same location-scoped catalog as the services
+    // grid, minus the current service. Home-scoped service pages → home/parent pool;
+    // location-scoped service pages → that location's siblings only.
+    if (sectionType === "relatedservices" && resolvedServicesGridContent) {
+        const excludeServiceId = String(
+            pageMeta?.serviceId || contentRef?.serviceId || ""
+        ).trim();
+        const base =
+            resolvedContent && typeof resolvedContent === "object" ? { ...resolvedContent } : {};
+
+        // Normalize AI header aliases → UI keys
+        const badgeText = String(
+            base.badgeText || base.relatedServicesBadge || ""
+        ).trim();
+        const title = String(
+            base.title || base.relatedServicesTitle || base.heading || ""
+        ).trim();
+        const subtitle = String(
+            base.subtitle ||
+                base.relatedServicesSubtitle ||
+                base.descriptionText ||
+                base.description ||
+                ""
+        ).trim();
+
+        let items = Array.isArray(resolvedServicesGridContent.items)
+            ? resolvedServicesGridContent.items.filter((it) => {
+                  const sid = String(it?.serviceId || "").trim();
+                  if (!sid) return false;
+                  if (excludeServiceId && sid === excludeServiceId) return false;
+                  return true;
+              })
+            : [];
+
+        if (items.length > 0) {
+            const linkScopeLocationId =
+                pageMeta?.locationId != null
+                    ? String(pageMeta.locationId)
+                    : scopedPreferredLocationId != null
+                      ? String(scopedPreferredLocationId)
+                      : null;
+            items = attachServicePageLinksToGridItems(
+                items,
+                websitePages,
+                linkScopeLocationId
+            ).slice(0, 6);
+        }
+
+        resolvedContent = {
+            ...base,
+            badgeText: badgeText || base.badgeText || "",
+            title: title || base.title || "",
+            subtitle: subtitle || base.subtitle || "",
+            relatedServicesBadge: badgeText || base.relatedServicesBadge || "",
+            relatedServicesTitle: title || base.relatedServicesTitle || "",
+            relatedServicesSubtitle: subtitle || base.relatedServicesSubtitle || "",
+            items,
+            // Hint for UI / nav: which catalog scope was used
+            locationId:
+                pageMeta?.locationId != null
+                    ? String(pageMeta.locationId)
+                    : scopedPreferredLocationId != null
+                      ? String(scopedPreferredLocationId)
+                      : null,
+            excludeServiceId: excludeServiceId || undefined,
+        };
     }
 
     return {
@@ -1693,14 +1983,54 @@ function resolveSectionContentWithPriority({
 }
 
 /**
- * Merge design-row copy over resolved SectionContent for most sections.
- * Services/servicesgrid are excluded — card copy comes from location-scoped
- * SectionContent (OpenAI) merged with bundle links/images at resolve time.
+ * Merge design-row structure with resolved SectionContent.
+ * Prefer AI/DB resolved fields over design-template placeholders so live pages
+ * (/services, /areas, about, …) never show static GenieBuild demo titles when
+ * SectionContent exists.
  */
 function mergeGenieBuildDesignSectionContent(sectionType, resolvedContent = {}, sectionData = {}) {
     const st = String(sectionType || "").toLowerCase().trim();
-    if (st === "services" || st === "servicesgrid") {
+    if (st === "services" || st === "servicesgrid" || st === "serviceslistgrid") {
         return resolvedContent && typeof resolvedContent === "object" ? { ...resolvedContent } : {};
+    }
+    if (st === "relatedservices") {
+        const resolved =
+            resolvedContent && typeof resolvedContent === "object" ? { ...resolvedContent } : {};
+        const design =
+            sectionData?.content && typeof sectionData.content === "object" && !Array.isArray(sectionData.content)
+                ? sectionData.content
+                : {};
+        const merged = {
+            ...design,
+            ...resolved,
+            badgeText: String(
+                resolved.badgeText ||
+                    resolved.relatedServicesBadge ||
+                    design.badgeText ||
+                    design.relatedServicesBadge ||
+                    ""
+            ).trim(),
+            title: String(
+                resolved.title ||
+                    resolved.relatedServicesTitle ||
+                    design.title ||
+                    design.relatedServicesTitle ||
+                    ""
+            ).trim(),
+            subtitle: String(
+                resolved.subtitle ||
+                    resolved.relatedServicesSubtitle ||
+                    design.subtitle ||
+                    design.relatedServicesSubtitle ||
+                    ""
+            ).trim(),
+        };
+        if (Array.isArray(resolved.items) && resolved.items.length > 0) {
+            merged.items = resolved.items;
+        } else {
+            merged.items = [];
+        }
+        return merged;
     }
     const design =
         sectionData?.content && typeof sectionData.content === "object" && !Array.isArray(sectionData.content)
@@ -1716,8 +2046,13 @@ function mergeGenieBuildDesignSectionContent(sectionType, resolvedContent = {}, 
         st === "faq" &&
         (String(contentRef?.scope || "").toLowerCase() === "service_bundle" ||
             shouldUseServiceBundleForPage(st, { pageType: "service", serviceId: contentRef?.serviceId }));
-    if (isServiceBundleFaq) {
-        const merged = { ...design, ...resolved };
+
+    // Resolved (SectionContent) wins over design placeholders whenever it has real data.
+    const merged = isMeaningfulSectionData(resolved)
+        ? { ...design, ...resolved }
+        : { ...resolved, ...design };
+
+    if (isServiceBundleFaq || st === "faq" || st === "aboutfaq" || st === "areasfaq" || st === "contactfaq" || st === "serviceslistfaq" || st === "servicedetailfaq") {
         const resolvedItems = Array.isArray(resolved.items) ? resolved.items : [];
         const designItems = Array.isArray(design.items) ? design.items : [];
         if (resolvedItems.length > 0) {
@@ -1725,21 +2060,8 @@ function mergeGenieBuildDesignSectionContent(sectionType, resolvedContent = {}, 
         } else if (designItems.length > 0 && !isPlumbingDefaultFaqItems(designItems)) {
             merged.items = designItems;
         }
-        return merged;
     }
-    if (st === "faq") {
-        const merged = { ...resolved, ...design };
-        const resolvedItems = Array.isArray(resolved.items) ? resolved.items : [];
-        const designItems = Array.isArray(design.items) ? design.items : [];
-        if (resolvedItems.length > 0) {
-            merged.items = resolvedItems;
-        } else if (designItems.length > 0 && !isPlumbingDefaultFaqItems(designItems)) {
-            merged.items = designItems;
-        }
-        return merged;
-    }
-    if (st === "cta") {
-        const merged = { ...resolved, ...design };
+    if (st === "cta" || st === "aboutcta" || st === "contactcta" || st === "serviceslistcta") {
         const resolvedItems = Array.isArray(resolved.items) ? resolved.items : [];
         if (resolvedItems.length > 0) {
             merged.items = resolvedItems;
@@ -1751,9 +2073,17 @@ function mergeGenieBuildDesignSectionContent(sectionType, resolvedContent = {}, 
             merged.phoneNumber = resolved.phoneNumber || resolved.contactText;
             merged.contactText = resolved.contactText || resolved.phoneNumber;
         }
-        return merged;
     }
-    const merged = { ...resolved, ...design };
+    if (
+        st === "areas" ||
+        st === "sublocations" ||
+        st === "serviceslistareas" ||
+        st === "locationareas"
+    ) {
+        if (Array.isArray(resolved.items) && resolved.items.length > 0) {
+            merged.items = resolved.items;
+        }
+    }
     return merged;
 }
 
@@ -4415,6 +4745,32 @@ Example format:
         }
     },
 
+    /**
+     * Rebuild header/footer menus from currently selected WebsitePage rows
+     * (Home, About, Services, Areas, Blog, Contact — same shape as demo chrome).
+     */
+    rebuildHeaderFooterMenus: async (req, res) => {
+        try {
+            const projectId = String(req.body?.projectId || req.params?.projectId || "").trim();
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+            const result = await rebuildProjectHeaderFooterMenus(projectId, {
+                syncSections: req.body?.syncSections !== false,
+            });
+            return res.status(200).json({
+                message: "Header/footer menus rebuilt from selected pages",
+                data: result,
+            });
+        } catch (error) {
+            console.error("Error in rebuildHeaderFooterMenus:", error);
+            return res.status(500).json({
+                message: "Error rebuilding header/footer menus",
+                error: error.message,
+            });
+        }
+    },
+
     create_author: async (req, res) => {
         try {
             let { name, about, jobTitle, links } = req.body;
@@ -5095,6 +5451,113 @@ Example format:
                 }));
             };
 
+            const attachContentGenerationStatus = async (projects = []) => {
+                const ids = projects.map((p) => p._id).filter(Boolean);
+                if (!ids.length) return projects;
+
+                const liveMap = getLiveProgressMap(ids.map(String));
+                const objectIds = ids.filter((id) => mongoose.isValidObjectId(id));
+                const counts = objectIds.length
+                    ? await SectionContent.aggregate([
+                        {
+                            $match: {
+                                projectId: { $in: objectIds },
+                                isDeleted: { $ne: true },
+                                sectionId: { $nin: ["header", "footer", "navbar"] },
+                            },
+                        },
+                        {
+                            $group: {
+                                _id: {
+                                    projectId: "$projectId",
+                                    status: "$status",
+                                },
+                                count: { $sum: 1 },
+                            },
+                        },
+                    ])
+                    : [];
+
+                const byProject = new Map();
+                for (const row of counts) {
+                    const pid = String(row?._id?.projectId || "");
+                    if (!pid) continue;
+                    const bucket = byProject.get(pid) || { generated: 0, pending: 0, failed: 0 };
+                    const st = String(row?._id?.status || "");
+                    if (st === "generated") bucket.generated += row.count;
+                    else if (st === "pending") bucket.pending += row.count;
+                    else if (st === "failed") bucket.failed += row.count;
+                    byProject.set(pid, bucket);
+                }
+
+                return projects.map((project) => {
+                    const pid = String(project._id);
+                    const live = liveMap[pid] || null;
+                    const persisted = project.contentGeneration && typeof project.contentGeneration === "object"
+                        ? project.contentGeneration
+                        : null;
+                    const dbCounts = byProject.get(pid) || { generated: 0, pending: 0, failed: 0 };
+                    const dbTotal = dbCounts.generated + dbCounts.pending + dbCounts.failed;
+
+                    let contentGeneration;
+                    if (live && live.status === "generating") {
+                        contentGeneration = normalizeProgress(live);
+                    } else if (persisted && String(persisted.status) === "generating" && dbCounts.pending > 0) {
+                        contentGeneration = normalizeProgress({
+                            ...persisted,
+                            projectId: pid,
+                            done: dbCounts.generated,
+                            failed: dbCounts.failed,
+                            pending: dbCounts.pending,
+                            total: Math.max(Number(persisted.total) || 0, dbTotal),
+                        });
+                    } else if (dbCounts.pending > 0) {
+                        contentGeneration = normalizeProgress({
+                            projectId: pid,
+                            status: "generating",
+                            total: dbTotal,
+                            done: dbCounts.generated,
+                            failed: dbCounts.failed,
+                            skipped: 0,
+                            pending: dbCounts.pending,
+                            parallelWorkers: getDefaultParallelWorkers(),
+                            message: "Section generation in progress",
+                        });
+                    } else if (
+                        (persisted && (persisted.status === "completed" || persisted.status === "failed")) ||
+                        dbCounts.generated > 0
+                    ) {
+                        const total = Math.max(
+                            Number(persisted?.total) || 0,
+                            dbTotal,
+                            dbCounts.generated
+                        );
+                        contentGeneration = normalizeProgress({
+                            ...(persisted || {}),
+                            projectId: pid,
+                            status: dbCounts.failed && !dbCounts.generated ? "failed" : "completed",
+                            total,
+                            done: dbCounts.generated || Number(persisted?.done) || total,
+                            failed: dbCounts.failed || Number(persisted?.failed) || 0,
+                            skipped: Number(persisted?.skipped) || 0,
+                            pending: 0,
+                            percent: 100,
+                            parallelWorkers:
+                                Number(persisted?.parallelWorkers) || getDefaultParallelWorkers(),
+                            message: persisted?.message || "Section generation complete",
+                        });
+                    } else {
+                        contentGeneration = normalizeProgress({
+                            projectId: pid,
+                            status: "idle",
+                            message: "Not generated yet",
+                        });
+                    }
+
+                    return { ...project, contentGeneration };
+                });
+            };
+
             if (projectId) {
                 const project = await UserProject.findOne(baseFilter).lean();
                 if (!project) {
@@ -5109,7 +5572,9 @@ Example format:
                         totalPages: 0,
                     });
                 }
-                const [enrichedProject] = await attachDeploymentStatus([project]);
+                const [enrichedProject] = await attachContentGenerationStatus(
+                    await attachDeploymentStatus([project])
+                );
                 return res.status(200).json({
                     message: "Project retrieved successfully",
                     data: [enrichedProject],
@@ -5132,7 +5597,8 @@ Example format:
                     .lean(),
             ]);
 
-            const enrichedProjects = await attachDeploymentStatus(rawProjects);
+            const withDeploy = await attachDeploymentStatus(rawProjects);
+            const enrichedProjects = await attachContentGenerationStatus(withDeploy);
             const totalPages = Math.ceil(totalProjects / limit) || 1;
 
             return res.status(200).json({
@@ -5145,7 +5611,10 @@ Example format:
                 limit,
                 total: totalProjects,
                 totalActiveProjects,
-                totalPages
+                totalPages,
+                generationMeta: {
+                    defaultParallelWorkers: getDefaultParallelWorkers(),
+                },
             });
         } catch (error) {
             console.error("Error occurred while fetching user projects:", error);
@@ -5153,6 +5622,57 @@ Example format:
                 message: "An error occurred while fetching projects",
                 error: error.message
             });
+        }
+    }
+    ,
+
+    getProjectsSectionGenerationProgress: async (req, res) => {
+        try {
+            const userId = req.user?.userId;
+            if (!userId) {
+                return res.status(400).json({ message: "userId is required" });
+            }
+            const rawIds = Array.isArray(req.body?.projectIds)
+                ? req.body.projectIds
+                : req.body?.projectId
+                  ? [req.body.projectId]
+                  : [];
+            const projectIds = [...new Set(rawIds.map((id) => String(id || "").trim()).filter(Boolean))];
+            if (!projectIds.length) {
+                return res.status(400).json({ message: "projectIds required" });
+            }
+
+            const user = await User.findById(userId).select("isSuper").lean();
+            if (!user) return res.status(404).json({ message: "User not found" });
+
+            const filter = {
+                _id: { $in: projectIds.filter((id) => mongoose.isValidObjectId(id)) },
+            };
+            if (user.isSuper === 0) filter.userId = userId;
+
+            const projects = await UserProject.find(filter).select("_id contentGeneration").lean();
+            const liveMap = getLiveProgressMap(projectIds);
+            const data = {};
+            for (const p of projects) {
+                const pid = String(p._id);
+                const live = liveMap[pid];
+                data[pid] = live
+                    ? normalizeProgress(live)
+                    : normalizeProgress({
+                          ...(p.contentGeneration || {}),
+                          projectId: pid,
+                          status: p.contentGeneration?.status || "idle",
+                      });
+            }
+
+            return res.status(200).json({
+                message: "ok",
+                data,
+                defaultParallelWorkers: getDefaultParallelWorkers(),
+            });
+        } catch (error) {
+            console.error("getProjectsSectionGenerationProgress:", error);
+            return res.status(500).json({ message: error.message || "Failed to fetch progress" });
         }
     }
     ,
@@ -8621,7 +9141,7 @@ Example format:
                     .select('pageId serviceId sectionId locationId data status')
                     .lean(),
                 BusinessLocation.find({ projectId, status: 1 }).select("_id areaName type parentId locationType").lean(),
-                WebsitePage.find({ projectId }).select("_id slug locationId pageType isPublished").lean()
+                WebsitePage.find({ projectId }).select("_id name slug displayName locationId pageType serviceId isPublished").lean()
             ]);
 
             const allowAdminBypass = Boolean(req.user?.userId);
@@ -8729,7 +9249,23 @@ Example format:
 
                 // Pages added by ensurePageInDesignData only have header/footer and should
                 // fall back to homepage template for content sections.
-                const needsHomepageFallback = !selectedPage || !pageHasContentSections(selectedPage);
+                // Exception: All Areas listing (`areas`) must never inherit Home — it only
+                // uses allareas sections (sublocations / locationmap).
+                const pageNameLc = String(pageMeta?.name || "").toLowerCase().trim();
+                const pageSlugLc = String(pageMeta?.slug || "")
+                    .trim()
+                    .replace(/^\/+|\/+$/g, "")
+                    .toLowerCase();
+                const isAreasListingPage =
+                    pageNameLc === "areas" ||
+                    pageNameLc === "allareas" ||
+                    pageSlugLc === "areas" ||
+                    pageSlugLc === "allareas" ||
+                    pageSlugLc === "all-areas";
+
+                const needsHomepageFallback =
+                    !isAreasListingPage &&
+                    (!selectedPage || !pageHasContentSections(selectedPage));
 
                 if (needsHomepageFallback) {
                     // Default/location page without content sections → fall back to homepage template.
@@ -8758,6 +9294,10 @@ Example format:
                     if (!selectedPage || !pageHasContentSections(selectedPage)) {
                         return res.status(404).json({ message: 'Page data not found for this project' });
                     }
+                } else if (isAreasListingPage && (!selectedPage || !pageHasContentSections(selectedPage))) {
+                    return res.status(404).json({
+                        message: "Areas listing page has no sections — select Hero / Areas Grid / Reviews / FAQ in the wizard",
+                    });
                 }
             }
             const projectType = Number(projectDoc?.projectType ?? 0);
@@ -8838,7 +9378,7 @@ Example format:
                 ? String(pageMeta.locationId)
                 : scopedPreferredLocationId || null;
 
-            const sectionsWithDynamics = await applyHeaderFooterDynamicsToSections(
+            let sectionsWithDynamics = await applyHeaderFooterDynamicsToSections(
                 sectionsWithContact,
                 projectId,
                 {
@@ -8846,6 +9386,17 @@ Example format:
                     pageMeta: pageMeta || {},
                 }
             );
+
+            // Enforce deterministic modern section order on every page type.
+            // Hero first → body → CTA → reviews → FAQ last. Header/footer stay shells.
+            // Fixes wizard/GenieBuild saving a scrambled componentIds order.
+            if (Array.isArray(sectionsWithDynamics) && sectionsWithDynamics.length) {
+                const pageKeyForCanonicalOrder = resolveCanonicalPageKey(pageMeta || {});
+                sectionsWithDynamics = applyCanonicalSectionOrderToPageSections(
+                    pageKeyForCanonicalOrder,
+                    sectionsWithDynamics
+                );
+            }
 
             const pageSeoEntry = pageMeta ? await getSeoForWebsitePage(pageMeta) : null;
             const seoForBuilder = pageSeoEntry ? seoEntryToGeniebuild(pageSeoEntry, pageMeta) : {};
@@ -8941,8 +9492,28 @@ Example format:
                 });
             }
 
+            const total = websitePages.length;
+            const live = websitePages.filter((p) => p.isPublished !== false).length;
+            const inactive = total - live;
+            const redirects301 = await PageSlugRedirect.countDocuments({ projectId });
+
+            const pageNum = Math.max(1, parseInt(req.query.page, 10) || 1);
+            const limitNum = Math.max(0, parseInt(req.query.limit, 10) || 0);
+            let slice = websitePages;
+            let pagination = null;
+            if (limitNum > 0) {
+                const skip = (pageNum - 1) * limitNum;
+                slice = websitePages.slice(skip, skip + limitNum);
+                pagination = {
+                    page: pageNum,
+                    limit: limitNum,
+                    total,
+                    totalPages: Math.max(1, Math.ceil(total / limitNum)),
+                };
+            }
+
             // Map website pages to response format
-            const pages = websitePages.map(page => {
+            const pages = slice.map(page => {
                 const activeSeo = getActiveSeoFromPage(page);
                 return {
                 pageId: page._id,
@@ -8960,7 +9531,14 @@ Example format:
 
             return res.status(200).json({
                 message: 'Website pages fetched successfully',
-                data: pages
+                data: pages,
+                counts: {
+                    total,
+                    live,
+                    inactive,
+                    redirects301,
+                },
+                ...(pagination ? { pagination } : {}),
             });
         } catch (error) {
             console.error('Error fetching Website Pages:', error);
@@ -13409,7 +13987,12 @@ Output format (IMPORTANT):
 
                     // Reverse-propagate: push edits from service page back into the
                     // homepage services grid SectionContent data.items[] entry.
-                    if (s.sectionId === "aboutservice" || s.sectionId === "servicehero") {
+                    if (
+                        s.sectionId === "aboutservice" ||
+                        s.sectionId === "servicedetailabout" ||
+                        s.sectionId === "servicehero" ||
+                        s.sectionId === "servicedetailhero"
+                    ) {
                         try {
                             await propagateServicePageEditsToServicesGrid({
                                 projectId,

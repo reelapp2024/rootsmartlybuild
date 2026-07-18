@@ -13,9 +13,12 @@ import {
   emptyPresetSocialUrls,
   stableSocialLinksPayload,
   validateContactForm,
+  defaultBusinessHours,
+  normalizeBusinessHours,
   type ContactValue,
   type CustomSocialLinkRow,
   type SocialPresetKey,
+  type BusinessHours,
 } from "./businesswebsiteSteps/contactInfoUtils";
 
 type ContactInformationManagementProps = {
@@ -38,11 +41,15 @@ export default function ContactInformationManagement({
   );
   const [customSocialLinks, setCustomSocialLinks] = useState<CustomSocialLinkRow[]>([]);
   const [mainLocation, setMainLocation] = useState("");
+  const [businessHours, setBusinessHours] = useState<BusinessHours>(() => defaultBusinessHours());
 
   const [lastSavedEmails, setLastSavedEmails] = useState("");
   const [lastSavedPhones, setLastSavedPhones] = useState("");
   const [lastSavedSocialLinks, setLastSavedSocialLinks] = useState(() =>
     stableSocialLinksPayload([])
+  );
+  const [lastSavedBusinessHours, setLastSavedBusinessHours] = useState(() =>
+    JSON.stringify(defaultBusinessHours())
   );
 
   const resolveMainLocationFallback = useCallback(async (): Promise<string> => {
@@ -76,8 +83,10 @@ export default function ContactInformationManagement({
         setPresetSocialUrls(parsed.presetSocialUrls);
         setCustomSocialLinks(parsed.customSocialLinks);
         setMainLocation(parsed.mainLocation);
+        setBusinessHours(parsed.businessHours);
         setLastSavedEmails(JSON.stringify(parsed.emails));
         setLastSavedPhones(JSON.stringify(parsed.phones));
+        setLastSavedBusinessHours(JSON.stringify(parsed.businessHours));
         setLastSavedSocialLinks(
           stableSocialLinksPayload(
             buildSocialLinksFromForm(parsed.presetSocialUrls, parsed.customSocialLinks)
@@ -167,11 +176,14 @@ export default function ContactInformationManagement({
       .filter((item) => item.value);
     const normalizedSocialLinks = buildSocialLinksFromForm(presetSocialUrls, customSocialLinks);
     const socialLinksSignature = stableSocialLinksPayload(normalizedSocialLinks);
+    const normalizedHours = normalizeBusinessHours(businessHours);
+    const hoursSignature = JSON.stringify(normalizedHours);
 
     const hasContactChanged =
       JSON.stringify(normalizedEmails) !== lastSavedEmails ||
       JSON.stringify(normalizedPhones) !== lastSavedPhones ||
-      socialLinksSignature !== lastSavedSocialLinks;
+      socialLinksSignature !== lastSavedSocialLinks ||
+      hoursSignature !== lastSavedBusinessHours;
 
     if (!hasContactChanged) {
       toast({
@@ -207,6 +219,7 @@ export default function ContactInformationManagement({
           address: locationLabel,
           mainLocation: locationLabel,
           socialLinks: normalizedSocialLinks,
+          businessHours: normalizedHours,
         },
         {
           headers: {
@@ -224,6 +237,8 @@ export default function ContactInformationManagement({
         setLastSavedEmails(JSON.stringify(normalizedEmails));
         setLastSavedPhones(JSON.stringify(normalizedPhones));
         setLastSavedSocialLinks(socialLinksSignature);
+        setLastSavedBusinessHours(hoursSignature);
+        setBusinessHours(normalizedHours);
         if (locationLabel) setMainLocation(locationLabel);
       } else {
         throw new Error("Failed to save contact information");
@@ -267,7 +282,7 @@ export default function ContactInformationManagement({
               Contact Information
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              Manage emails, phone numbers, and social links shown across your business website —
+              Manage emails, phones, availability, and social links shown across your website —
               header, footer, contact page, and CTAs.
             </p>
           </div>
@@ -302,7 +317,7 @@ export default function ContactInformationManagement({
       ) : (
         <Step5ContactInfo
           title="Contact details"
-          description="Primary email and phone are used in site headers, footers, and call-to-action sections. Social links are optional."
+          description="Primary email and phone are used in headers, footers, and CTAs. Availability syncs to the Contact page and Footer. Social links are optional."
           emails={emails}
           phones={phones}
           addContactField={addContactField}
@@ -314,6 +329,8 @@ export default function ContactInformationManagement({
           setPresetSocialUrls={setPresetSocialUrls}
           customSocialLinks={customSocialLinks}
           setCustomSocialLinks={setCustomSocialLinks}
+          businessHours={businessHours}
+          setBusinessHours={setBusinessHours}
         />
       )}
     </div>
