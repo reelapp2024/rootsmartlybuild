@@ -3334,12 +3334,22 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
         userId: req?.user?.userId || null,
       });
 
+      const jobState = job?.getState ? await job.getState().catch(() => "unknown") : "unknown";
+      console.log("[enqueueSectionsContnetGeneration] job queued", {
+        jobId: job?.id,
+        state: jobState,
+        projectId,
+        locations: Array.isArray(locations) ? locations.length : 0,
+        sections: Array.isArray(selectedSectionIds) ? selectedSectionIds.length : 0,
+      });
+
       return res.status(202).json({
         message: "Sections content generation queued",
         success: true,
         data: {
           queue: "section-generation",
           jobId: job.id,
+          state: jobState,
         },
       });
     } catch (error) {

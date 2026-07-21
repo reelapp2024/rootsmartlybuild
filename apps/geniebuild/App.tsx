@@ -11,6 +11,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import { getDefaultVariant, getVariantsForSection } from './components/SectionsAndVariantRegistry';
 import { ThemeProvider, useTheme, type ThemeData } from '@ui/blocks';
 import { AboutUsContactProvider } from './components/builder/context/AboutUsContactContext';
+import { OpenInternalLinkProvider } from './components/builder/context/OpenInternalLinkContext';
 import { GlobalElementStylesContext } from './components/builder/state/GlobalElementStylesContext';
 import { DefaultSizesContext } from './components/builder/state/DefaultSizesContext';
 import {
@@ -38,6 +39,11 @@ import { normalizeSectionContent } from './components/builder/state/sectionConte
 import { buildUpdatedComponentIds, buildWebsitePayload, buildSectionContentEntries, buildThemePayload } from './components/builder/state/savePayloadBuilders';
 import { hydrateSectionsForDisplay } from './utils/sectionHydration';
 import {
+  findPageIdByHref,
+  isExternalOrSpecialHref,
+  normalizeInternalPath,
+} from './utils/resolveInternalPageLink';
+import {
   applySiteThemeToDocument,
   applySiteTypographyToDocument,
   buildThemeSavePayload,
@@ -62,7 +68,17 @@ import {
   fetchPageSeo,
   pickSeoFromGenieBuildPageResponse,
 } from './components/builder/state/pageSeoApi';
-import { ensurePagesStructure, commitSectionsToCurrentPage, switchToPage, addPage as addPageReducer, renamePage, deletePage as deletePageReducer, reorderPage, updateCurrentPageSeo } from './components/builder/state/pagesReducer';
+import {
+  commitSectionsToCurrentPage,
+  switchToPage,
+  addPage as addPageReducer,
+  renamePage,
+  deletePage as deletePageReducer,
+  reorderPage,
+  updateCurrentPageSeo,
+  splitGlobalAndPageSections,
+  mergeGlobalChrome,
+} from './components/builder/state/pagesReducer';
 import { PagesPanel } from './components/builder/layout/PagesPanel';
 import { KeyboardShortcutsModal } from './components/builder/layout/KeyboardShortcutsModal';
 import { hasMeaningfulSectionContent, resolveSectionStyles, resolveElementStyle } from './components/builder/state/styleResolvers';
@@ -72,6 +88,12 @@ import { SectionSidebarHeader } from './components/builder/layout/SectionSidebar
 import { SectionSidebarBody } from './components/builder/layout/SectionSidebarBody';
 import { formatVariantName } from './components/builder/state/variantNameFormatter';
 import { BadgeStylesBlock, CardStylesBlock, AccordionStylesBlock, ButtonStylesBlock, FeatureBoxStylesBlock, TestimonialCardStylesBlock, TrustStripStylesBlock, ListStylesBlock, NavMenuStylesBlock, AlertBoxStylesBlock, DividerStylesBlock, IconStylesBlock, HighlightTextStylesBlock, BlockquoteStylesBlock, CounterStylesBlock, ProgressBarStylesBlock, CountdownTimerStylesBlock, ToggleStylesBlock, TabsStylesBlock, PricingTableStylesBlock, PricingItemStylesBlock, FlipBoxStylesBlock, VideoStylesBlock, ImageBoxStylesBlock, LogoCloudStylesBlock, UserAvatarsStylesBlock, ReviewCarouselStylesBlock, HeadingStylesBlock, TextStylesBlock, TypographyBlock, LayoutSpacingBlock, BorderBlock, BackgroundEffectsBlock, SectionDividersBlock, SectionImageSettingsBlock, ElementBackgroundOverlayBlock, ImageElementStylesBlock, SectionBackgroundBlock, BulkElementStylesBlock, ElementBackgroundBlock, SectionLayoutPresetsBlock, SectionDesignExtrasBlock } from './components/builder/style-editor';
+
+import {
+  resolveClientProjectId,
+  syncGenieBuildUrl,
+  writeStoredProjectId,
+} from './lib/projectIdStorage';
 
 // Token TTL: 8 hours. Stored in sessionStorage so it's cleared when the tab closes.
 const TOKEN_EXPIRY_MS = 8 * 60 * 60 * 1000;
@@ -96,10 +118,20 @@ const getUrlParams = () => {
   const tokenExp = Number(sessionStorage.getItem('gb_token_exp') || 0);
   const validStoredToken = storedToken && Date.now() < tokenExp ? storedToken : null;
 
+  // Same resolution order as SiteNextJS: ?projectId= → localStorage/cookie
+  const projectId = resolveClientProjectId(params.get('projectId'));
+  const pageId = params.get('pageId');
+  const locationId = params.get('locationId');
+
+  // If we recovered projectId from storage, put it back on the URL for share/refresh.
+  if (projectId && !params.get('projectId')) {
+    syncGenieBuildUrl({ projectId, pageId, locationId });
+  }
+
   return {
-    projectId: params.get('projectId'),
-    pageId: params.get('pageId'),
-    locationId: params.get('locationId'),
+    projectId,
+    pageId,
+    locationId,
     token: urlToken || validStoredToken,
   };
 };
@@ -255,19 +287,25 @@ const AppContent: React.FC = () => {
     try { localStorage.setItem('genieBuild.showSectionOutlines', String(showSectionOutlines)); } catch {}
   }, [showSectionOutlines]);
 
-  // Load page data + theme settings in parallel so there's only one loading phase
+  // Load page data + theme settings, then the project page list.
+  // Sequential on purpose: loadPageData resets history; loadPageList must
+  // merge afterward so the Pages panel keeps every server page.
   useEffect(() => {
     const { projectId, pageId } = getUrlParams();
     if (!projectId) return;
+    let cancelled = false;
     setLoadingPageData(true);
-    const jobs: Promise<any>[] = [];
-    if (pageId) jobs.push(loadPageData(projectId, pageId));
-    // Always pull the project's full page list so the Pages panel knows
-    // every page that exists, not just the one in the URL. Sections for
-    // non-current pages stay empty until the user switches — that's a
-    // separate fetch we defer (loadPageData runs on every switch).
-    jobs.push(loadPageList(projectId));
-    Promise.all(jobs).finally(() => setLoadingPageData(false));
+    (async () => {
+      try {
+        if (pageId) await loadPageData(projectId, pageId);
+        if (!cancelled) await loadPageList(projectId);
+      } finally {
+        if (!cancelled) setLoadingPageData(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Fetch the full WebsitePage list for the project and merge it into siteData.
@@ -288,18 +326,33 @@ const AppContent: React.FC = () => {
       if (!serverPages.length) return;
 
       // Map server rows into the local WebsitePage shape. Sections start
-      // empty for every page except the URL one (whose sections were already
-      // loaded by loadPageData).
+      // empty for every page except the one already loaded (URL / current).
       const { pageId: urlPageId } = getUrlParams();
       setSiteData(prev => {
         const existingById = new Map((prev.pages || []).map(p => [p.id, p]));
+        const activeId = String(urlPageId || prev.currentPageId || '').trim();
         const merged = serverPages.map((sp: any) => {
           const id = String(sp.pageId || sp._id);
           const existing = existingById.get(id);
+          const name = sp.displayName || sp.name || 'Untitled';
+          const slug = sp.slug?.startsWith('/') ? sp.slug : `/${sp.slug || ''}`;
+          if (existing && Array.isArray(existing.sections) && existing.sections.length > 0) {
+            return { ...existing, name, slug };
+          }
+          // Attach already-loaded body sections to the real server page id.
+          if (id === activeId && Array.isArray(prev.sections) && prev.sections.length > 0) {
+            return {
+              id,
+              name,
+              slug,
+              sections: prev.sections,
+              seo: prev.seo || {},
+            };
+          }
           return existing || {
             id,
-            name: sp.displayName || sp.name || 'Untitled',
-            slug: sp.slug?.startsWith('/') ? sp.slug : `/${sp.slug || ''}`,
+            name,
+            slug,
             sections: [],
             seo: {},
           };
@@ -307,7 +360,7 @@ const AppContent: React.FC = () => {
         return {
           ...prev,
           pages: merged,
-          currentPageId: prev.currentPageId || urlPageId || merged[0]?.id,
+          currentPageId: activeId || prev.currentPageId || merged[0]?.id,
         };
       });
     } catch (e) {
@@ -373,21 +426,33 @@ const AppContent: React.FC = () => {
           applySiteThemeToDocument(null);
         }
 
-        const rawLoadedData: WebsiteData = {
+        // API returns a flat header + body + footer stack (same as SiteNextJS).
+        // Keep chrome in globalSections so page switches don't drop the header.
+        const { globalSections, pageSections } = splitGlobalAndPageSections(cleanedSections);
+        const pageSeo = pickSeoFromGenieBuildPageResponse(data?.data);
+        const loadedData: WebsiteData = {
           ...INITIAL_TEMPLATE,
-          sections: cleanedSections,
+          sections: pageSections,
+          globalSections,
           globalStyles: {
             ...INITIAL_TEMPLATE.globalStyles,
             colors: globalColors,
           },
-          // Load globalElementStyles from Admin Panel design settings (typography for headings, body, buttons, links)
           globalElementStyles: themeSync.globalElementStyles,
+          pages: [
+            {
+              id: pageId,
+              name: String(data?.data?.displayName || data?.data?.name || 'Home'),
+              slug: String(data?.data?.slug || '/').startsWith('/')
+                ? String(data?.data?.slug || '/')
+                : `/${data?.data?.slug || ''}`,
+              sections: pageSections,
+              seo: pageSeo || {},
+            },
+          ],
+          currentPageId: pageId,
+          seo: pageSeo || INITIAL_TEMPLATE.seo,
         };
-        let loadedData = ensurePagesStructure(rawLoadedData);
-        const pageSeo = pickSeoFromGenieBuildPageResponse(data?.data);
-        if (pageSeo && Object.keys(pageSeo).length > 0) {
-          loadedData = updateCurrentPageSeo(loadedData, pageSeo);
-        }
 
         // Always load the server snapshot on refresh; discard stale local backup.
         const backupKey = `genieBuild.backup.${projectId}.${pageId}`;
@@ -423,7 +488,12 @@ const AppContent: React.FC = () => {
       // Commit the active page's current working sections into pages[currentPageId]
       // before building the payload, so in-progress edits persist with the page.
       const siteDataForSave = commitSectionsToCurrentPage(siteData);
-      const updatedComponentIds = buildUpdatedComponentIds([], siteDataForSave.sections);
+      // Persist chrome + body together — backend expects a flat header/body/footer stack.
+      const sectionsForSave = [
+        ...(siteDataForSave.globalSections || []),
+        ...(siteDataForSave.sections || []),
+      ];
+      const updatedComponentIds = buildUpdatedComponentIds([], sectionsForSave);
       const savePayload = buildWebsitePayload(siteDataForSave, projectId, pageId, updatedComponentIds);
 
       const saveResponse = await fetch(`${apiUrl}/saveWebsiteDesignData`, {
@@ -1045,30 +1115,97 @@ const AppContent: React.FC = () => {
     setSelectedSectionId(null);
     setSelectedElementId(null);
     setSelectedVirtualElement(null);
-    setSiteData(prev => switchToPage(prev, pageId));
 
-    // Lazy-load sections for pages that came from the server with no
-    // sections yet (any page other than the URL one starts empty after
-    // loadPageList). Skip the fetch when the page already has sections —
-    // unsaved local edits would otherwise be clobbered.
+    // Read page meta before switch — list entries often have empty sections until lazy-load.
     const targetPage = (siteData.pages || []).find((p) => p.id === pageId);
+    // Always refetch when body is empty. Never treat "missing page row" as loaded.
     const needsSections =
-      targetPage && (!targetPage.sections || targetPage.sections.length === 0);
+      !targetPage || !Array.isArray(targetPage.sections) || targetPage.sections.length === 0;
     const needsSeo =
-      targetPage &&
-      (!targetPage.seo ||
-        (!targetPage.seo.title && !targetPage.seo.description));
+      !targetPage ||
+      !targetPage.seo ||
+      (!targetPage.seo.title && !targetPage.seo.description);
+
+    setSiteData((prev) => switchToPage(prev, pageId));
+
+    const { projectId, token, locationId } = getUrlParams();
+    // Keep ?projectId=&pageId= in sync so refresh / Open stay on this project.
+    if (projectId) {
+      syncGenieBuildUrl({
+        projectId,
+        pageId,
+        locationId: (targetPage as any)?.locationId || locationId || null,
+      });
+    }
+
+    // Scroll canvas to top when opening a linked page.
+    try {
+      const frame = document.querySelector('iframe');
+      const win = (frame as HTMLIFrameElement | null)?.contentWindow;
+      win?.scrollTo?.({ top: 0, behavior: 'smooth' });
+      window.scrollTo?.({ top: 0, behavior: 'smooth' });
+    } catch {
+      /* ignore */
+    }
 
     if (!needsSections && !needsSeo) return;
 
-    const { projectId, token } = getUrlParams();
-    if (!projectId) return;
+    if (!projectId) {
+      toast.error('Missing projectId — reopen this site from Admin with ?projectId=');
+      return;
+    }
+    // Always load sections when empty — don't soft-fail into a chrome-only canvas.
     fetchPageContentForPage(projectId, pageId, token, {
       loadSections: needsSections,
       loadSeo: needsSeo,
     }).catch((err) => {
       console.warn('[handleSelectPage] failed to load page content:', err);
+      toast.error('Failed to load page content');
     });
+  };
+
+  const handleOpenInternalLink = (href: string) => {
+    const raw = String(href || '').trim();
+    if (!raw || raw === '#') return;
+
+    if (/^(mailto:|tel:)/i.test(raw)) {
+      window.location.href = raw;
+      return;
+    }
+
+    if (isExternalOrSpecialHref(raw) && !normalizeInternalPath(raw)) {
+      window.open(raw, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    const { projectId } = getUrlParams();
+    if (projectId) writeStoredProjectId(projectId);
+
+    const pageId = findPageIdByHref(raw, siteData.pages || []);
+    if (pageId) {
+      handleSelectPage(pageId);
+      return;
+    }
+
+    // No matching builder page — stay in GenieBuild under this projectId (never open a bare path).
+    const path = normalizeInternalPath(raw);
+    if (path && projectId) {
+      toast.error(
+        `No page matched “${path}” in this project. Check Pages panel / slug.`
+      );
+      // Re-assert projectId on the URL so the builder context is not lost.
+      syncGenieBuildUrl({
+        projectId,
+        pageId: getUrlParams().pageId,
+        locationId: getUrlParams().locationId,
+      });
+      return;
+    }
+    if (path) {
+      toast.error(`No project loaded — cannot open “${path}”`);
+      return;
+    }
+    toast.error('Invalid link');
   };
 
   /** Load sections and/or SEO for a page when switching in the Pages panel. */
@@ -1108,13 +1245,16 @@ const AppContent: React.FC = () => {
     const body =
       pageRes && pageRes.ok ? await pageRes.json().catch(() => ({})) : {};
     const apiThemeForPage = body?.data?.themeSettings || null;
-    const sections: Section[] =
+    const flatSections: Section[] =
       loadSections && Array.isArray(body?.data?.sections)
         ? hydrateSectionsForDisplay(body.data.sections, {
             themeSettings: apiThemeForPage,
             stripPresetColors: hasPresetThemeSettings(apiThemeForPage),
           })
         : [];
+    // Same split as initial load — never park header/footer only on one page.
+    const { globalSections: chrome, pageSections } =
+      splitGlobalAndPageSections(flatSections);
     const pageSeo: SEOMetadata | null = loadSeo
       ? (seoMeta && typeof seoMeta === 'object' && Object.keys(seoMeta).length > 0
           ? seoMeta
@@ -1126,14 +1266,20 @@ const AppContent: React.FC = () => {
         if (p.id !== pageId) return p;
         return {
           ...p,
-          ...(sections.length ? { sections } : {}),
+          ...(pageSections.length || flatSections.length
+            ? { sections: pageSections }
+            : {}),
           ...(pageSeo && Object.keys(pageSeo).length ? { seo: pageSeo } : {}),
         };
       });
       const isActive = prev.currentPageId === pageId;
-      let next = { ...prev, pages };
-      if (sections.length && isActive) {
-        next = { ...next, sections };
+      let next: WebsiteData = {
+        ...prev,
+        pages,
+        globalSections: mergeGlobalChrome(prev.globalSections, chrome),
+      };
+      if ((pageSections.length || flatSections.length) && isActive) {
+        next = { ...next, sections: pageSections };
       }
       if (pageSeo && Object.keys(pageSeo).length && isActive) {
         next = { ...next, seo: pageSeo };
@@ -2157,9 +2303,11 @@ const AppContent: React.FC = () => {
                                 setSelectedVirtualElement(null);
                                 setSelectedSectionId(null);
                             }}
+                            onInternalLinkClick={handleOpenInternalLink}
                         >
                             <DefaultSizesContext.Provider value={defaultSizes}>
                             <GlobalElementStylesContext.Provider value={siteData.globalElementStyles}>
+                            <OpenInternalLinkProvider value={handleOpenInternalLink}>
                             <div
                                 id="canvas-root"
                                 className="w-full"
@@ -2169,16 +2317,26 @@ const AppContent: React.FC = () => {
                                 }}
                             >
                          {(() => {
-                            // Interleave global navbars (rendered first), active page sections,
-                            // and global footers (rendered last). Global sections persist across pages.
+                            // Interleave global header/navbar (first), active page body,
+                            // and global footers (last). Chrome persists across page switches.
                             const globals = siteData.globalSections || [];
-                            const navbars = globals.filter(g => String(g.type).toLowerCase() === 'navbar');
-                            const footers = globals.filter(g => String(g.type).toLowerCase() === 'footer');
-                            const otherGlobals = globals.filter(g => {
+                            const isHeaderChrome = (t: string) => t === 'navbar' || t === 'header';
+                            const navbars = globals.filter((g) =>
+                              isHeaderChrome(String(g.type).toLowerCase())
+                            );
+                            const footers = globals.filter(
+                              (g) => String(g.type).toLowerCase() === 'footer'
+                            );
+                            const otherGlobals = globals.filter((g) => {
                               const t = String(g.type).toLowerCase();
-                              return t !== 'navbar' && t !== 'footer';
+                              return !isHeaderChrome(t) && t !== 'footer';
                             });
-                            const allInOrder = [...navbars, ...otherGlobals, ...siteData.sections, ...footers];
+                            const allInOrder = [
+                              ...navbars,
+                              ...otherGlobals,
+                              ...siteData.sections,
+                              ...footers,
+                            ];
                             return allInOrder.map((section) => (
                               <SectionRenderer
                                 key={section.id}
@@ -2203,10 +2361,12 @@ const AppContent: React.FC = () => {
                                   setSelectedElementId(elId);
                                   setSelectedVirtualElement(el || null);
                                 }}
+                                onOpenInternalLink={handleOpenInternalLink}
                               />
                             ));
                          })()}
                     </div>
+                            </OpenInternalLinkProvider>
                             </GlobalElementStylesContext.Provider>
                             </DefaultSizesContext.Provider>
                 </PreviewFrame>
@@ -2264,11 +2424,12 @@ const App: React.FC = () => {
   // Set global API URL for ThemeProvider and other shared packages
   if (typeof window !== 'undefined') {
     (window as any).__API_URL__ = apiUrl;
+    if (projectId) writeStoredProjectId(projectId);
   }
   
   return (
     <ThemeProvider projectId={projectId ?? null} isBuilder={true} typography={DEFAULT_TYPOGRAPHY}>
-      <AboutUsContactProvider>
+      <AboutUsContactProvider projectId={projectId || null}>
         <AppContent />
       </AboutUsContactProvider>
     </ThemeProvider>

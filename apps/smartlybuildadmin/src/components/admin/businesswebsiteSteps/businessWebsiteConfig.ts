@@ -467,4 +467,38 @@ export const PRESET_THEMES = [
 
 ] as const;
 
+export type WebsiteWizardVariant = "business" | "bulk";
+
+export function wizardStoragePrefix(variant: WebsiteWizardVariant) {
+  return variant === "bulk" ? "bulkWebsiteCreate" : "businessWebsiteCreate";
+}
+
+/** Clear persisted wizard step/project for business or bulk create flows. */
+export function clearWebsiteWizardStorage(variant: WebsiteWizardVariant) {
+  const prefix = wizardStoragePrefix(variant);
+  Object.keys(localStorage).forEach((key) => {
+    if (key.startsWith(`${prefix}_`)) {
+      localStorage.removeItem(key);
+    }
+  });
+}
+
+export function clearWebsiteWizardStorageForRoute(route: string) {
+  if (route.includes("/business-website/create")) {
+    clearWebsiteWizardStorage("business");
+  } else if (route.includes("/bulk-pages-websites/create")) {
+    clearWebsiteWizardStorage("bulk");
+  }
+}
+
+export function buildInitialPageSections(
+  pages: PageOption[] = DEFAULT_PAGES
+): Record<string, SectionOption[]> {
+  const sections: Record<string, SectionOption[]> = {};
+  pages.forEach((page) => {
+    sections[page.id] = page.sections.filter((s) => s.defaultSelected);
+  });
+  return sections;
+}
+
 

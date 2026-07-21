@@ -130,6 +130,15 @@ export function applySiteThemeToDocument(
   const resolved = resolveSiteTheme(themeSettings, fallbackColors);
 
   if (typeof window !== 'undefined') {
+    const root = document.documentElement;
+    const gc = resolved.globalColors;
+    root.style.setProperty('--btn-bg', gc.buttonBackgroundColor);
+    root.style.setProperty('--btn-text', gc.buttonTextColor);
+    root.style.setProperty('--bg-color', gc.backgroundColor);
+    root.style.setProperty('--text-color', gc.textColor);
+    root.style.setProperty('--title-color', gc.titleColor);
+    root.style.setProperty('--accent-color', gc.accentColor);
+
     (window as any).__GENIEBUILD_ACTIVE_THEME__ = resolved.elements;
     window.dispatchEvent(
       new CustomEvent('geniebuild-theme-change', {
@@ -245,6 +254,8 @@ export function stripPresetThemeColorOverrides(sections: any[]): any[] {
   const buttonStyleKeys = [
     'background', 'backgroundColor', 'color', 'borderColor', 'outlineColor',
     'hoverBackgroundColor', 'hoverTextColor',
+    // image-box / feature-box CTA color keys
+    'buttonBgColor', 'buttonTextColor', 'buttonBackgroundColor', 'buttonColor',
   ];
   const badgeStyleKeys = ['background', 'backgroundColor', 'color', 'borderColor'];
 
@@ -261,16 +272,22 @@ export function stripPresetThemeColorOverrides(sections: any[]): any[] {
 
     if (nextNode.style && typeof nextNode.style === 'object') {
       const nextElStyle: any = { ...nextNode.style };
-      if (nextNode.type === 'trust-strip') {
+      const elType = String(nextNode.type || '').toLowerCase();
+      if (elType === 'trust-strip') {
         trustStripStyleKeys.forEach((key) => delete nextElStyle[key]);
       }
-      if (nextNode.type === 'heading') {
+      if (elType === 'heading') {
         headingStyleKeys.forEach((key) => delete nextElStyle[key]);
       }
-      if (nextNode.type === 'button') {
+      if (elType === 'button' || elType === 'call-to-action') {
         buttonStyleKeys.forEach((key) => delete nextElStyle[key]);
       }
-      if (nextNode.type === 'badge') {
+      if (elType === 'image-box' || elType === 'feature-box' || elType === 'icon-box') {
+        ['buttonBgColor', 'buttonTextColor', 'buttonBackgroundColor', 'buttonColor'].forEach(
+          (key) => delete nextElStyle[key]
+        );
+      }
+      if (elType === 'badge') {
         badgeStyleKeys.forEach((key) => delete nextElStyle[key]);
       }
       nextNode.style = nextElStyle;
@@ -376,6 +393,15 @@ export function buildSiteThemeCss({ themeSettings, globalColors }: SiteThemeCssI
     }
     #canvas-root button[class*="bg-["] { background-color: var(--btn-bg) !important; }
     #canvas-root button[class*="text-["] { color: var(--btn-text) !important; }
+    /* After preset strip, SectionRenderer used to fall back to Tailwind bg-white — force brand CTA. */
+    #canvas-root button[id^="gb-btn-"].bg-white,
+    #canvas-root a[id^="gb-btn-"].bg-white {
+      background-color: var(--btn-bg, #E11D48) !important;
+    }
+    #canvas-root button[id^="gb-btn-"].text-black,
+    #canvas-root a[id^="gb-btn-"].text-black {
+      color: var(--btn-text, #FFFFFF) !important;
+    }
   `;
 }
 

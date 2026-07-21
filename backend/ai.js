@@ -228,28 +228,40 @@ app.use(function (err, req, res, next) {
   }
 });
 
-// Start server — connect Mongo first, then health banner (Redis + Mongo + Bull queue)
+// Start server — connect Mongo FIRST, then listen, then start Bull worker.
+// Starting the section worker before Mongo caused: "buffering timed out" → jobs stuck in failed.
 const port = process.env.PORT || '1111';
 const APIsMode = process.env.ProductionMode || 'N/A';
-server.listen(port, async () => {
-  console.log(`Server is running on port ${port}, Production Mode: ${APIsMode}`);
+
+(async () => {
   try {
     await connectDB();
   } catch (err) {
     console.error('[startup] Mongo connect threw:', err?.message || err);
   }
+
   try {
-    const health = await checkRuntimeHealth();
-    printRuntimeHealthBanner(health);
-    if (!health.ok) {
-      console.error(
-        '[startup] CRITICAL: fix Mongo/Redis before creating projects — section content will not generate.'
-      );
-    }
+    const { startSectionGenerationWorker } = require('./queue/sectionGeneration.queue');
+    startSectionGenerationWorker();
   } catch (err) {
-    console.error('[startup] health check failed:', err?.message || err);
+    console.error('[startup] Section worker failed to start:', err?.message || err);
   }
-});
+
+  server.listen(port, async () => {
+    console.log(`Server is running on port ${port}, Production Mode: ${APIsMode}`);
+    try {
+      const health = await checkRuntimeHealth();
+      printRuntimeHealthBanner(health);
+      if (!health.ok) {
+        console.error(
+          '[startup] CRITICAL: fix Mongo/Redis before creating projects — section content will not generate.'
+        );
+      }
+    } catch (err) {
+      console.error('[startup] health check failed:', err?.message || err);
+    }
+  });
+})();
 
 
 

@@ -80,16 +80,45 @@ function buildSlugLookupVariants(effectiveSlug = "", preferredPageType = "") {
   return Array.from(new Set([slug, `/${slug}`, last, `/${last}`]));
 }
 
+function escapeRegex(value = "") {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function scoreSlugPageCandidate(page = {}, requestedSlug = "") {
   const pageType = String(page?.pageType || "").toLowerCase().trim();
   const pageSlug = normalizeSlugInput(page?.slug);
   const requested = normalizeSlugInput(requestedSlug);
+  const pageName = String(page?.name || "").toLowerCase();
   let score = 0;
+
+  // Exact slug wins hard.
+  if (requested && pageSlug && pageSlug === requested) {
+    score += 10000;
+  } else if (requested && pageSlug && pageSlug.endsWith(`/${requested}`)) {
+    // Leaf URL `/punjab` → hierarchical DB slug `india/punjab`
+    score += 5000;
+    if (page?.locationId) score += 2000;
+    if (pageName.startsWith("location-")) score += 1500;
+  } else if (
+    requested &&
+    pageSlug &&
+    requested.includes("/") &&
+    requested.endsWith(`/${pageSlug}`)
+  ) {
+    // Full URL `/india/punjab` → leaf DB slug `punjab`
+    score += 4500;
+    if (page?.locationId) score += 2000;
+    if (pageName.startsWith("location-")) score += 1500;
+  }
+
+  // Location landing pages are pageType "default" with locationId — prefer them over services
+  // when resolving ambiguous area URLs.
+  if (page?.locationId) score += 90;
+  if (pageName.startsWith("location-")) score += 60;
   if (pageType === "service") score += 100;
   if (page?.serviceId) score += 40;
   if (pageType === "location") score += 20;
   if (pageType === "default") score += 5;
-  if (requested && pageSlug && pageSlug === requested) score += 10000;
   return score;
 }
 
@@ -168,17 +197,28 @@ async function findLivePageBySlug({
   const slugVariants = buildSlugLookupVariants(effectiveSlug, preferred);
 
   const filterByPreferred = (rows = []) => {
-    if (
-      !preferred ||
-      (preferred !== "service" &&
-        preferred !== "default" &&
-        preferred !== "location")
-    ) {
-      return rows;
+    if (!preferred) return rows;
+    if (preferred === "service") {
+      return rows.filter(
+        (p) => String(p?.pageType || "").toLowerCase().trim() === "service"
+      );
     }
-    return rows.filter(
-      (p) => String(p?.pageType || "").toLowerCase().trim() === preferred
-    );
+    // Location pages are stored as pageType "default" + locationId (not pageType "location").
+    if (preferred === "location" || preferred === "default") {
+      const locationRows = rows.filter(
+        (p) =>
+          p?.locationId ||
+          String(p?.name || "").toLowerCase().startsWith("location-")
+      );
+      if (preferred === "location" && locationRows.length) return locationRows;
+      if (preferred === "default") {
+        return rows.filter(
+          (p) => String(p?.pageType || "").toLowerCase().trim() === "default"
+        );
+      }
+      return locationRows.length ? locationRows : rows;
+    }
+    return rows;
   };
 
   // 1) Prefer exact slug match (location-prefixed service URLs).
@@ -211,6 +251,44 @@ async function findLivePageBySlug({
     normalizedEffective
   );
   if (pageDoc) return pageDoc;
+
+  // 2b) Leaf ↔ hierarchical reverse match (e.g. "punjab" ↔ "india/punjab").
+  // Nav/areas often link `/punjab` while bulk sync stores `parent/child` paths.
+  if (normalizedEffective && pid) {
+    const leaf = normalizedEffective.includes("/")
+      ? normalizedEffective.split("/").filter(Boolean).pop()
+      : normalizedEffective;
+    const escapedLeaf = escapeRegex(leaf || "");
+    if (escapedLeaf) {
+      const hierarchicalQuery = {
+        projectId: pid,
+        $or: [
+          { slug: { $regex: `/${escapedLeaf}$`, $options: "i" } },
+          { slug: { $regex: `^${escapedLeaf}$`, $options: "i" } },
+          { slug: { $regex: `^/${escapedLeaf}$`, $options: "i" } },
+        ],
+      };
+      // When the request is already hierarchical, also try matching the full path suffix.
+      if (normalizedEffective.includes("/")) {
+        hierarchicalQuery.$or.push({
+          slug: {
+            $regex: `^${escapeRegex(normalizedEffective)}$`,
+            $options: "i",
+          },
+        });
+      }
+      const hierarchicalRows = await WebsitePage.find(hierarchicalQuery)
+        .select(select)
+        .lean();
+      const hierarchicalFiltered = filterByPreferred(hierarchicalRows);
+      pageDoc = await pickBestSlugCandidate(
+        hierarchicalFiltered.length ? hierarchicalFiltered : hierarchicalRows,
+        projectId,
+        normalizedEffective
+      );
+      if (pageDoc) return pageDoc;
+    }
+  }
 
   const baseGlobalMatches = await WebsitePage.find({
     slug: { $in: slugVariants },

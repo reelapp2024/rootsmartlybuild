@@ -2,18 +2,32 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PRESET_FONTS, buildGoogleFontsCssUrl } from '../constants';
+import { normalizeInternalPath } from '../utils/resolveInternalPageLink';
 
 interface PreviewFrameProps {
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
   onIframeClick?: () => void;
+  /**
+   * Soft-open internal canvas links inside GenieBuild (keeps ?projectId=).
+   * Skips clicks that already called preventDefault (edit-mode Open|Select chooser).
+   */
+  onInternalLinkClick?: (href: string) => void;
 }
 
-export const PreviewFrame: React.FC<PreviewFrameProps> = ({ children, className, style, onIframeClick }) => {
+export const PreviewFrame: React.FC<PreviewFrameProps> = ({
+  children,
+  className,
+  style,
+  onIframeClick,
+  onInternalLinkClick,
+}) => {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [mountNode, setMountNode] = useState<HTMLElement | null>(null);
   const [iframeReady, setIframeReady] = useState(false);
+  const onInternalLinkClickRef = useRef(onInternalLinkClick);
+  onInternalLinkClickRef.current = onInternalLinkClick;
 
   // INJECT GOOGLE FONTS INTO IFRAME IN REAL-TIME
   useEffect(() => {
@@ -282,6 +296,46 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({ children, className,
     observer.observe(doc.body || doc, { childList: true, subtree: true });
 
     return () => observer.disconnect();
+  }, [mountNode]);
+
+  // Mirror SiteNextJS GenieBuildPageRenderer: intercept internal <a> clicks inside
+  // the iframe so navigation stays in the builder under the stored projectId.
+  // Bubble phase + defaultPrevented check → edit-mode LinkClickChooser still wins.
+  useEffect(() => {
+    if (!mountNode) return;
+
+    const onClick = (event: MouseEvent) => {
+      if (!onInternalLinkClickRef.current) return;
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      const target = event.target as Element | null;
+      const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+
+      const rawHref = String(anchor.getAttribute('href') || '').trim();
+      if (!rawHref || rawHref === '#') return;
+      if (/^(mailto:|tel:|javascript:)/i.test(rawHref)) return;
+      if (anchor.hasAttribute('download')) return;
+
+      // Same-origin / relative paths only — leave true external URLs alone.
+      const internalPath = normalizeInternalPath(rawHref);
+      if (internalPath === null) return;
+
+      event.preventDefault();
+      onInternalLinkClickRef.current(rawHref);
+    };
+
+    mountNode.addEventListener('click', onClick);
+    return () => mountNode.removeEventListener('click', onClick);
   }, [mountNode]);
 
   // Viewport is set to device-width for proper responsive behavior

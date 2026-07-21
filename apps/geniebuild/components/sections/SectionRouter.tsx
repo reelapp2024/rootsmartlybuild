@@ -47,6 +47,7 @@ interface SectionRouterProps {
   onUpload?: (sectionId: string, field: string) => void;
   onElementUpdate?: (elementId: string, updates: any) => void;
   onElementSelect?: (elementId: string, element?: WebsiteElement) => void;
+  onOpenInternalLink?: (href: string) => void;
   selectedElementId?: string | null;
   buttonClass: string;
   isSelected?: boolean;
@@ -193,6 +194,7 @@ export const SectionRouter: React.FC<SectionRouterProps> = (props) => {
     descriptionStyle: props.descriptionStyle,
     buttonStyle: props.buttonStyle,
     onElementSelect: props.onElementSelect,
+    onOpenInternalLink: props.onOpenInternalLink,
     selectedElementId: props.selectedElementId,
     onElementUpdate: props.onElementUpdate,
     themeColors: props.themeColors,
@@ -225,6 +227,7 @@ export const SectionRouter: React.FC<SectionRouterProps> = (props) => {
         onTextEdit={props.onTextEdit}
         onElementUpdate={props.onElementUpdate}
         onElementSelect={props.onElementSelect}
+        onOpenInternalLink={props.onOpenInternalLink}
         selectedElementId={props.selectedElementId}
         buttonClass={props.buttonClass}
         readOnly={props.readOnly}

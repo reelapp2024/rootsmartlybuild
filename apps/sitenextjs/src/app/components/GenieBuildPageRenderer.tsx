@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import SectionRenderer from '@geniebuild/components/SectionRenderer';
 import { AboutUsContactProvider } from '@geniebuild/components/builder/context/AboutUsContactContext';
 import { Section, GlobalElementStyles } from '@geniebuild/types';
@@ -15,6 +14,7 @@ import {
   mountSiteThemeCss,
   type ThemeSettingsInput,
 } from '@geniebuild/utils/themeResolver';
+import { dispatchSitePathChange } from '@/lib/sitePath';
 
 interface GenieBuildPageRendererProps {
   sections: Section[];
@@ -42,7 +42,6 @@ export default function GenieBuildPageRenderer({
   themeSettings,
   globalElementStyles,
 }: GenieBuildPageRendererProps) {
-  const router = useRouter();
   const resolvedDefaultSizes = useMemo(
     () => resolveSiteFontSizes(themeSettings ?? null),
     [themeSettings]
@@ -67,8 +66,8 @@ export default function GenieBuildPageRenderer({
         return;
       }
 
-      // Soft-navigate internal links. projectId lives in localStorage — no need to
-      // append ?projectId= on every href (admin open still persists it once).
+      // Soft-navigate internal links. Prefer history + custom event so HomePageClientV2
+      // always refetches even when Next's catch-all soft-nav is sticky on `/`.
       let nextHref: string | null = null;
       try {
         const url = new URL(rawHref, window.location.origin);
@@ -80,13 +79,24 @@ export default function GenieBuildPageRenderer({
 
       if (!nextHref) return;
 
+      // Hash-only links on the current page (e.g. /#contact) — let the browser scroll.
+      if (nextHref.startsWith('#')) return;
+      try {
+        const current = `${window.location.pathname}${window.location.search}`;
+        const targetUrl = new URL(nextHref, window.location.origin);
+        const targetPath = `${targetUrl.pathname}${targetUrl.search}`;
+        if (targetPath === current && targetUrl.hash) return;
+      } catch {
+        /* continue soft-nav */
+      }
+
       event.preventDefault();
-      router.push(nextHref);
+      dispatchSitePathChange(nextHref);
     };
 
     root.addEventListener('click', onClick);
     return () => root.removeEventListener('click', onClick);
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     applySiteThemeToDocument(themeSettings ?? null, globalColors);

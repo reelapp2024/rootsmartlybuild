@@ -92,8 +92,15 @@ async function resolvePageDocument({
         redirect: route.kind === "redirect" ? route.redirect : null,
       };
     }
+
+    // Non-empty slug that does not resolve must NOT silently become the homepage.
+    // That made SiteNextJS keep the URL (/services, /blogs, …) while returning home sections.
+    if (effectiveSlug) {
+      return { pageDoc: null, projectId: String(pid || projectId) };
+    }
   }
 
+  // Homepage / empty-slug only — never used as a fallback for a missed slug.
   let fallback = await findHomepage(pid, PAGE_SELECT);
   if (!fallback) {
     fallback = await ensureHomepageForProject(pid, PAGE_SELECT);

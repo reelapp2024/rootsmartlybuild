@@ -48,7 +48,14 @@ export function isLocalServicesListDemoPath(pathname: string): boolean {
 export function isLocalContactDemoPath(pathname: string): boolean {
   const normalized = (pathname || '').replace(/\\/g, '/').replace(/\/+$/, '') || '/';
   const lower = normalized.toLowerCase();
-  return lower === '/contact' || lower.endsWith('/contact');
+  return (
+    lower === '/contact' ||
+    lower.endsWith('/contact') ||
+    lower === '/contactus' ||
+    lower.endsWith('/contactus') ||
+    lower === '/contact-us' ||
+    lower.endsWith('/contact-us')
+  );
 }
 
 /** When GenieBuild runs without `projectId`, `/blogs` shows the Blogs listing

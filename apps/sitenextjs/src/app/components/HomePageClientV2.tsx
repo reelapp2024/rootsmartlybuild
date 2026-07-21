@@ -1,10 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { getSlugToPageDetails, getWebsitePageData } from '@/lib/api';
 import { isDemoMode, resolveProjectId, writeStoredProjectId } from '@/lib/projectConfig';
 import { applySeoToDocument, normalizePageSeoFromApi } from '@/lib/seo';
+import {
+  SITE_PATH_CHANGE_EVENT,
+  dispatchSitePathChange,
+  normalizeSitePathname,
+  slugFromPathname,
+} from '@/lib/sitePath';
 import GenieBuildPageRenderer from './GenieBuildPageRenderer';
 import { Section, GlobalElementStyles } from '@geniebuild/types';
 import { preloadVariant } from '@geniebuild/components/sections/SectionRouter';
@@ -25,12 +31,23 @@ function resolveDemoPageType(pathname: string): string {
     .replace(/\/+$/, '')
     .toLowerCase() || '/';
   if (lower === '/about' || lower.endsWith('/about')) return 'about';
-  if (lower === '/contact' || lower.endsWith('/contact')) return 'contact';
+  if (
+    lower === '/contact' ||
+    lower.endsWith('/contact') ||
+    lower === '/contactus' ||
+    lower.endsWith('/contactus') ||
+    lower === '/contact-us' ||
+    lower.endsWith('/contact-us')
+  ) {
+    return 'contact';
+  }
   if (/(^|\/)services\/[^/]+$/.test(lower)) return 'service';
   if (lower === '/services' || lower.endsWith('/services')) return 'services';
   if (lower === '/service' || lower.endsWith('/service')) return 'service';
   if (/(^|\/)blog\/[^/]+$/.test(lower)) return 'blog';
-  if (lower === '/blogs' || lower.endsWith('/blogs')) return 'blog';
+  if (lower === '/blogs' || lower.endsWith('/blogs') || lower === '/blog' || lower.endsWith('/blog')) {
+    return 'blog';
+  }
   if (/(^|\/)locations?\/[^/]+$/.test(lower)) return 'home';
   if (lower === '/areas' || lower.endsWith('/areas')) return 'areas';
   if (
@@ -70,15 +87,41 @@ export default function HomePageClientV2({
   const [seoData, setSeoData] = useState<ReturnType<typeof normalizePageSeoFromApi>>(null);
   const [sitePageType, setSitePageType] = useState('');
   const searchParams = useSearchParams();
-  const pathname = usePathname();
-  const router = useRouter();
+  const pathnameFromNext = usePathname();
+
+  // Soft-nav can update the address bar before Next's usePathname settles — prefer live location.
+  const [activePathname, setActivePathname] = useState(() =>
+    normalizeSitePathname(
+      typeof window !== 'undefined' ? window.location.pathname : pathnameFromNext || '/'
+    )
+  );
+
+  useEffect(() => {
+    const syncFromWindow = () => {
+      setActivePathname(normalizeSitePathname(window.location.pathname));
+    };
+    // Never let a stale Next catch-all pathname (`/`) overwrite a soft-nav'd real path.
+    const fromWindow = normalizeSitePathname(
+      typeof window !== 'undefined' ? window.location.pathname : '/'
+    );
+    const fromNext = normalizeSitePathname(pathnameFromNext || '/');
+    if (fromWindow && fromWindow !== '/') {
+      setActivePathname(fromWindow);
+    } else if (fromNext && fromNext !== '/') {
+      setActivePathname(fromNext);
+    } else {
+      setActivePathname(fromWindow || fromNext || '/');
+    }
+    window.addEventListener(SITE_PATH_CHANGE_EVENT, syncFromWindow);
+    window.addEventListener('popstate', syncFromWindow);
+    return () => {
+      window.removeEventListener(SITE_PATH_CHANGE_EVENT, syncFromWindow);
+      window.removeEventListener('popstate', syncFromWindow);
+    };
+  }, [pathnameFromNext]);
 
   const projectIdFromQuery = (searchParams.get('projectId') || '').trim();
-  const routeSlug = String(pathname || '/')
-    .replace(/^\/+|\/+$/g, '')
-    .trim()
-    .toLowerCase();
-  const slugFromRoute = routeSlug && routeSlug !== 'home' ? routeSlug : '';
+  const slugFromRoute = slugFromPathname(activePathname);
   // query → localStorage/cookie → env (admin preview sticks via writeStoredProjectId)
   const projectId = resolveProjectId(projectIdFromQuery || defaultProjectId).trim();
 
@@ -89,23 +132,29 @@ export default function HomePageClientV2({
   }, [demoMode, projectIdFromQuery, projectId]);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadPage() {
       try {
-        setError(null);
+        if (!cancelled) {
+          setError(null);
+          setLoading(true);
+        }
 
         // Full-site demo: skip API and swap sections instantly (no loading flash / hard reload feel).
         if (demoMode) {
-          const demoData = buildSiteNextDemoWebsiteData(pathname || '/');
+          const demoData = buildSiteNextDemoWebsiteData(activePathname || '/');
           const demoSections = Array.isArray(demoData.sections) ? demoData.sections : [];
           const normalized = hydrateSectionsForDisplay(demoSections, {
             themeSettings: null,
             stripPresetColors: false,
           });
+          if (cancelled) return;
           setSections(normalized);
           setThemeSettings(null);
           setGlobalElementStyles(undefined);
           setGlobalColors(DEMO_GLOBAL_COLORS);
-          setSitePageType(resolveDemoPageType(pathname || '/'));
+          setSitePageType(resolveDemoPageType(activePathname || '/'));
           setSeoData(
             normalizePageSeoFromApi({
               seo: {
@@ -119,8 +168,7 @@ export default function HomePageClientV2({
           return;
         }
 
-        setLoading(true);
-        setSitePageType('');
+        if (!cancelled) setSitePageType('');
 
         if (!projectId) {
           throw new Error('Set NEXT_PUBLIC_PROJECT_ID or pass ?projectId= in the URL');
@@ -138,8 +186,10 @@ export default function HomePageClientV2({
             projectId,
             slug: slugForDetails,
           });
+          if (cancelled) return;
           if (detailsResponse?.redirect?.to) {
-            router.replace(detailsResponse.redirect.to);
+            // Soft-nav to canonical path (preserves projectId query).
+            dispatchSitePathChange(detailsResponse.redirect.to);
             return;
           }
           const details = detailsResponse?.data;
@@ -151,26 +201,44 @@ export default function HomePageClientV2({
             resolvedPageType = String(details.pageType || '').trim().toLowerCase();
           }
         } catch {
-          // website_page can still resolve by slug + projectId.
+          // Always continue to website_page — details and page load share the same resolver,
+          // but throwing here caused false “Page not found” before a second chance / redirect.
         }
 
         if (resolvedProjectId) writeStoredProjectId(resolvedProjectId);
 
-        const response = await getWebsitePageData({
-          projectId: resolvedProjectId,
-          ...(resolvedPageId ? { pageId: resolvedPageId } : {}),
-          ...(resolvedLocationId ? { locationId: resolvedLocationId } : {}),
-          slug: resolvedSlug || '',
-          ...(resolvedPageType ? { pageType: resolvedPageType } : {}),
-        });
+        let response;
+        try {
+          response = await getWebsitePageData({
+            projectId: resolvedProjectId,
+            ...(resolvedPageId ? { pageId: resolvedPageId } : {}),
+            ...(resolvedLocationId ? { locationId: resolvedLocationId } : {}),
+            slug: resolvedSlug || slugForDetails || '',
+            ...(resolvedPageType ? { pageType: resolvedPageType } : {}),
+          });
+        } catch (pageErr: any) {
+          const msg = String(pageErr?.message || pageErr || '');
+          if (slugForDetails && /not found|not available|404/i.test(msg)) {
+            throw new Error(`Page not found for “/${slugForDetails}”.`);
+          }
+          throw pageErr;
+        }
+        if (cancelled) return;
 
         if (response?.redirect?.to) {
-          router.replace(response.redirect.to);
+          dispatchSitePathChange(response.redirect.to);
           return;
         }
 
         const data = response?.data;
-        setSitePageType(resolvedPageType);
+        if (!data && slugForDetails) {
+          throw new Error(`Page not found for “/${slugForDetails}”.`);
+        }
+
+        setSitePageType(
+          resolvedPageType ||
+            String((data as any)?.page?.pageType || (data as any)?.pageType || '').toLowerCase()
+        );
         const apiThemeSettings = data?.themeSettings || null;
         const themeSync = syncThemeFromApiSettings(apiThemeSettings, { projectId: resolvedProjectId });
         const incomingSections = Array.isArray(data?.sections) ? data.sections : [];
@@ -184,6 +252,7 @@ export default function HomePageClientV2({
         setSeoData(normalizePageSeoFromApi(data));
         setGlobalColors(themeSync.globalColors);
       } catch (err: any) {
+        if (cancelled) return;
         const raw = String(err?.message || 'Failed to load website page');
         const isNetwork = /network error/i.test(raw);
         setError(
@@ -191,13 +260,17 @@ export default function HomePageClientV2({
             ? `${raw}. SiteNext cannot reach the API. Ensure backend is on :1111 and apps/sitenextjs/.env.local has NEXT_PUBLIC_SITENEXTJS_API_URL=http://localhost:1111/sitenextjs/v1 (then restart next dev).`
             : raw
         );
+        setSections([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     loadPage();
-  }, [demoMode, projectId, slugFromRoute, pathname, router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [demoMode, projectId, slugFromRoute, activePathname]);
 
   useEffect(() => {
     applySeoToDocument(seoData);
@@ -236,12 +309,13 @@ export default function HomePageClientV2({
 
   return (
     <GenieBuildPageRenderer
+      key={activePathname || '/'}
       sections={sections}
       globalColors={globalColors}
       themeSettings={themeSettings}
       globalElementStyles={globalElementStyles}
       projectId={demoMode ? undefined : projectId || undefined}
-      sitePathname={pathname || '/'}
+      sitePathname={activePathname || '/'}
       sitePageType={sitePageType}
     />
   );

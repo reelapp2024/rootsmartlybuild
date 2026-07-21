@@ -652,7 +652,7 @@ const assignPageSections = (page = {}, sections = []) => {
 const sectionGenerationQueue = new Bull(SECTION_GENERATION_QUEUE, {
   redis: redisConfig,
   defaultJobOptions: {
-    attempts: 2,
+    attempts: 3,
     backoff: { type: "fixed", delay: 15000 },
     removeOnComplete: true,
     // Keep failures visible for ops / re-queue debugging
@@ -662,20 +662,61 @@ const sectionGenerationQueue = new Bull(SECTION_GENERATION_QUEUE, {
 
 /**
  * Process handler body is assigned later in this file (sync load).
- * Register the named Bull processor immediately so this process never claims
- * generate-section jobs without a handler.
+ * IMPORTANT: do NOT register Bull `.process()` until Mongo is connected —
+ * otherwise jobs fail with "buffering timed out" and sit forever in `failed`.
  */
 let runSectionGenerationJob = async () => {
   throw new Error("Section generation worker not finished loading");
 };
 
-sectionGenerationQueue.process("generate-section", 2, async (job) =>
-  runSectionGenerationJob(job)
-);
+let workerStarted = false;
 
-console.log(
-  `🔥 Section queue worker started queue="${SECTION_GENERATION_QUEUE}" redis=${redisConfig.host}:${redisConfig.port}`
-);
+async function ensureMongooseReady(timeoutMs = 45000) {
+  const mongoose = require("mongoose");
+  if (mongoose.connection.readyState === 1) return;
+
+  if (mongoose.connection.readyState === 2) {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("MongoDB still connecting — section generation aborted")),
+        timeoutMs
+      );
+      const onConnected = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      mongoose.connection.once("connected", onConnected);
+    });
+    return;
+  }
+
+  // Disconnected / disconnecting — attempt reconnect via shared connectDB.
+  const connectDB = require("../config/db");
+  await connectDB();
+  if (mongoose.connection.readyState !== 1) {
+    throw new Error(
+      "MongoDB is not connected — cannot generate sections. Restart the backend after Mongo is reachable."
+    );
+  }
+}
+
+/**
+ * Call once after Mongo connects (from ai.js startup). Safe to call repeatedly.
+ */
+function startSectionGenerationWorker() {
+  if (workerStarted) return sectionGenerationQueue;
+  workerStarted = true;
+
+  sectionGenerationQueue.process("generate-section", 2, async (job) => {
+    await ensureMongooseReady();
+    return runSectionGenerationJob(job);
+  });
+
+  console.log(
+    `🔥 Section queue worker started queue="${SECTION_GENERATION_QUEUE}" redis=${redisConfig.host}:${redisConfig.port}`
+  );
+  return sectionGenerationQueue;
+}
 
 // =========================
 // QUEUE EVENTS
@@ -721,6 +762,19 @@ async function enqueueSectionGeneration({
   servicesWizardOnly = false,
   userId = null
 }) {
+  // Worker must be running (Mongo connected). Soft-start for scripts that skip ai.js boot.
+  if (!workerStarted) {
+    console.warn(
+      "[enqueueSectionGeneration] Worker not started yet — starting now (ensure Mongo is connected)"
+    );
+    await ensureMongooseReady().catch((err) => {
+      throw new Error(
+        `Cannot enqueue section generation: ${err?.message || err}`
+      );
+    });
+    startSectionGenerationWorker();
+  }
+
   const normalizedSelected = Array.isArray(selectedSectionIds)
     ? [...new Set(selectedSectionIds.map((s) => String(s || "").toLowerCase().trim()).filter(Boolean))].sort()
     : [];
@@ -771,7 +825,49 @@ async function enqueueSectionGeneration({
     ].join("|");
   };
 
+  const payload = {
+    projectId,
+    pageId,
+    sectionId,
+    locationId,
+    extraData,
+    locations,
+    includeDefaultHomepage,
+    homepageLocationId,
+    selectedSectionIds,
+    perLocationContentByPage:
+      perLocationContentByPage && typeof perLocationContentByPage === "object"
+        ? perLocationContentByPage
+        : null,
+    onlyServiceIds: normalizedOnlyServiceIds,
+    onlyServicePageIds: normalizedOnlyServicePageIds,
+    servicesWizardOnly: wizardOnly,
+    userId
+  };
+
   try {
+    // Clear a prior failed/completed job with the same id so Generate Website can re-run.
+    const priorById = await sectionGenerationQueue.getJob(jobId);
+    if (priorById) {
+      const priorState = await priorById.getState().catch(() => "");
+      if (priorState === "failed" || priorState === "completed") {
+        console.warn(
+          `[enqueueSectionGeneration] Removing stale ${priorState} job ${jobId} so generation can re-run`
+        );
+        await priorById.remove().catch(() => null);
+      } else if (
+        priorState === "waiting" ||
+        priorState === "active" ||
+        priorState === "delayed" ||
+        priorState === "paused"
+      ) {
+        console.log(
+          `[enqueueSectionGeneration] Reusing in-flight job ${jobId} state=${priorState}`
+        );
+        return priorById;
+      }
+    }
+
     const candidateJobs = await sectionGenerationQueue.getJobs(["waiting", "active", "delayed", "paused"], 0, 200);
     const isFullProjectJob = !wizardOnly && !pageId && !sectionId;
     if (isFullProjectJob) {
@@ -788,40 +884,32 @@ async function enqueueSectionGeneration({
           !d.sectionId
         );
       });
-      if (existingFull) return existingFull;
+      if (existingFull) {
+        console.log(
+          `[enqueueSectionGeneration] Reusing existing full-project job ${existingFull.id}`
+        );
+        return existingFull;
+      }
     }
     const existingInFlight = candidateJobs.find((queuedJob) => toComparableKey(queuedJob?.data || {}) === dedupeKey);
     if (existingInFlight) return existingInFlight;
 
-    return await sectionGenerationQueue.add("generate-section", {
-      projectId,
-      pageId,
-      sectionId,
-      locationId,
-      extraData,
-      locations,
-      includeDefaultHomepage,
-      homepageLocationId,
-      selectedSectionIds,
-      perLocationContentByPage:
-        perLocationContentByPage && typeof perLocationContentByPage === "object"
-          ? perLocationContentByPage
-          : null,
-      onlyServiceIds: normalizedOnlyServiceIds,
-      onlyServicePageIds: normalizedOnlyServicePageIds,
-      servicesWizardOnly: wizardOnly,
-      userId
-    }, {
+    const job = await sectionGenerationQueue.add("generate-section", payload, {
       jobId,
       removeOnComplete: true,
       removeOnFail: false,
     });
+    console.log(
+      `[enqueueSectionGeneration] Queued job=${job.id} projectId=${projectId} locations=${normalizedLocations.length} sections=${normalizedSelected.length}`
+    );
+    return job;
   } catch (err) {
-    if (String(err?.message || "").toLowerCase().includes("jobid")) {
+    if (String(err?.message || "").toLowerCase().includes("job") && String(err?.message || "").toLowerCase().includes("id")) {
       const existingJob = await sectionGenerationQueue.getJob(jobId);
       if (existingJob) {
         const state = await existingJob.getState().catch(() => "");
         if (state === "failed") {
+          console.warn(`[enqueueSectionGeneration] Retrying failed job ${jobId}`);
           await existingJob.retry().catch(() => null);
         }
         return existingJob;
@@ -2419,6 +2507,8 @@ Rules:
 // =========================
 
 runSectionGenerationJob = async (job) => {
+  await ensureMongooseReady();
+
   const {
     projectId,
     locations = [],
@@ -3339,6 +3429,8 @@ runSectionGenerationJob = async (job) => {
 module.exports = {
   sectionGenerationQueue,
   enqueueSectionGeneration,
+  startSectionGenerationWorker,
+  ensureMongooseReady,
   SECTION_GENERATION_QUEUE,
   getLiveProgress: require("../services/sectionGenerationProgress").getLiveProgress,
   getLiveProgressMap: require("../services/sectionGenerationProgress").getLiveProgressMap,

@@ -59,8 +59,11 @@ function buildDefaultSectionStyles(section: Section): Record<string, any> {
 function compactSectionForPersistence(section: Section): Section {
   const sectionDefaults = buildDefaultSectionStyles(section);
   const styleOverrides = pruneWithDefaults(section.styles || {}, sectionDefaults) || {};
-  const activeVariant = String(section?.styles?.variant || sectionDefaults?.variant || '').trim();
-  if (activeVariant && !('variant' in styleOverrides) && activeVariant !== String(getDefaultVariant(section.type) || '').trim()) {
+  // Always persist the chosen variant — SiteNextJS / live site must render it.
+  const activeVariant = String(
+    section?.styles?.variant || sectionDefaults?.variant || getDefaultVariant(section.type) || ''
+  ).trim();
+  if (activeVariant) {
     styleOverrides.variant = activeVariant;
   }
 
@@ -96,7 +99,19 @@ export function buildUpdatedComponentIds(
       return s.type === compData.sectionData?.type;
     });
     if (matchingSection) {
-      return { ...compData, sectionData: matchingSection };
+      const chosenVariant = String(
+        (matchingSection as any)?.styles?.variant ||
+          compData?.variant_uniqueId ||
+          compData?.uniqueId ||
+          ''
+      ).trim();
+      return {
+        ...compData,
+        ...(chosenVariant
+          ? { variant_uniqueId: chosenVariant, uniqueId: chosenVariant }
+          : {}),
+        sectionData: matchingSection,
+      };
     }
     return compData;
   });
@@ -116,8 +131,11 @@ export function buildUpdatedComponentIds(
       return !hasExact;
     })
     .map((section) => {
-      const variant = String((section as any)?.styles?.variant || 'default').trim();
-      const variantUniqueId = `${String(section.type).toLowerCase()}${variant.charAt(0).toUpperCase()}${variant.slice(1)}`;
+      // variant_uniqueId must be the GenieBuild file name (e.g. HeroPlumbing4),
+      // not a mangled type+variant string — SiteNextJS resolves by that name.
+      const variantUniqueId = String(
+        (section as any)?.styles?.variant || getDefaultVariant(section.type) || 'Default'
+      ).trim();
       return {
         variant_uniqueId: variantUniqueId,
         uniqueId: variantUniqueId,

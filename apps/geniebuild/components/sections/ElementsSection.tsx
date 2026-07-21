@@ -34,6 +34,8 @@ import {
 } from './utils/imagePresentation';
 import { isNavItemActive } from '../../lib/navActiveState';
 import { resolveHeadingHtmlTag } from '../../utils/htmlTagUtils';
+import { LinkClickChooser } from '../builder/canvas/LinkClickChooser';
+import { useOpenInternalLink } from '../builder/context/OpenInternalLinkContext';
 
 interface ElementsSectionProps {
   section: Section;
@@ -41,6 +43,9 @@ interface ElementsSectionProps {
   onUpload?: (sectionId: string, field: string) => void;
   onElementUpdate: (elementId: string, updates: Partial<WebsiteElement>) => void;
   onElementSelect?: (elementId: string, element?: WebsiteElement) => void;
+  /** Builder: open an internal page (or external URL) from a link click chooser.
+   *  Prefer OpenInternalLinkProvider; this prop is an optional override. */
+  onOpenInternalLink?: (href: string) => void;
   selectedElementId?: string | null;
   buttonClass?: string;
   readOnly?: boolean;
@@ -512,6 +517,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
   onTextEdit,
   onElementUpdate,
   onElementSelect,
+  onOpenInternalLink,
   selectedElementId,
   buttonClass,
   readOnly = false,
@@ -522,9 +528,17 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
   sitePageType = '',
 }) => {
   const elements = section.elements || [];
+  const openInternalLinkFromContext = useOpenInternalLink();
+  const resolveOpenInternalLink = onOpenInternalLink || openInternalLinkFromContext;
   const [activeTabs, setActiveTabs] = useState<Record<string, number>>({});
   // Open lightbox keyed by element id — null when no lightbox is open
   const [openLightboxId, setOpenLightboxId] = useState<string | null>(null);
+  const [linkChooser, setLinkChooser] = useState<{
+    element: WebsiteElement;
+    href: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const { themeData } = useTheme();
   // Site-wide global element-style overrides (sit between theme and per-element style).
@@ -598,7 +612,17 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
       (isLightMode ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'),
     accentColor: section.styles?.accentColor || td?.accent || '#E11D48',
     iconColor: section.styles?.iconColor || gIcon.color || td?.icon || td?.accent || '#E11D48',
-    buttonBackgroundColor: section.styles?.buttonBackgroundColor || gButton.backgroundColor || td?.primaryButton?.bg || '#E11D48',
+    buttonBackgroundColor:
+      (section.styles?.buttonBackgroundColor &&
+      !['#fff', '#ffffff', 'white'].includes(String(section.styles.buttonBackgroundColor).trim().toLowerCase())
+        ? section.styles.buttonBackgroundColor
+        : undefined) ||
+      (gButton.backgroundColor &&
+      !['#fff', '#ffffff', 'white'].includes(String(gButton.backgroundColor).trim().toLowerCase())
+        ? gButton.backgroundColor
+        : undefined) ||
+      td?.primaryButton?.bg ||
+      '#E11D48',
     buttonTextColor: section.styles?.buttonTextColor || gButton.color || td?.primaryButton?.text || '#FFFFFF',
     // Globals exposed for renders that read these directly off the theme bag
     titleFontWeight: gHeadingAll.fontWeight ?? gHeadingLegacy.fontWeight,
@@ -734,6 +758,57 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
       }
   };
 
+  /** Edit mode: linked controls show Open | Select instead of navigating / auto-selecting. */
+  const handleLinkedClick = (
+    e: React.MouseEvent,
+    element: WebsiteElement,
+    href?: string | null
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try { (window as any).__gbElementClicked = true; } catch (_) {}
+
+    const trimmed = String(href || '').trim();
+    if (!trimmed || trimmed === '#') {
+      handleClick(e, element);
+      return;
+    }
+
+    // Prefer viewport coords so the chooser works inside PreviewFrame iframe too.
+    const x = typeof e.clientX === 'number' ? e.clientX : 24;
+    const y = typeof e.clientY === 'number' ? e.clientY : 24;
+    setLinkChooser({ element, href: trimmed, x, y });
+  };
+
+  const dismissLinkChooser = () => setLinkChooser(null);
+
+  const renderLinkChooser = () => {
+    if (readOnly || !linkChooser) return null;
+    return (
+      <LinkClickChooser
+        x={linkChooser.x}
+        y={linkChooser.y}
+        href={linkChooser.href}
+        onDismiss={dismissLinkChooser}
+        onSelect={() => {
+          const el = linkChooser.element;
+          dismissLinkChooser();
+          try { (window as any).__gbElementClicked = true; } catch (_) {}
+          onElementSelect?.(el.id, el);
+        }}
+        onOpen={() => {
+          const href = linkChooser.href;
+          dismissLinkChooser();
+          if (resolveOpenInternalLink) {
+            resolveOpenInternalLink(href);
+          } else if (/^(https?:)?\/\//i.test(href) || /^(mailto:|tel:)/i.test(href)) {
+            window.open(href, '_blank', 'noopener,noreferrer');
+          }
+        }}
+      />
+    );
+  };
+
   const renderElement = (el: WebsiteElement) => {
     const { id, type, content, style } = el;
     const bindHtml = (elementId: string, html: string) => (node: HTMLElement | null) =>
@@ -760,7 +835,24 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     if (theme) {
       if (type === 'button' || type === 'call-to-action') {
         const variant = renderStyle.buttonVariant || (el.content as any)?.buttonVariant || 'primary';
-        if (!renderStyle?.backgroundColor || renderStyle.backgroundColor === 'transparent' || renderStyle.backgroundColor === '') {
+        const isNearWhiteBg = (v: unknown) => {
+          const s = String(v || '').trim().toLowerCase();
+          return (
+            s === '#fff' ||
+            s === '#ffffff' ||
+            s === 'white' ||
+            s === 'rgb(255,255,255)' ||
+            s === 'rgb(255, 255, 255)' ||
+            s === 'rgba(255,255,255,1)' ||
+            s === 'rgba(255, 255, 255, 1)'
+          );
+        };
+        const missingBg =
+          !renderStyle?.backgroundColor ||
+          renderStyle.backgroundColor === 'transparent' ||
+          renderStyle.backgroundColor === '' ||
+          (variant === 'primary' && isNearWhiteBg(renderStyle.backgroundColor));
+        if (missingBg) {
           if (variant === 'secondary') {
             mergedStyle.backgroundColor = (theme as any).secondaryButtonBg || 'transparent';
           } else if (variant === 'outline') {
@@ -1149,11 +1241,32 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 : theme?.buttonFontFamily;
 
             // Resolve colors based on variant
+            const isNearWhite = (v: unknown) => {
+              const s = String(v || '').trim().toLowerCase();
+              return (
+                s === '#fff' ||
+                s === '#ffffff' ||
+                s === 'white' ||
+                s === 'rgb(255,255,255)' ||
+                s === 'rgb(255, 255, 255)' ||
+                s === 'rgba(255,255,255,1)' ||
+                s === 'rgba(255, 255, 255, 1)'
+              );
+            };
             let btnBg = safeStyle.backgroundColor;
             let btnColor = safeStyle.color;
             let btnBorderColor = safeStyle.borderColor;
             let btnBorderWidth = safeStyle.borderWidth;
             let btnBorderStyle = safeStyle.borderStyle;
+
+            // Stale white fills on primary CTAs (common after preset strip + Tailwind bg-white)
+            // must yield to the live brand button color — GenieBuild already looks red via theme.
+            if (
+              btnVariant === 'primary' &&
+              isNearWhite(btnBg)
+            ) {
+              btnBg = '';
+            }
 
             if (!btnBg || btnBg === 'transparent' || btnBg === '') {
               if (btnVariant === 'secondary') {
@@ -1376,7 +1489,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     href={linkUrl}
                     target={linkTarget}
                     rel={linkRel}
-                    onClick={!readOnly ? (e) => { handleClick(e, el); } : undefined}
+                    onClick={!readOnly ? (e) => handleLinkedClick(e, el, linkUrl) : undefined}
                     className={widthMode === 'full' ? 'block' : 'inline-block'}
                     style={widthMode === 'full' ? { width: '100%' } : undefined}
                 >
@@ -2285,8 +2398,16 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const commonProps = {
                 style: featureBoxStyle,
                 onClick: (e: React.MouseEvent) => {
-                    // In builder (not read-only) always select element and block navigation
-                    if (!readOnly) { e.preventDefault(); }
+                    // In builder (not read-only) show Open | Select when linked
+                    if (!readOnly) {
+                      if (hasLink) {
+                        handleLinkedClick(e, el, String((content as any).link || ''));
+                      } else {
+                        e.preventDefault();
+                        handleClick(e as any, el);
+                      }
+                      return;
+                    }
                     handleClick(e as any, el);
                 },
             };
@@ -3330,7 +3451,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                     href={ibBtnLink}
                                     target={ibBtnNewTab ? '_blank' : undefined}
                                     rel={ibBtnNewTab ? 'noopener noreferrer' : undefined}
-                                    onClick={!readOnly ? (e) => { e.preventDefault(); e.stopPropagation(); } : undefined}
+                                    onClick={!readOnly ? (e) => handleLinkedClick(e, el, ibBtnLink) : undefined}
                                     className={btnCommonClass}
                                     style={btnCommonStyle}
                                 >
@@ -3544,8 +3665,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                             className="flex-1 no-underline text-inherit hover:underline"
                                             onClick={(e) => {
                                                 if (!readOnly) {
-                                                    e.preventDefault();
-                                                    handleClick(e, el);
+                                                    handleLinkedClick(e, el, itemLink);
                                                 }
                                             }}
                                         >
@@ -4947,8 +5067,31 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 `;
             })();
 
-            // Dropdown sub-item + view-all CSS — accent-tinted hover + arrow slide.
+            // Dropdown CSS — pure selectors (not Tailwind group/nav) so the
+            // iframe CDN reliably shows panels in edit + preview. padding-top
+            // on the outer shell is a hover bridge (no mt gap that kills hover).
             const dropdownCss = `
+                #${safeNavId} .gb-nav-list { overflow: visible; }
+                #${safeNavId} .gb-nav-item { position: relative; display: inline-flex; align-items: center; }
+                #${safeNavId} .gb-nav-dropdown {
+                    position: absolute; top: 100%; left: 0; min-width: 240px;
+                    padding-top: 0.75rem; z-index: 80;
+                    opacity: 0; visibility: hidden; pointer-events: none;
+                    transform: translateY(4px);
+                    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
+                }
+                #${safeNavId} .gb-nav-item:hover > .gb-nav-dropdown,
+                #${safeNavId} .gb-nav-item:focus-within > .gb-nav-dropdown {
+                    opacity: 1; visibility: visible; pointer-events: auto;
+                    transform: translateY(0);
+                }
+                #${safeNavId} .gb-nav-dropdown-inner {
+                    border-radius: 0.75rem; padding: 0.5rem 0;
+                    background: ${dropdownBg};
+                    border: 1px solid ${dropdownBorder};
+                    box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.12), 0 4px 12px -4px rgba(15, 23, 42, 0.08);
+                    backdrop-filter: blur(8px);
+                }
                 #${safeNavId} .gb-nav-sub:hover { background-color: ${hoverColor}10; color: ${hoverColor}; }
                 #${safeNavId} .gb-nav-viewall:hover { background-color: ${hoverColor}1F; }
                 #${safeNavId} .gb-nav-viewall:hover i { transform: translateX(3px); }
@@ -5002,10 +5145,19 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         {label || 'Link'}
                     </>
                 );
-                // Edit mode: render as <span> (clicking shouldn't navigate). Preview: <a>.
+                // Edit mode: Open | Select chooser (don't navigate). Preview: live <a>.
                 if (!readOnly) {
                     return (
-                        <span key={key} className={`gb-nav-link ${activeClass} inline-flex items-center cursor-default`} style={{ padding: itemPadding, fontSize, fontWeight: fontWeight as any }}>
+                        <span
+                          key={key}
+                          className={`gb-nav-link ${activeClass} inline-flex items-center cursor-pointer`}
+                          style={{ padding: itemPadding, fontSize, fontWeight: fontWeight as any }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (trimmed) handleLinkedClick(e, el, trimmed);
+                            else handleClick(e, el);
+                          }}
+                        >
                             {inner}
                         </span>
                     );
@@ -5072,20 +5224,11 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                 return renderLink(item.label || '', item.link || '', item.linkNewTab, idx, itemIcon, isActive);
                             }
                             return (
-                                <div key={idx} className="relative group/nav inline-flex items-center">
+                                <div key={idx} className="gb-nav-item">
                                     {renderLink(item.label || '', item.link || '', item.linkNewTab, `link-${idx}`, itemIcon, isActive)}
                                     <i className="fa-solid fa-chevron-down text-[10px] ml-1 opacity-60" style={{ color: itemColor }} aria-hidden />
-                                    {/* Dropdown panel — preview-mode only (edit mode keeps it hidden so it doesn't block selection) */}
-                                    {readOnly && (
-                                        <div
-                                            className="absolute top-full left-0 mt-3 min-w-[240px] rounded-xl py-2 opacity-0 invisible translate-y-1 group-hover/nav:opacity-100 group-hover/nav:visible group-hover/nav:translate-y-0 transition-all duration-200 z-[60] backdrop-blur-sm"
-                                            style={{
-                                                backgroundColor: dropdownBg,
-                                                border: `1px solid ${dropdownBorder}`,
-                                                boxShadow: `0 12px 32px -8px rgba(15, 23, 42, 0.12), 0 4px 12px -4px rgba(15, 23, 42, 0.08)`,
-                                            }}
-                                        >
-                                            {/* Tiny arrow caret pointing up at the parent link */}
+                                    <div className="gb-nav-dropdown" role="menu">
+                                        <div className="gb-nav-dropdown-inner relative">
                                             <div
                                                 aria-hidden
                                                 className="absolute -top-1.5 left-6 w-3 h-3 rotate-45"
@@ -5098,16 +5241,41 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                             {dropdownItems.map((sub: any, j: number) => {
                                                 const subLink = (sub.link || '').trim();
                                                 const subIsExternal = /^https?:\/\//i.test(subLink);
-                                                // Internal dropdown links default same-tab (SPA + stored projectId).
                                                 const subNewTab = sub.linkNewTab === undefined
                                                     ? subIsExternal
                                                     : !!sub.linkNewTab;
+                                                if (!readOnly) {
+                                                    return (
+                                                        <span
+                                                            key={j}
+                                                            role="menuitem"
+                                                            className="gb-nav-sub flex items-center gap-2.5 mx-1.5 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors"
+                                                            style={{ color: itemColor }}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (subLink) handleLinkedClick(e, el, subLink);
+                                                                else handleClick(e, el);
+                                                            }}
+                                                        >
+                                                            {sub.icon && sub.icon !== 'none' && (
+                                                                <span
+                                                                    className="inline-flex items-center justify-center w-7 h-7 rounded-md flex-shrink-0"
+                                                                    style={{ backgroundColor: `${hoverColor}12`, color: hoverColor }}
+                                                                >
+                                                                    <i className={`fa-solid ${sub.icon} text-[11px]`} />
+                                                                </span>
+                                                            )}
+                                                            <span>{sub.label || 'Link'}</span>
+                                                        </span>
+                                                    );
+                                                }
                                                 return (
                                                     <a key={j} href={subLink || '#'}
                                                         target={subLink && subNewTab ? '_blank' : undefined}
                                                         rel={subLink && subNewTab ? 'noopener noreferrer' : undefined}
                                                         className="gb-nav-sub flex items-center gap-2.5 mx-1.5 px-3 py-2 rounded-lg text-sm no-underline transition-colors"
                                                         style={{ color: itemColor }}
+                                                        role="menuitem"
                                                     >
                                                         {sub.icon && sub.icon !== 'none' && (
                                                             <span
@@ -5124,17 +5292,33 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                             {viewAllLabel && (
                                                 <>
                                                     <div className="my-1.5 mx-3 h-px" style={{ backgroundColor: dropdownBorder }} />
-                                                    <a href={(viewAllLink || '#').trim() || '#'}
-                                                        className="gb-nav-viewall flex items-center justify-between mx-1.5 px-3 py-2 rounded-lg text-sm font-bold no-underline transition-colors"
-                                                        style={{ color: hoverColor, backgroundColor: `${hoverColor}10` }}
-                                                    >
-                                                        <span>{viewAllLabel}</span>
-                                                        <i className="fa-solid fa-arrow-right text-[11px] transition-transform" aria-hidden />
-                                                    </a>
+                                                    {!readOnly ? (
+                                                        <span
+                                                            className="gb-nav-viewall flex items-center justify-between mx-1.5 px-3 py-2 rounded-lg text-sm font-bold cursor-pointer transition-colors"
+                                                            style={{ color: hoverColor, backgroundColor: `${hoverColor}10` }}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const href = (viewAllLink || '').trim();
+                                                                if (href) handleLinkedClick(e, el, href);
+                                                                else handleClick(e, el);
+                                                            }}
+                                                        >
+                                                            <span>{viewAllLabel}</span>
+                                                            <i className="fa-solid fa-arrow-right text-[11px] transition-transform" aria-hidden />
+                                                        </span>
+                                                    ) : (
+                                                        <a href={(viewAllLink || '#').trim() || '#'}
+                                                            className="gb-nav-viewall flex items-center justify-between mx-1.5 px-3 py-2 rounded-lg text-sm font-bold no-underline transition-colors"
+                                                            style={{ color: hoverColor, backgroundColor: `${hoverColor}10` }}
+                                                        >
+                                                            <span>{viewAllLabel}</span>
+                                                            <i className="fa-solid fa-arrow-right text-[11px] transition-transform" aria-hidden />
+                                                        </a>
+                                                    )}
                                                 </>
                                             )}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
                             );
                         })}
@@ -5357,7 +5541,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     </ul>
                     <a
                         href={ctaLink}
-                        onClick={(e) => { if (!readOnly) e.preventDefault(); }}
+                        onClick={(e) => {
+                          if (!readOnly) handleLinkedClick(e, el, ctaLink);
+                        }}
                         className="w-full py-3 px-6 rounded-lg font-bold text-sm transition-opacity hover:opacity-90 outline-none cursor-pointer block text-center"
                         style={{ backgroundColor: ctaBgColor, color: ctaTextColor }}
                     >
@@ -5477,7 +5663,15 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                             {showBackBtn && (
                                 <a
                                     href={backBtnLink}
-                                    onClick={(e) => { if (!readOnly) e.preventDefault(); }}
+                                    onClick={(e) => {
+                                      if (!readOnly) {
+                                        handleLinkedClick(
+                                          e,
+                                          el,
+                                          (content as any).backLink || (content as any).link || ''
+                                        );
+                                      }
+                                    }}
                                     className="px-4 py-2 text-xs font-bold rounded-full transition-opacity hover:opacity-90 outline-none cursor-pointer"
                                     style={{ backgroundColor: backBtnBg, color: backBtnText }}
                                 >
@@ -5814,7 +6008,15 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         )}
                         <a
                             href={(content as any).ctaLink || (content.link as string) || '#'}
-                            onClick={(e) => { if (!readOnly) e.preventDefault(); }}
+                            onClick={(e) => {
+                              if (!readOnly) {
+                                handleLinkedClick(
+                                  e,
+                                  el,
+                                  (content as any).ctaLink || (content.link as string) || ''
+                                );
+                              }
+                            }}
                             className="mt-auto w-full py-3 rounded-xl font-bold text-sm transition-opacity hover:opacity-90 outline-none cursor-pointer block text-center"
                             style={{ backgroundColor: ctaBgCol, color: ctaTextCol }}
                         >
@@ -5925,7 +6127,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
         target={isExternal ? '_blank' : undefined}
         rel={isExternal ? 'noopener noreferrer' : undefined}
         className="block no-underline text-inherit"
-        onClick={(e) => { if (!readOnly) e.preventDefault(); }}
+        onClick={(e) => {
+          if (!readOnly) handleLinkedClick(e, el, rawLink);
+        }}
       >
         {node}
       </a>
@@ -5947,13 +6151,19 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
 
   // If isWrapped is false, render elements directly without wrapper (for use in custom layouts)
   if (!isWrapped) {
-    return elementsContent;
+    return (
+      <>
+        {elementsContent}
+        {renderLinkChooser()}
+      </>
+    );
   }
 
   // Default: render with wrapper div for standard sections
   return (
     <div className="max-w-6xl mx-auto px-6 py-4 relative z-10 text-left">
       {elementsContent}
+      {renderLinkChooser()}
     </div>
   );
 };

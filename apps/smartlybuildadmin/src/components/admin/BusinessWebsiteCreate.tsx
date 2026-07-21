@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import CreatableSelect from "react-select/creatable";
 import { httpFile, http } from "../../config.js";
 import { toast } from "@/hooks/use-toast";
@@ -38,10 +38,6 @@ type BusinessWebsiteCreateProps = {
   variant?: WebsiteWizardVariant;
 };
 
-function wizardStoragePrefix(variant: WebsiteWizardVariant) {
-  return variant === "bulk" ? "bulkWebsiteCreate" : "businessWebsiteCreate";
-}
-
 function servicesStepFor(variant: WebsiteWizardVariant) {
   return variant === "bulk" ? 6 : 4;
 }
@@ -62,10 +58,13 @@ import {
   ColorScheme,
   CustomColorScheme,
   buildDefaultPerLocationByPage,
+  buildInitialPageSections,
+  clearWebsiteWizardStorage,
   DEFAULT_PAGES,
   PageOption,
   PRESET_THEMES,
   SectionOption,
+  wizardStoragePrefix,
 } from "./businesswebsiteSteps/businessWebsiteConfig";
 import {
   DEFAULT_CUSTOM_COLORS,
@@ -239,6 +238,7 @@ async function rebuildHeaderFooterMenusForProject(projectId: string) {
 
 export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteCreateProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const storagePrefix = wizardStoragePrefix(variant);
   const isBulk = variant === "bulk";
   const geoPanelRef = useRef<BulkGeoLocationPanelHandle>(null);
@@ -372,13 +372,9 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
   const [selectedPages, setSelectedPages] = useState<PageOption[]>(() =>
     DEFAULT_PAGES.filter(p => p.defaultSelected)
   );
-  const [pageSections, setPageSections] = useState<Record<string, SectionOption[]>>(() => {
-    const sections: Record<string, SectionOption[]> = {};
-    DEFAULT_PAGES.forEach(page => {
-      sections[page.id] = page.sections.filter(s => s.defaultSelected);
-    });
-    return sections;
-  });
+  const [pageSections, setPageSections] = useState<Record<string, SectionOption[]>>(
+    () => buildInitialPageSections()
+  );
   const [perLocationByPage, setPerLocationByPage] = useState<Record<string, boolean>>(
     () => buildDefaultPerLocationByPage()
   );
@@ -514,6 +510,78 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
   };
 
   const selectedPresetTheme = PRESET_THEMES.find((t) => t.id === selectedTheme);
+
+  /** Reset wizard to step 1 after generation or when starting a new project. */
+  const resetWizardToFreshStart = () => {
+    clearWebsiteWizardStorage(variant);
+    localStorage.removeItem("lastCreateProjectId");
+
+    setStep(1);
+    setProjectId(null);
+    setBusinessName("");
+    setSectionImageOrigin(1);
+    setServiceType("");
+    setProjectKeywordsText("");
+    setFocusKeyword("");
+    setSelectedCategory(null);
+    setSelectedSubCategories([]);
+    setManualSubCategories([]);
+    setManualMicroCategories([]);
+    setServiceOption("");
+    setServiceNames("");
+    setExistingServiceNames([]);
+    setLocations([]);
+    setCurrentLocationInput("");
+    setLocationsWithAreas([]);
+    setEmails([{ value: "", is_primary: true }]);
+    setPhones([{ value: "", is_primary: true }]);
+    const defaultHours = defaultBusinessHours();
+    setBusinessHours(defaultHours);
+    setPresetSocialUrls(emptyPresetSocialUrls());
+    setCustomSocialLinks([]);
+    setLastSavedEmails("");
+    setLastSavedPhones("");
+    setLastSavedBusinessHours(JSON.stringify(defaultHours));
+    setLastSavedSocialLinks(stableSocialLinksPayload([]));
+    setSelectedPages(DEFAULT_PAGES.filter((p) => p.defaultSelected));
+    setPageSections(buildInitialPageSections());
+    setPerLocationByPage(buildDefaultPerLocationByPage());
+    setGeneratingDesign(false);
+    setShowDesignDialog(false);
+    setDesignReady(false);
+    setDesignPreview(null);
+    setSelectedTheme("crimson-jet");
+    setShowCustomColors(false);
+    setSelectedFont(DEFAULT_FONT_FAMILY);
+    setCustomColors({ ...DEFAULT_CUSTOM_COLORS });
+    themeStateRef.current = {
+      selectedTheme: "crimson-jet",
+      showCustomColors: false,
+      customColors: { ...DEFAULT_CUSTOM_COLORS },
+      selectedFont: DEFAULT_FONT_FAMILY,
+    };
+    userModifiedThemeRef.current = false;
+    setLoading(false);
+    setShowAIServicesReview(false);
+    setAIGeneratedServices([]);
+    setShowManualDialog(false);
+    setManualServiceText("");
+    setUploadedFile(null);
+
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  };
+
+  // Fresh create from projects list / sidebar (?projectId= means resume/edit)
+  useEffect(() => {
+    const urlProjectId = new URLSearchParams(window.location.search).get("projectId");
+    const freshStart = location.state?.isEditMode === false;
+    if (freshStart && !urlProjectId) {
+      resetWizardToFreshStart();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Legacy support - convert theme to ColorScheme format for backward compatibility
   const selectedColorScheme: ColorScheme = showCustomColors
@@ -1746,13 +1814,36 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
     }
   };
 
-  // Handle Generate Website
-  const handleGenerateWebsite = () => {
-    // TODO: Add API call to generate website
-    toast({
-      title: "Success",
-      description: "Website generation started!",
-    });
+  // Handle Generate Website — finalize wizard and reset for the next project
+  const handleGenerateWebsite = async () => {
+    let currentProjectId = projectId;
+    if (!currentProjectId) {
+      currentProjectId = localStorage.getItem(`${storagePrefix}_projectId`);
+    }
+
+    if (!currentProjectId) {
+      toast({
+        title: "Error",
+        description: "Project ID is missing. Please complete the wizard first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const completedName = businessName.trim() || "Your website";
+    setLoading(true);
+    try {
+      toast({
+        title: "Success",
+        description: isBulk
+          ? `"${completedName}" is generating. Open it anytime from Bulk Pages Websites → List.`
+          : `"${completedName}" is generating. Open it anytime from Business Websites → List.`,
+      });
+
+      resetWizardToFreshStart();
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle next step

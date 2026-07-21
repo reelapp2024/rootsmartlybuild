@@ -145,12 +145,16 @@ export function mapApiSectionToCanvas(sec: any, index: number): Section | null {
 
   const baseStyles =
     sec?.styles && typeof sec.styles === 'object' ? { ...(sec.styles as Record<string, unknown>) } : {};
+  // Prefer explicit API fields: styles.variant → top-level variant → nothing (caller may default).
   const topVariant = String(sec?.variant || '').trim();
-  if (topVariant && !(baseStyles as any).variant) {
-    (baseStyles as any).variant = topVariant;
+  const styleVariant = String((baseStyles as any).variant || '').trim();
+  const chosenVariant = styleVariant || topVariant;
+  if (chosenVariant) {
+    (baseStyles as any).variant = chosenVariant;
   }
 
   const existingVariant = String((baseStyles as any).variant || '').trim();
+  // Only fall back to Plumbing defaults when the API did not send a chosen variant.
   const fallbackVariant = DEFAULT_SECTION_VARIANTS[type] || getDefaultVariant(type as Section['type']);
   const normalizedContent = normalizeSectionContent(type, mergedContent);
 
@@ -188,9 +192,12 @@ export function hydrateSectionsForDisplay(
       const base = mapApiSectionToCanvas(sec, index);
       if (!base) return null;
       const sectionType = normalizeSectionType(base.type);
-      const fallback = variantDefaults[sectionType] || getDefaultVariant(base.type);
-      if (!String(base.styles?.variant || '').trim() && fallback) {
-        base.styles = { ...base.styles, variant: fallback };
+      const hasChosenVariant = Boolean(String(base.styles?.variant || '').trim());
+      if (!hasChosenVariant) {
+        const fallback = variantDefaults[sectionType] || getDefaultVariant(base.type);
+        if (fallback) {
+          base.styles = { ...base.styles, variant: fallback };
+        }
       }
       return base;
     })

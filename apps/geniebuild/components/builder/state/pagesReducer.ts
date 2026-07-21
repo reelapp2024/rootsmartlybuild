@@ -1,14 +1,62 @@
 import type { WebsiteData, WebsitePage, Section } from '../../../types';
 
-const GLOBAL_SECTION_TYPES: ReadonlySet<string> = new Set(['navbar', 'footer']);
+/** API uses `header`; older templates may still use `navbar`. Both are site chrome. */
+const GLOBAL_SECTION_TYPES: ReadonlySet<string> = new Set(['navbar', 'header', 'footer']);
 
 function mkPageId(): string {
   return `page-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+export function isGlobalSectionType(type: string | undefined | null): boolean {
+  return GLOBAL_SECTION_TYPES.has(String(type || '').toLowerCase().trim());
+}
+
+/**
+ * Split a flat API sections array into persistent chrome (header/navbar/footer)
+ * vs page body. GenieBuild keeps chrome in `globalSections` across page switches.
+ */
+export function splitGlobalAndPageSections(sections: Section[] | null | undefined): {
+  globalSections: Section[];
+  pageSections: Section[];
+} {
+  const headers: Section[] = [];
+  const footers: Section[] = [];
+  const otherGlobals: Section[] = [];
+  const pageSections: Section[] = [];
+
+  for (const s of sections || []) {
+    const t = String(s?.type || '').toLowerCase().trim();
+    if (t === 'header' || t === 'navbar') headers.push(s);
+    else if (t === 'footer') footers.push(s);
+    else if (isGlobalSectionType(t)) otherGlobals.push(s);
+    else pageSections.push(s);
+  }
+
+  return {
+    globalSections: [...headers, ...otherGlobals, ...footers],
+    pageSections,
+  };
+}
+
+/** Replace chrome of the same type with incoming; keep unrelated globals. */
+export function mergeGlobalChrome(
+  existing: Section[] | null | undefined,
+  incoming: Section[] | null | undefined
+): Section[] {
+  const next = Array.isArray(incoming) ? incoming : [];
+  if (!next.length) return Array.isArray(existing) ? existing : [];
+  const incomingTypes = new Set(
+    next.map((s) => String(s?.type || '').toLowerCase().trim()).filter(Boolean)
+  );
+  const kept = (existing || []).filter(
+    (s) => !incomingTypes.has(String(s?.type || '').toLowerCase().trim())
+  );
+  return splitGlobalAndPageSections([...kept, ...next]).globalSections;
+}
+
 /**
  * If siteData has no `pages` array yet, migrate the flat `sections` into a
- * single-page structure. Navbar + footer sections move to `globalSections`,
+ * single-page structure. Header/navbar + footer move to `globalSections`,
  * the rest become page 0's sections. Returns the migrated siteData.
  *
  * Idempotent: calling on already-migrated data returns it unchanged.
@@ -16,13 +64,11 @@ function mkPageId(): string {
 export function ensurePagesStructure(siteData: WebsiteData): WebsiteData {
   if (siteData.pages && siteData.pages.length > 0) return siteData;
 
-  const allSections = siteData.sections || [];
-  const globals: Section[] = [];
-  const pageSections: Section[] = [];
-  for (const s of allSections) {
-    if (GLOBAL_SECTION_TYPES.has(String(s.type).toLowerCase())) globals.push(s);
-    else pageSections.push(s);
-  }
+  const { globalSections: splitGlobals, pageSections } = splitGlobalAndPageSections(
+    siteData.sections || []
+  );
+  const globals =
+    splitGlobals.length > 0 ? splitGlobals : siteData.globalSections || [];
 
   const homePage: WebsitePage = {
     id: mkPageId(),
@@ -45,7 +91,7 @@ export function ensurePagesStructure(siteData: WebsiteData): WebsiteData {
 
   return {
     ...siteData,
-    globalSections: globals.length ? globals : siteData.globalSections,
+    globalSections: globals,
     pages: [homePage, ...dummyPages],
     currentPageId: homePage.id,
     // Keep `sections` mirrored so legacy code keeps working.

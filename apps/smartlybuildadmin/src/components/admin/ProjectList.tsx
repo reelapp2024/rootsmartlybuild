@@ -38,6 +38,7 @@ import {
   type ContentGenerationProgress,
 } from "./SectionGenerationInfoDialog";
 import socket from "../../socket.js";
+import { clearWebsiteWizardStorageForRoute } from "./businesswebsiteSteps/businessWebsiteConfig";
 
 interface ProjectListProps {
   projectType?: 0 | 1 | "all";
@@ -464,8 +465,8 @@ export function ProjectList({
           </div>
           <Button className="h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white"
             onClick={() => {
-              // Clear any existing projectId for new project
               localStorage.removeItem("lastCreateProjectId");
+              clearWebsiteWizardStorageForRoute(createRoute);
               navigate(createRoute, { state: { isEditMode: false } });
             }}>
             {React.createElement(Plus as any, { className: "h-4 w-4 mr-2" })}
@@ -707,8 +708,8 @@ export function ProjectList({
               </div>
               <Button className="bg-blue-600 hover:bg-blue-700 text-white"
                 onClick={() => {
-                  // Clear any existing projectId for new project
                   localStorage.removeItem("lastCreateProjectId");
+                  clearWebsiteWizardStorageForRoute(createRoute);
                   navigate(createRoute, { state: { isEditMode: false } });
                 }}>
                 {React.createElement(Plus as any, { className: "h-4 w-4 mr-2" })}

@@ -41,6 +41,8 @@ interface SectionRendererProps {
   onDuplicate?: (id: string) => void;
   onUpload?: (sectionId: string, field: string) => void;
   onElementSelect?: (elementId: string, element?: WebsiteElement) => void;
+  /** Builder: open linked page inside GenieBuild (Open | Select chooser). */
+  onOpenInternalLink?: (href: string) => void;
   selectedElementId?: string | null;
 }
 
@@ -224,6 +226,7 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
   onDuplicate,
   onUpload,
   onElementSelect,
+  onOpenInternalLink,
   selectedElementId
 }) => {
   const { aboutUs } = useAboutUsContact();
@@ -854,17 +857,17 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
 
   // Header sits above every other section so its dropdowns can overflow into
   // them. Other sections stay at the default stacking level.
-  const stackingClass = type === 'header' ? 'z-[100]' : '';
+  const stackingClass =
+    type === 'header' || type === 'navbar' ? 'z-[100] overflow-visible' : '';
   const containerClass = `relative group transition-all duration-300 ${stackingClass} ${bgClass} ${textClass} ${spacingClasses} ${visibilityClasses} ${userCustomClass} ${selectedClass} ${outlineClass}`.replace(/\s+/g, ' ').trim();
 
-  const formatColorClass = (prefix: string, val?: string) => {
-    if (!val) return '';
-    if (val.startsWith('#') || val.startsWith('rgb')) return `${prefix}-[${val}]`;
-    return val;
-  };
-
-  const btnBg = formatColorClass('bg', styles.buttonBackgroundColor) || 'bg-white';
-  const btnText = formatColorClass('text', styles.buttonTextColor) || 'text-black';
+  // After stripPresetThemeColorOverrides, section styles lose buttonBackgroundColor.
+  // Never fall back to Tailwind `bg-white` — that made SiteNextJS buttons white while
+  // GenieBuild still looked red (inline themeColors / unstripped styles).
+  // Bind to CSS vars so mountSiteThemeCss `--btn-bg` / `--btn-text` always win on the live site
+  // (Tailwind arbitrary hex utilities + the theme CSS `bg-[` override both resolve to the same tokens).
+  const btnBg = 'bg-[var(--btn-bg,#E11D48)]';
+  const btnText = 'text-[var(--btn-text,#FFFFFF)]';
 
   const buttonBase = `${btnBg} ${btnText} px-6 py-2 transition-all hover:opacity-90 active:scale-95 shadow-lg shadow-current/20`;
   
@@ -1060,6 +1063,7 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
         onUpload={onUpload}
         onElementUpdate={handleElementUpdate}
         onElementSelect={onElementSelect}
+        onOpenInternalLink={onOpenInternalLink}
         selectedElementId={selectedElementId}
         buttonClass={buttonClass}
         isSelected={isSelected}

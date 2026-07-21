@@ -215,7 +215,7 @@ export const HeaderPlumbing: React.FC<Props> = ({
           )}
         </div>
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-visible relative z-[110]">
           <ElementsSection section={{ ...section, elements: [navEl] }} {...passthrough} />
         </div>
 

@@ -1555,7 +1555,7 @@ function sanitizePageStyles(value = {}) {
 function compactSectionStyleOverrides(style = {}, theme = {}) {
     const raw = compactOverrideObject(style || {}) || {};
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-    if (Object.prototype.hasOwnProperty.call(raw, "variant")) delete raw.variant;
+    // Keep styles.variant — SiteNextJS / GenieBuild must render the chosen layout.
 
     const defaults = {
         backgroundColor: theme?.colorSecondary || "#0E1214",
@@ -2095,9 +2095,41 @@ function pickPersistableServicesSectionContent(rawSectionType, sectionContent = 
     return {};
 }
 
-function toResolvedSectionShape(sectionData = {}, fallbackId = "") {
+/**
+ * Resolve GenieBuild layout variant for live SiteNextJS / API responses.
+ * Prefer sectionData.styles.variant (user-chosen in builder), then componentIds.variant_uniqueId.
+ */
+function resolveChosenSectionVariant(sectionData = {}, compData = {}) {
+    const fromStyles = String(sectionData?.styles?.variant || "").trim();
+    if (fromStyles) return fromStyles;
+
+    const fromTop = String(sectionData?.variant || "").trim();
+    if (fromTop) return fromTop;
+
+    const fromComp = String(
+        compData?.variant_uniqueId || compData?.uniqueId || ""
+    ).trim();
+    if (!fromComp) return "";
+
+    // Legacy mangled ids like "heroHeroCenter" → try to recover PascalCase file name.
+    const type = String(sectionData?.type || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    if (type && fromComp.toLowerCase().startsWith(type) && fromComp.length > type.length) {
+        const rest = fromComp.slice(type.length);
+        if (rest) return rest.charAt(0).toUpperCase() + rest.slice(1);
+    }
+    return fromComp;
+}
+
+function toResolvedSectionShape(sectionData = {}, fallbackId = "", compData = null) {
     const type = normalizeSectionTypeForClient(String(sectionData?.type || "").trim().toLowerCase());
-    const styles = sectionData?.styles && typeof sectionData.styles === "object" ? sectionData.styles : {};
+    const baseStyles =
+        sectionData?.styles && typeof sectionData.styles === "object" ? { ...sectionData.styles } : {};
+    const chosenVariant = resolveChosenSectionVariant(sectionData, compData || {});
+    if (chosenVariant) {
+        baseStyles.variant = chosenVariant;
+    }
     const elements = Array.isArray(sectionData?.elements) ? sectionData.elements : [];
     const elementsById = {};
     const layout = [];
@@ -2114,9 +2146,9 @@ function toResolvedSectionShape(sectionData = {}, fallbackId = "") {
     return {
         id: String(sectionData?.id || fallbackId || `${type}-${Date.now()}`),
         type,
-        variant: String(styles?.variant || ""),
+        variant: String(baseStyles?.variant || chosenVariant || ""),
         status: String(sectionData?.status || "ready"),
-        styles,
+        styles: baseStyles,
         data: canonicalizeSectionContent(sectionData?.content || {}),
         layout,
         elementsById,
@@ -8133,8 +8165,14 @@ Example format:
                                 }
                             } else if (compData && compData.variant_uniqueId) {
                                 // GENIEBUILD FORMAT: variant_uniqueId, componentId, sectionData
-                                uniqueId = compData.variant_uniqueId.toLowerCase().trim();
                                 sectionData = compData.sectionData || null;
+                                // Prefer the live styles.variant (user-chosen in GenieBuild) over a stale uniqueId.
+                                const liveVariant = String(
+                                    sectionData?.styles?.variant ||
+                                        compData.variant_uniqueId ||
+                                        ""
+                                ).trim();
+                                uniqueId = liveVariant.toLowerCase().trim();
 
                                 if (compData.componentId) {
                                     const compIdValue = compData.componentId;
@@ -8411,11 +8449,19 @@ Example format:
 
                                 componentObj.sectionData = {
                                     type: rawSectionType || sectionData?.type,
-                                    styles: compactSectionStyleOverrides(sectionData?.styles || {}, {
-                                        colorPrimary,
-                                        colorSecondary,
-                                        colorAccent
-                                    }) || {},
+                                    styles: (() => {
+                                        const styles =
+                                            compactSectionStyleOverrides(sectionData?.styles || {}, {
+                                                colorPrimary,
+                                                colorSecondary,
+                                                colorAccent
+                                            }) || {};
+                                        const chosen =
+                                            String(styles.variant || sectionData?.styles?.variant || "").trim() ||
+                                            String(compData?.variant_uniqueId || uniqueId || "").trim();
+                                        if (chosen) styles.variant = chosen;
+                                        return styles;
+                                    })(),
                                     elements: compactElementRecords(sectionData?.elements || []),
                                     content: pickPersistableServicesSectionContent(rawSectionType, sectionContent),
                                     contentRef: buildContentRef({
@@ -9359,14 +9405,26 @@ Example format:
                         resolvedContent,
                         sectionData
                     );
+                    const chosenVariant = resolveChosenSectionVariant(sectionData, compData);
+                    const mergedStyles = {
+                        ...(sectionData?.styles && typeof sectionData.styles === "object"
+                            ? sectionData.styles
+                            : {}),
+                        ...(chosenVariant ? { variant: chosenVariant } : {}),
+                    };
                     const mergedSectionData = {
                         ...sectionData,
                         id: sectionId,
                         type: sectionType,
                         content: mergedContent,
+                        styles: mergedStyles,
                         status: pickedDoc?.status === "generated" ? "ready" : "generating"
                     };
-                    return toResolvedSectionShape(mergedSectionData, `${sectionType}-${index + 1}`);
+                    return toResolvedSectionShape(
+                        mergedSectionData,
+                        `${sectionType}-${index + 1}`,
+                        compData
+                    );
                 })
                 .filter(Boolean);
 

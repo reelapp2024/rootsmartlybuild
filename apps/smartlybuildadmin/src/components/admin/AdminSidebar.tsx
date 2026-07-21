@@ -46,11 +46,26 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { http } from "../../config.js";
 import { GoogleSiteVerificationDialog } from "./GoogleSiteVerificationDialog";
+import { clearWebsiteWizardStorageForRoute } from "./businesswebsiteSteps/businessWebsiteConfig";
 
 interface AdminSidebarProps {
   activeSection: string;
   setActiveSection: (section: string) => void;
   onCollapseChange?: (isCollapsed: boolean) => void;
+}
+
+const CREATE_WIZARD_ROUTES = new Set([
+  "/admin/bulk-pages-websites/create",
+  "/admin/business-website/create",
+]);
+
+function navigateToCreateWizard(
+  route: string,
+  navigate: (path: string, options?: { state?: { isEditMode: boolean } }) => void
+) {
+  localStorage.removeItem("lastCreateProjectId");
+  clearWebsiteWizardStorageForRoute(route);
+  navigate(route, { state: { isEditMode: false } });
 }
 
 const getBaseSidebarItems = () => [
@@ -516,7 +531,11 @@ export function AdminSidebar({ activeSection, setActiveSection, onCollapseChange
                   href={item.route}
                   onClick={(e) => {
                     e.preventDefault();
-                    navigate(item.route);
+                    if (CREATE_WIZARD_ROUTES.has(item.route)) {
+                      navigateToCreateWizard(item.route, navigate);
+                    } else {
+                      navigate(item.route);
+                    }
                     setActiveSection(item.id);
                   }}
                   className={cn(
@@ -549,7 +568,11 @@ export function AdminSidebar({ activeSection, setActiveSection, onCollapseChange
                       const htmlFileName = projectData?.googleSiteVerificationHtmlFile || "";
                       handleGoogleSiteVerification(projectId, projectName, verificationCode, htmlFileName);
                     } else if (item.route) {
-                      navigate(item.route);
+                      if (CREATE_WIZARD_ROUTES.has(item.route)) {
+                        navigateToCreateWizard(item.route, navigate);
+                      } else {
+                        navigate(item.route);
+                      }
                       setActiveSection(item.id);
                     } else {
                       setActiveSection(item.id);
@@ -608,7 +631,11 @@ export function AdminSidebar({ activeSection, setActiveSection, onCollapseChange
                           href={subItem.route}
                           onClick={(e) => {
                             e.preventDefault();
-                            navigate(subItem.route);
+                            if (CREATE_WIZARD_ROUTES.has(subItem.route)) {
+                              navigateToCreateWizard(subItem.route, navigate);
+                            } else {
+                              navigate(subItem.route);
+                            }
                             setActiveSection(subItem.id);
                           }}
                           className={cn(
