@@ -7,6 +7,7 @@ const testing = require("../controller/Testing")
 const skpkVerify = require("../middlewares/skpkVerify")
 const authentication = require('../middlewares/jwtauth')
 const ReviewsController=require("../controller/ReviewsController");
+const AiblogsControllerV2 = require("../controller/AiblogsControllerV2");
 const DomainController = require('../controller/DomainController');
 const CategoriesController = require('../controller/CategoriesController');
 const DynamicFormController = require("../controller/DynamicFormController");
@@ -77,9 +78,15 @@ router.post('/fetchSubCategories', CategoriesController.fetchSubCategories);
 router.post('/fetchMicroCategories', CategoriesController.fetchMicroCategories);
 
 
-router.post("/add_fake_reviews",authentication, ReviewsController.add_fake_reviews); // ✅ new one
+router.post("/add_fake_reviews",authentication, ReviewsController.add_fake_reviews); // ✅ Redis queue
+router.post("/fake_reviews_generation_progress", authentication, ReviewsController.fake_reviews_generation_progress);
 router.post("/approve_review", ReviewsController.approve_review); // pass reviewId + status in body
 router.post("/fetch_my_reviews",authentication, ReviewsController.fetch_my_reviews);
+/** Public-style review submit/list (also used by live blog comments section) */
+router.post("/add_review", ReviewsController.add_review);
+router.post("/get_reviews", ReviewsController.get_reviews);
+router.post("/edit_review", ReviewsController.edit_review);
+router.post("/delete_review", ReviewsController.delete_review);
 
 
 
@@ -406,6 +413,13 @@ router.get("/listBlogs", authentication, BlogsController.list_blogs);
 // Public published blogs for live site / GenieBuild blogs page (paginated)
 router.get("/listPublishedBlogs", BlogsController.list_published_blogs);
 router.post("/listPublishedBlogs", BlogsController.list_published_blogs);
+// Public single published blog — GenieBuild section-shaped payload (hero/content/author/related/comments)
+router.get("/getPublishedBlog", BlogsController.get_published_blog);
+router.post("/getPublishedBlog", BlogsController.get_published_blog);
+router.get("/get_blog_by_slug", BlogsController.get_blog_by_slug);
+router.post("/get_blog_by_slug", BlogsController.get_blog_by_slug);
+router.get("/get_blog_author", BlogsController.get_blog_author);
+router.post("/get_blog_author", BlogsController.get_blog_author);
 router.post("/related_blogs", BlogsController.related_blogs);
 
 // Like & Unlike
@@ -417,7 +431,10 @@ router.post("/viewBlog", authentication, BlogsController.increment_views);
 
 // Change blog status (draft/published/archived)
 router.post("/setBlogStatus", authentication, BlogsController.set_blog_status);
-router.post("/create_ai_blog", authentication, BlogsController.create_ai_blog);
+// AI blogs V2 — content-only generation (create-post-ai Finish)
+router.post("/create_ai_blog", authentication, AiblogsControllerV2.create_ai_blog);
+router.post("/ai_blog_job_status", authentication, AiblogsControllerV2.ai_blog_job_status);
+router.post("/ai_blog_generation_progress", authentication, AiblogsControllerV2.ai_blog_generation_progress);
 router.post("/fetch_and_save_images", BlogsController.fetch_and_save_images);
 
 

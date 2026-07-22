@@ -166,6 +166,107 @@ export function buildHeadingHighlightSpanStyle(
     .join('; ');
 }
 
+/** Last-word highlight model used by GenieBuild headings + sidebar. */
+export type HeadingHighlightParts = {
+  text: string;
+  textBefore: string;
+  highlightedText: string;
+  textAfter: string;
+  /** True right after Space — completed words moved to textBefore, highlight is empty for the next word. */
+  awaitingNextWord: boolean;
+};
+
+const ZWSP = '\u200b';
+
+export function plainTextFromHtml(rawHtml: string, opts?: { trim?: boolean }): string {
+  const raw = String(rawHtml || '');
+  let text = '';
+  if (typeof document !== 'undefined') {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = raw;
+    text = tmp.textContent || tmp.innerText || '';
+  } else {
+    text = raw.replace(/<[^>]*>/g, ' ');
+  }
+  // Drop caret placeholders; collapse internal whitespace but optionally keep a trailing space.
+  text = text.replace(new RegExp(ZWSP, 'g'), '').replace(/\u00a0/g, ' ');
+  const endsWithSpace = /\s$/.test(text);
+  text = text.replace(/\s+/g, ' ');
+  if (opts?.trim === false) {
+    text = text.replace(/^\s+/, '');
+    if (endsWithSpace && text.length > 0 && !/\s$/.test(text)) text += ' ';
+    else if (endsWithSpace && text.length === 0) text = ' ';
+    return text;
+  }
+  return text.trim();
+}
+
+/**
+ * Canonical split for live heading editing:
+ * - Mid-word: last word → highlighted, earlier words → textBefore
+ * - After Space: all completed words → textBefore, highlighted empty (ready for next word)
+ */
+export function splitHeadingToHighlightParts(plainOrHtml: string): HeadingHighlightParts {
+  const withTrail = plainTextFromHtml(plainOrHtml, { trim: false });
+  const awaitingNextWord = /\s$/.test(withTrail);
+  const plainText = withTrail.trim();
+  const words = plainText.split(' ').filter(Boolean);
+
+  if (awaitingNextWord) {
+    return {
+      text: plainText,
+      textBefore: words.join(' '),
+      highlightedText: '',
+      textAfter: '',
+      awaitingNextWord: true,
+    };
+  }
+
+  return {
+    text: words.join(' '),
+    textBefore: words.length > 1 ? words.slice(0, -1).join(' ') : '',
+    highlightedText: words.length > 0 ? words[words.length - 1] : '',
+    textAfter: '',
+    awaitingNextWord: false,
+  };
+}
+
+/** Finish the current word (Space): everything → textBefore, empty highlight for the next word. */
+export function finishHeadingWord(plainOrHtml: string): HeadingHighlightParts {
+  const plainText = plainTextFromHtml(plainOrHtml, { trim: true });
+  const words = plainText.split(' ').filter(Boolean);
+  return {
+    text: words.join(' '),
+    textBefore: words.join(' '),
+    highlightedText: '',
+    textAfter: '',
+    awaitingNextWord: true,
+  };
+}
+
+function escapeHeadingHtml(text: string): string {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Build contentEditable HTML that matches the sidebar highlight fields. */
+export function buildHeadingEditableHtml(
+  parts: HeadingHighlightParts,
+  highlightSpanStyle: string
+): string {
+  const before = escapeHeadingHtml(parts.textBefore).trim();
+  const hiRaw = String(parts.highlightedText || '').replace(new RegExp(ZWSP, 'g'), '');
+  const hi = escapeHeadingHtml(hiRaw);
+  const after = escapeHeadingHtml(parts.textAfter).trim();
+  const styleAttr = String(highlightSpanStyle || '').replace(/"/g, '&quot;');
+  // Always keep a highlight <span> so Space can park the caret inside it for the next word.
+  const spanInner = hi || ZWSP;
+  return `${before ? `${before} ` : ''}<span style="${styleAttr}">${spanInner}</span>${after ? ` ${after}` : ''}`;
+}
+
 export function parseFontSizeToRem(value: string): number {
   const match = String(value || '').trim().match(/^([\d.]+)(rem|px|em)?$/);
   if (!match) return 2;

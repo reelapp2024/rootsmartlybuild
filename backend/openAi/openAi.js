@@ -62,7 +62,7 @@ const getResponseFromOpenAI = async (prompt, model = 'gpt-3.5-turbo') => {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json'
       },
-      timeout: 60000,
+      timeout: 90000,
     }
   );
 

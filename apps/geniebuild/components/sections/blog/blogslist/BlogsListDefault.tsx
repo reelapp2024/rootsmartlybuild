@@ -6,11 +6,13 @@ import { motion } from 'motion/react';
 import { getProjectIdFromUrl } from '../../../../lib/aboutUsApi';
 import {
   BLOGS_FILTER_EVENT,
+  emitBlogsCategories,
   fetchPublishedBlogs,
   type BlogsFilterDetail,
   type PublishedBlogItem,
 } from '../../../../lib/blogsApi';
-import { toAbsoluteMediaUrl } from '../../../../config';
+import { toAbsoluteMediaUrl, extractMediaUrl } from '../../../../config';
+import { getDemoBlogListItems } from '../../../../demoBlogs';
 
 interface Props {
   section: Section;
@@ -24,20 +26,29 @@ interface Props {
   projectId?: string;
 }
 
-const DEFAULT_POSTS: PublishedBlogItem[] = [
-  { img: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&q=80', category: 'Tips & Guides', title: '10 Signs You Need a Professional Right Away', excerpt: 'Spot the early warning signs before a small issue becomes an expensive emergency.', date: 'Jun 12, 2025', read: '5 min read', link: '#' },
-  { img: 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=800&q=80', category: 'How-To', title: 'A Simple Maintenance Checklist for Every Season', excerpt: 'Keep everything running smoothly year-round with these easy, proven steps.', date: 'Jun 08, 2025', read: '7 min read', link: '#' },
-  { img: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=800&q=80', category: 'Industry News', title: 'What the Latest Standards Mean for Your Home', excerpt: 'New regulations are changing the game — here is what you should know today.', date: 'May 30, 2025', read: '4 min read', link: '#' },
-  { img: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&q=80', category: 'Tips & Guides', title: 'How to Choose the Right Service Provider', excerpt: 'Not all providers are equal. Learn the questions that separate the best from the rest.', date: 'May 22, 2025', read: '6 min read', link: '#' },
-  { img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80', category: 'Community', title: 'Behind the Scenes: A Day With Our Team', excerpt: 'Meet the people who make it happen and see how we deliver on our promise.', date: 'May 15, 2025', read: '3 min read', link: '#' },
-  { img: 'https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=800&q=80', category: 'How-To', title: 'Budgeting for Your Next Big Project', excerpt: 'Plan ahead and avoid surprises with this practical guide to pricing and value.', date: 'May 09, 2025', read: '8 min read', link: '#' },
-];
+const DEFAULT_POSTS: PublishedBlogItem[] = getDemoBlogListItems().map((p) => ({
+  id: p.id,
+  slug: p.slug,
+  link: p.link,
+  title: p.title,
+  excerpt: p.excerpt,
+  category: p.category,
+  date: p.date,
+  read: p.read,
+  img: p.img,
+}));
 
 const PAGE_SIZE = 9;
 
 function normalizePost(it: any, i: number): PublishedBlogItem {
   const fallback = DEFAULT_POSTS[i % DEFAULT_POSTS.length];
-  const imgRaw = it?.img || it?.image || it?.imageUrl || it?.coverImage?.url || it?.coverImage || '';
+  const imgRaw =
+    extractMediaUrl(it?.img) ||
+    extractMediaUrl(it?.image) ||
+    extractMediaUrl(it?.imageUrl) ||
+    extractMediaUrl(it?.coverImage) ||
+    extractMediaUrl(it?.coverImage?.url) ||
+    '';
   const slug = String(it?.slug || '').trim();
   return {
     id: it?.id || it?.blogId || slug || String(i),
@@ -49,14 +60,16 @@ function normalizePost(it: any, i: number): PublishedBlogItem {
     category: it?.category || it?.type || fallback.category,
     date: it?.date || fallback.date,
     read: it?.read || it?.readTime || fallback.read,
-    img: toAbsoluteMediaUrl(String(imgRaw || fallback.img || '')),
+    img: toAbsoluteMediaUrl(imgRaw || fallback.img || ''),
     authorName: it?.authorName || '',
   };
 }
 
 /**
  * BlogsListDefault — live Blog collection when projectId is present; dummy cards
- * only in standalone builder demo. Empty API → "No blogs found" + pagination.
+ * only in standalone / DEMOMODE. Seeded `content.items` always win over a stale
+ * localStorage projectId (SiteNextJS demo clears the prop but URL helpers still
+ * resolve a stored id and would otherwise hit an empty live API).
  */
 export const BlogsListDefault: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
@@ -64,8 +77,20 @@ export const BlogsListDefault: React.FC<Props> = ({
 }) => {
   const { content, styles } = section;
   const s = styles as any;
-  const projectId = String(projectIdProp || getProjectIdFromUrl() || '').trim();
-  const useLiveApi = Boolean(projectId);
+
+  const contentItems = useMemo(() => {
+    if (!Array.isArray(content?.items) || !content.items.length) return [];
+    return content.items.map((it: any, i: number) => normalizePost(it, i));
+  }, [content?.items]);
+
+  const isPublicDemo = ['true', '1', 'yes', 'on'].includes(
+    String(process.env.NEXT_PUBLIC_DEMOMODE || '').trim().toLowerCase()
+  );
+  const projectId = String(
+    projectIdProp || (contentItems.length || isPublicDemo ? '' : getProjectIdFromUrl()) || ''
+  ).trim();
+  // Prefer seeded demo/list content over live API when present.
+  const useLiveApi = Boolean(projectId) && contentItems.length === 0 && !isPublicDemo;
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -107,16 +132,22 @@ export const BlogsListDefault: React.FC<Props> = ({
     ...(isCssValue(padB) ? { paddingBottom: padB } : {}),
   };
 
-  const contentItems = useMemo(() => {
-    if (!Array.isArray(content?.items) || !content.items.length) return [];
-    return content.items.map((it: any, i: number) => normalizePost(it, i));
-  }, [content?.items]);
-
   const loadBlogs = useCallback(async () => {
     if (!useLiveApi) {
-      setItems(contentItems.length ? contentItems : DEFAULT_POSTS);
-      setTotal(contentItems.length || DEFAULT_POSTS.length);
+      const source = contentItems.length ? contentItems : DEFAULT_POSTS;
+      const q = search.trim().toLowerCase();
+      const filtered = source.filter((p) => {
+        const matchesType =
+          !type || type === 'All' || String(p.category || '').toLowerCase() === type.toLowerCase();
+        if (!matchesType) return false;
+        if (!q) return true;
+        const hay = `${p.title || ''} ${p.excerpt || ''} ${p.category || ''}`.toLowerCase();
+        return hay.includes(q);
+      });
+      setItems(filtered);
+      setTotal(filtered.length);
       setPages(1);
+      setEmptyMessage('No blogs found');
       setLoading(false);
       return;
     }
@@ -134,6 +165,9 @@ export const BlogsListDefault: React.FC<Props> = ({
       setTotal(Number(res.total || 0));
       setPages(Math.max(1, Number(res.pages || 1)));
       setEmptyMessage(res.emptyStateMessage || 'No blogs found');
+      if (Array.isArray(res.categories) && res.categories.length) {
+        emitBlogsCategories(res.categories);
+      }
     } finally {
       setLoading(false);
     }

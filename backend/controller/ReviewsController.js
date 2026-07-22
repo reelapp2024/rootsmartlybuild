@@ -4,7 +4,6 @@ const User = require('../models/users');
 const Blog = require('../models/blogs');
 const Notification = require('../models/notification');
 const helper = require("../additional/addon");
-const { fetchJSONFromOpenAI } = require("../additional/openaiHelpers");
 
 module.exports = {
     // Add Review
@@ -82,128 +81,148 @@ module.exports = {
             if (!userId) return res.status(401).json({ message: "Unauthorized: user missing" });
 
             const { blogId, count, exampleNames } = req.body;
+            const fakeReviewsQueue = require("../queue/fakeReviewsQueue");
+            const {
+                startBatch,
+                getDefaultParallelWorkers,
+                getChunkSize,
+            } = require("../services/fakeReviewsGenerationProgress");
 
             if (!blogId || !mongoose.isValidObjectId(blogId)) {
                 return res.status(400).json({ message: "Valid blogId is required" });
             }
-            if (!count || isNaN(count) || count < 1) {
-                return res.status(400).json({ message: "count must be a positive number" });
+            const totalCount = Math.min(50, Math.max(1, parseInt(count, 10) || 0));
+            if (!totalCount) {
+                return res.status(400).json({ message: "count must be a positive number (1–50)" });
             }
 
             // --- Normalize exampleNames ---
             let namesArr = [];
             if (Array.isArray(exampleNames)) {
-                namesArr = exampleNames.map(n => String(n).trim()).filter(Boolean);
+                namesArr = exampleNames.map((n) => String(n).trim()).filter(Boolean);
             } else if (typeof exampleNames === "string") {
                 try {
-                    // try parsing JSON string
                     const parsed = JSON.parse(exampleNames);
                     if (Array.isArray(parsed)) {
-                        namesArr = parsed.map(n => String(n).trim()).filter(Boolean);
+                        namesArr = parsed.map((n) => String(n).trim()).filter(Boolean);
                     } else {
-                        namesArr = exampleNames.split(",").map(n => n.trim()).filter(Boolean);
+                        namesArr = exampleNames.split(",").map((n) => n.trim()).filter(Boolean);
                     }
                 } catch {
-                    namesArr = exampleNames.split(",").map(n => n.trim()).filter(Boolean);
+                    namesArr = exampleNames.split(",").map((n) => n.trim()).filter(Boolean);
                 }
             }
-
-            // if still empty, fallback
             if (namesArr.length === 0) {
-                namesArr = ["Rahul", "Rajat", "Priya", "Ankit", "Sneha"]; // fallback seeds
+                namesArr = ["Rahul", "Rajat", "Priya", "Ankit", "Sneha"];
             }
 
-            const blog = await Blog.findById(blogId);
+            const blog = await Blog.findById(blogId).select("_id title projectId userId").lean();
             if (!blog) return res.status(404).json({ message: "Blog not found" });
+            if (String(blog.userId) !== String(userId)) {
+                return res.status(403).json({ message: "You do not own this blog" });
+            }
 
-            const projectId = blog.projectId;
-            const pageId = `blogreviews_${blogId}`;
-            const projectName = "BlogReviews";
-            const title = blog.title;
-            const key = "blog_reviews";
+            const projectId = blog.projectId ? String(blog.projectId) : "";
+            const title = String(blog.title || "Blog").trim();
+            const workers = getDefaultParallelWorkers();
+            const chunkSize = getChunkSize();
 
-            const strictPrompt = (needed) => `
-            Generate exactly ${needed} natural-looking product reviews for the blog titled "${title}".
+            // Split into parallel Redis jobs (each job generates `chunkSize` reviews)
+            const chunks = [];
+            let remaining = totalCount;
+            let chunkIndex = 0;
+            while (remaining > 0) {
+                const size = Math.min(chunkSize, remaining);
+                chunks.push({ size, chunkIndex });
+                remaining -= size;
+                chunkIndex += 1;
+            }
 
-            RULES (strict):
-            - Reviews must directly mention or feel contextually relevant to the blog topic: "${title}".
-            - Use ONLY these names if possible: ${namesArr.join(", ")}. 
-            - If more names are needed, generate realistic human names (avoid placeholders).
-            - Each review must strictly follow schema: { fullName, email, rating (1-5), reviewText, image? }.
-            - fullName must be unique per review.
-            - email must be realistic, lowercase, and match the fullName (e.g., rahul@example.com).
-            - rating must be an integer between 1–5.
-            - reviewText must be 1–3 sentences, human-like, and show that the reviewer read the blog "${title}".
-            - image: realistic avatar URL or null.
-            - Return ONLY a JSON array with ${needed} objects, nothing else.`;
+            console.log(
+                `[add_fake_reviews] queueing ${totalCount} review(s) → ${chunks.length} job(s) · workers=${workers} · chunk=${chunkSize} blog=${blogId}`
+            );
 
-
-            let allReviews = [];
-            let missing = count;
-            let attempts = 0;
-
-            while (missing > 0 && attempts < 3) {
-                attempts++;
-
-                const reviews = await fetchJSONFromOpenAI(strictPrompt(missing), "getreviewsfake", {
-                    userId,
+            const jobs = [];
+            for (const ch of chunks) {
+                const job = await fakeReviewsQueue.add({
+                    userId: String(userId),
+                    blogId: String(blogId),
                     projectId,
-                    pageId,
-                    promptFrom: "aiblogsQueue",
-                    promptFor: `${projectName}::${title}::${key}`,
-                    disableMemory: true,
-                    noFewShot: true,
-                    newThread: true,
+                    title,
+                    exampleNames: namesArr,
+                    chunkSize: ch.size,
+                    chunkIndex: ch.chunkIndex,
+                    version: 1,
                 });
-
-                if (Array.isArray(reviews)) {
-                    allReviews = allReviews.concat(reviews);
-                    if (allReviews.length > count) {
-                        allReviews = allReviews.slice(0, count);
-                    }
-                    missing = count - allReviews.length;
-                }
+                jobs.push(job);
             }
 
-            if (allReviews.length < count) {
-                return res.status(500).json({
-                    message: `Could not generate required ${count} reviews, only got ${allReviews.length}`
-                });
-            }
+            const jobIds = jobs.map((j) => String(j.id));
+            const progress = startBatch(String(blogId), {
+                userId: String(userId),
+                projectId,
+                blogTitle: title,
+                total: totalCount,
+                parallelWorkers: workers,
+                jobIds,
+                message: `Queued ${totalCount} review(s) · ${chunks.length} parallel job(s) · ${workers} workers`,
+            });
 
-            const savedReviews = [];
-            for (const r of allReviews) {
-                let user = await User.findOne({ email: r.email });
-                if (!user) {
-                    user = new User({
-                        fullName: r.fullName,
-                        email: r.email,
-                        type: 2,
-                        image: r.image || null,
-                        emailVerified: true,
-                        phone: null
-                    });
-                    await user.save();
-                }
-
-                const review = new Review({
-                    user: user._id,
-                    blog: blogId,
-                    rating: r.rating,
-                    reviewText: r.reviewText,
-                    image: r.image || null,
-                    verified: true,
-                    status: 1
-                });
-
-                await review.save();
-                savedReviews.push(review);
-            }
-
-            return helper.sendSuccess(res, 201, "Fake reviews generated successfully", savedReviews);
+            return res.status(202).json({
+                message: "Fake review generation queued",
+                success: true,
+                count: totalCount,
+                jobs: chunks.length,
+                jobIds,
+                parallelWorkers: workers,
+                chunkSize,
+                progress,
+            });
         } catch (err) {
-            console.error(err);
-            return helper.sendError(res, 500, err);
+            console.error("[add_fake_reviews]", err);
+            return helper.sendError(res, 500, err?.message || err);
+        }
+    },
+
+    /**
+     * POST /fake_reviews_generation_progress
+     * Body: { blogId }
+     */
+    fake_reviews_generation_progress: async (req, res) => {
+        try {
+            const userId = req.user && req.user.userId;
+            if (!userId) return res.status(401).json({ message: "Unauthorized: user missing" });
+
+            const blogId = String(req.body?.blogId || "").trim();
+            if (!blogId || !mongoose.isValidObjectId(blogId)) {
+                return res.status(400).json({ message: "valid blogId is required" });
+            }
+
+            const blog = await Blog.findOne({ _id: blogId, userId })
+                .select("_id")
+                .lean();
+            if (!blog) {
+                return res.status(404).json({ message: "Blog not found" });
+            }
+
+            const fakeReviewsQueue = require("../queue/fakeReviewsQueue");
+            const { reconcileWithQueue } = require("../services/fakeReviewsGenerationProgress");
+            const data = await reconcileWithQueue(blogId, fakeReviewsQueue);
+
+            return res.status(200).json({
+                message: "OK",
+                data: data
+                    ? {
+                          ...data,
+                          recentEvents: Array.isArray(data.recentEvents)
+                              ? data.recentEvents.slice(0, 10)
+                              : [],
+                      }
+                    : null,
+            });
+        } catch (err) {
+            console.error("[fake_reviews_generation_progress]", err);
+            return helper.sendError(res, 500, err?.message || err);
         }
     },
 

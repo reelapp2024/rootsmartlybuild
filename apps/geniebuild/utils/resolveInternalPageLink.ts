@@ -9,6 +9,37 @@ export type PageLinkCandidate = {
   name?: string | null;
 };
 
+/** True when href can navigate (not empty / hash-only). */
+export function hasUsableHref(href?: string | null): boolean {
+  const raw = String(href || '').trim();
+  return !!raw && raw !== '#';
+}
+
+/**
+ * Builder/preview: never open internal site paths in a new tab.
+ * External http(s) only when the author explicitly opted in.
+ */
+export function shouldOpenHrefInNewTab(
+  href: string,
+  openInNewTab?: boolean | null
+): boolean {
+  const raw = String(href || '').trim();
+  if (!hasUsableHref(raw)) return false;
+  if (/^(mailto:|tel:|javascript:)/i.test(raw)) return false;
+  if (normalizeInternalPath(raw)) return false;
+  // Absolute external URL
+  if (/^(https?:)?\/\//i.test(raw)) return openInNewTab === true;
+  return false;
+}
+
+export function resolveAnchorTargetRel(
+  href: string,
+  openInNewTab?: boolean | null
+): { target?: '_blank'; rel?: string } {
+  if (!shouldOpenHrefInNewTab(href, openInNewTab)) return {};
+  return { target: '_blank', rel: 'noopener noreferrer' };
+}
+
 export function normalizeInternalPath(href: string): string | null {
   const raw = String(href || '').trim();
   if (!raw || raw === '#') return null;
@@ -94,4 +125,17 @@ export function findPageIdByHref(
 export function isExternalOrSpecialHref(href: string): boolean {
   const raw = String(href || '').trim();
   return /^(https?:)?\/\//i.test(raw) || /^(mailto:|tel:)/i.test(raw);
+}
+
+/** True absolute external URL (different origin) — not a GenieBuild soft-nav target. */
+export function isTrueExternalHref(href: string): boolean {
+  const raw = String(href || '').trim();
+  if (!/^(https?:)?\/\//i.test(raw)) return false;
+  try {
+    if (typeof window === 'undefined') return true;
+    const url = new URL(raw.startsWith('//') ? `https:${raw}` : raw);
+    return url.origin !== window.location.origin;
+  } catch {
+    return true;
+  }
 }

@@ -24,6 +24,10 @@ const mongoose = require('mongoose');
 require('./crons/scheduler');
 // Section AI worker (Bull) — must share Redis with only THIS backend checkout
 require('./queue/sectionGeneration.queue');
+// AI blogs worker (Bull) — rich content-only generation + socket progress
+require('./queue/aiblogsQueue');
+// Fake reviews worker (Bull) — parallel AI review generation for admin
+require('./queue/fakeReviewsQueue');
 const { checkRuntimeHealth, printRuntimeHealthBanner } = require('./config/runtimeHealth');
 const socketIo = require('socket.io');
 const server = http.createServer(app);
@@ -36,6 +40,18 @@ try {
   setSectionGenerationIo(io);
 } catch (err) {
   console.warn('[sectionGenerationProgress] io wire failed:', err?.message || err);
+}
+try {
+  const { setAiBlogGenerationIo } = require('./services/aiBlogGenerationProgress');
+  setAiBlogGenerationIo(io);
+} catch (err) {
+  console.warn('[aiBlogGenerationProgress] io wire failed:', err?.message || err);
+}
+try {
+  const { setFakeReviewsGenerationIo } = require('./services/fakeReviewsGenerationProgress');
+  setFakeReviewsGenerationIo(io);
+} catch (err) {
+  console.warn('[fakeReviewsGenerationProgress] io wire failed:', err?.message || err);
 }
 
 io.on('connection', (socket) => {

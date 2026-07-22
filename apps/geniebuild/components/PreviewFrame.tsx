@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PRESET_FONTS, buildGoogleFontsCssUrl } from '../constants';
-import { normalizeInternalPath } from '../utils/resolveInternalPageLink';
+import { isTrueExternalHref } from '../utils/resolveInternalPageLink';
 
 interface PreviewFrameProps {
   children: React.ReactNode;
@@ -298,44 +298,65 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
     return () => observer.disconnect();
   }, [mountNode]);
 
-  // Mirror SiteNextJS GenieBuildPageRenderer: intercept internal <a> clicks inside
-  // the iframe so navigation stays in the builder under the stored projectId.
-  // Bubble phase + defaultPrevented check → edit-mode LinkClickChooser still wins.
+  // Never let the builder iframe navigate — that looks like a full page refresh.
+  // Capture: preventDefault on every navigable <a>.
+  // Bubble: soft-open unless an editable linked element owns the click (chooser).
   useEffect(() => {
     if (!mountNode) return;
 
-    const onClick = (event: MouseEvent) => {
+    const getAnchor = (event: MouseEvent): HTMLAnchorElement | null => {
+      const target = event.target as Element | null;
+      return (target?.closest?.('a[href]') as HTMLAnchorElement | null) || null;
+    };
+
+    const isNavigableAnchor = (anchor: HTMLAnchorElement): boolean => {
+      const rawHref = String(anchor.getAttribute('href') || '').trim();
+      if (!rawHref || rawHref === '#') return false;
+      if (/^(mailto:|tel:|javascript:)/i.test(rawHref)) return false;
+      if (anchor.hasAttribute('download')) return false;
+      return true;
+    };
+
+    const onCapture = (event: MouseEvent) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      const anchor = getAnchor(event);
+      if (!anchor || !isNavigableAnchor(anchor)) return;
+      // Kill native navigation (iframe swap / new tab from target=_blank).
+      event.preventDefault();
+    };
+
+    const onBubble = (event: MouseEvent) => {
       if (!onInternalLinkClickRef.current) return;
-      if (
-        event.defaultPrevented ||
-        event.button !== 0 ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.shiftKey ||
-        event.altKey
-      ) {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
       }
 
+      // Editable element with a link → Open | Select chooser owns this click.
       const target = event.target as Element | null;
-      const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null;
-      if (!anchor) return;
+      if (target?.closest?.('[data-gb-editable-link="1"]')) return;
+
+      const anchor = getAnchor(event);
+      if (!anchor || !isNavigableAnchor(anchor)) return;
 
       const rawHref = String(anchor.getAttribute('href') || '').trim();
-      if (!rawHref || rawHref === '#') return;
-      if (/^(mailto:|tel:|javascript:)/i.test(rawHref)) return;
-      if (anchor.hasAttribute('download')) return;
 
-      // Same-origin / relative paths only — leave true external URLs alone.
-      const internalPath = normalizeInternalPath(rawHref);
-      if (internalPath === null) return;
+      // True external → controlled new tab. Everything else soft-opens in GenieBuild.
+      if (isTrueExternalHref(rawHref)) {
+        window.open(rawHref, '_blank', 'noopener,noreferrer');
+        return;
+      }
 
-      event.preventDefault();
       onInternalLinkClickRef.current(rawHref);
     };
 
-    mountNode.addEventListener('click', onClick);
-    return () => mountNode.removeEventListener('click', onClick);
+    mountNode.addEventListener('click', onCapture, true);
+    mountNode.addEventListener('click', onBubble, false);
+    return () => {
+      mountNode.removeEventListener('click', onCapture, true);
+      mountNode.removeEventListener('click', onBubble, false);
+    };
   }, [mountNode]);
 
   // Viewport is set to device-width for proper responsive behavior

@@ -144,6 +144,270 @@ function uid() {
   return "tmp-" + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
 }
 
+/* ---------------------- Link helpers (iframe selection-safe) ---------------------- */
+function normalizeHref(url: string): string {
+  const u = String(url || "").trim();
+  if (!u) return "";
+  if (/^(https?:|mailto:|tel:|sms:|\/|#)/i.test(u)) return u;
+  return `https://${u}`;
+}
+
+function getAnchorAroundNode(node: Node | null, root: Node | null): HTMLAnchorElement | null {
+  let cur: Node | null = node;
+  while (cur && cur !== root) {
+    if (cur.nodeType === Node.ELEMENT_NODE && (cur as Element).tagName === "A") {
+      return cur as HTMLAnchorElement;
+    }
+    cur = cur.parentNode;
+  }
+  return null;
+}
+
+function getAnchorFromSelection(idoc: Document): HTMLAnchorElement | null {
+  const sel = idoc.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  const fromAnchor = getAnchorAroundNode(sel.anchorNode, idoc.body);
+  if (fromAnchor) return fromAnchor;
+  const fromFocus = getAnchorAroundNode(sel.focusNode, idoc.body);
+  if (fromFocus) return fromFocus;
+  // Common ancestor may be the <a> itself
+  const common = range.commonAncestorContainer;
+  return getAnchorAroundNode(common, idoc.body);
+}
+
+function saveIframeSelection(idoc: Document): Range | null {
+  const sel = idoc.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  try {
+    return sel.getRangeAt(0).cloneRange();
+  } catch {
+    return null;
+  }
+}
+
+function restoreIframeSelection(idoc: Document, range: Range | null): boolean {
+  if (!range) return false;
+  try {
+    idoc.body?.focus?.();
+    const sel = idoc.getSelection();
+    if (!sel) return false;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function enhanceAnchor(a: HTMLAnchorElement, href: string, color?: string) {
+  a.setAttribute("href", href);
+  // Keep relative / hash / mailto as-is; open http(s) in new tab
+  if (/^https?:/i.test(href)) {
+    a.setAttribute("target", "_blank");
+    a.setAttribute("rel", "noopener noreferrer");
+  } else {
+    a.removeAttribute("target");
+    a.removeAttribute("rel");
+  }
+  // Persist explicit color on the <a> so SiteNextJS / theme CSS can respect it
+  const c = String(color || "").trim();
+  if (c) {
+    a.style.color = c;
+  }
+}
+
+/** Resolve a CSS color from the current selection / surrounding markup. */
+function getColorAroundSelection(idoc: Document): string {
+  const sel = idoc.getSelection();
+  if (!sel || sel.rangeCount === 0) return "";
+
+  const readColor = (el: Element | null): string => {
+    if (!el) return "";
+    if (el instanceof HTMLElement && el.style?.color) return el.style.color;
+    if (el.tagName === "FONT") {
+      const fc = el.getAttribute("color");
+      if (fc) return fc;
+    }
+    try {
+      const cs = idoc.defaultView?.getComputedStyle(el)?.color;
+      return cs && cs !== "rgba(0, 0, 0, 0)" ? cs : "";
+    } catch {
+      return "";
+    }
+  };
+
+  // Prefer an explicit color on an ancestor (editor foreColor wraps selection)
+  let node: Node | null = sel.anchorNode;
+  while (node && node !== idoc.body) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as Element;
+      if (el instanceof HTMLElement && el.style?.color) return el.style.color;
+      if (el.tagName === "FONT" && el.getAttribute("color")) {
+        return el.getAttribute("color") || "";
+      }
+    }
+    node = node.parentNode;
+  }
+
+  const anchor = getAnchorFromSelection(idoc);
+  if (anchor) {
+    const own = readColor(anchor);
+    if (own) return own;
+    const child = anchor.querySelector("[style*='color'], font[color]") as Element | null;
+    if (child) {
+      if (child instanceof HTMLElement && child.style?.color) return child.style.color;
+      if (child.tagName === "FONT") return child.getAttribute("color") || "";
+    }
+  }
+
+  try {
+    const q = String(idoc.queryCommandValue("foreColor") || "").trim();
+    if (q && !/^rgba?\(\s*0,\s*0,\s*0/i.test(q) && q !== "#000000") return q;
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
+/** Paint color onto link(s) in the selection so it survives theme CSS. */
+function applyColorInIframe(idoc: Document, savedRange: Range | null, color: string): void {
+  const c = String(color || "").trim();
+  if (!c) return;
+  restoreIframeSelection(idoc, savedRange);
+
+  const anchor = getAnchorFromSelection(idoc);
+  const sel = idoc.getSelection();
+
+  if (anchor && (!sel || sel.isCollapsed || anchor.contains(sel.anchorNode!))) {
+    anchor.style.color = c;
+    // Flatten nested color wrappers inside the link
+    anchor.querySelectorAll("font[color], span[style*='color']").forEach((el) => {
+      if (el instanceof HTMLElement) el.style.color = "";
+      if (el.tagName === "FONT") el.removeAttribute("color");
+    });
+    return;
+  }
+
+  idoc.execCommand("foreColor", false, c);
+
+  // If foreColor wrapped a parent around <a>, move color onto the anchors
+  restoreIframeSelection(idoc, savedRange || saveIframeSelection(idoc));
+  const anchors = Array.from(idoc.querySelectorAll("a[href]")) as HTMLAnchorElement[];
+  for (const a of anchors) {
+    const parent = a.parentElement;
+    if (!parent) continue;
+    const parentColor =
+      (parent instanceof HTMLElement && parent.style?.color) ||
+      (parent.tagName === "FONT" ? parent.getAttribute("color") : "") ||
+      "";
+    if (parentColor) {
+      a.style.color = parentColor;
+    }
+  }
+}
+
+/** Apply or update a link using a previously saved iframe Range. */
+function applyLinkInIframe(idoc: Document, savedRange: Range | null, rawUrl: string): boolean {
+  const href = normalizeHref(rawUrl);
+  restoreIframeSelection(idoc, savedRange);
+
+  const sel = idoc.getSelection();
+  if (!sel) return false;
+
+  // Capture color BEFORE createLink (wrapping can reshuffle markup)
+  const priorColor = getColorAroundSelection(idoc);
+
+  // Empty URL → unlink
+  if (!href) {
+    idoc.execCommand("unlink", false);
+    return true;
+  }
+
+  // Caret inside existing link (no range text) → update href (keep existing color)
+  const existing = getAnchorFromSelection(idoc);
+  if (existing && sel.isCollapsed) {
+    enhanceAnchor(existing, href, priorColor || existing.style.color || undefined);
+    return true;
+  }
+
+  // Collapsed caret with no existing link:
+  // - If we had a saved range that restored successfully but is empty → insert link at caret
+  // - If selection was never captured (toolbar focus stole it) → fail so UI can prompt
+  if (!sel.rangeCount) return false;
+  if (sel.isCollapsed) {
+    if (!savedRange) return false;
+    const a = idoc.createElement("a");
+    enhanceAnchor(a, href, priorColor || undefined);
+    a.textContent = href.replace(/^https?:\/\//i, "");
+    const range = sel.getRangeAt(0);
+    range.insertNode(a);
+    const after = idoc.createRange();
+    after.setStartAfter(a);
+    after.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(after);
+    return true;
+  }
+
+  // Has text selection → wrap with createLink, then normalize anchors in the selection
+  const ok = idoc.execCommand("createLink", false, href);
+  if (!ok) {
+    // Manual wrap fallback
+    try {
+      const range = sel.getRangeAt(0);
+      const a = idoc.createElement("a");
+      enhanceAnchor(a, href, priorColor || undefined);
+      a.appendChild(range.extractContents());
+      range.insertNode(a);
+      sel.removeAllRanges();
+      const selectLink = idoc.createRange();
+      selectLink.selectNodeContents(a);
+      sel.addRange(selectLink);
+    } catch {
+      return false;
+    }
+  }
+
+  // Ensure target/rel + color on anchors that intersect the current selection
+  const range = sel.rangeCount ? sel.getRangeAt(0) : null;
+  const anchors = Array.from(idoc.body.querySelectorAll("a[href]")) as HTMLAnchorElement[];
+  for (const a of anchors) {
+    if (!range) {
+      if (a.getAttribute("href") === href) enhanceAnchor(a, href, priorColor || a.style.color || undefined);
+      continue;
+    }
+    try {
+      if (
+        range.intersectsNode(a) ||
+        a.contains(range.commonAncestorContainer) ||
+        range.commonAncestorContainer === a ||
+        a.contains(sel.anchorNode!) ||
+        a.contains(sel.focusNode!)
+      ) {
+        enhanceAnchor(a, href, priorColor || a.style.color || undefined);
+      }
+    } catch {
+      if (a.getAttribute("href") === href) enhanceAnchor(a, href, priorColor || a.style.color || undefined);
+    }
+  }
+  return true;
+}
+
+function unlinkInIframe(idoc: Document, savedRange: Range | null): void {
+  restoreIframeSelection(idoc, savedRange);
+  const existing = getAnchorFromSelection(idoc);
+  if (existing && idoc.getSelection()?.isCollapsed) {
+    // Unwrap <a> keeping children
+    const parent = existing.parentNode;
+    if (!parent) return;
+    while (existing.firstChild) parent.insertBefore(existing.firstChild, existing);
+    parent.removeChild(existing);
+    return;
+  }
+  idoc.execCommand("unlink", false);
+}
+
 
 
 
@@ -257,6 +521,9 @@ export function RichTextEditor({
   const [isUploading, setIsUploading] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
+  /** Saved iframe Range — clicking toolbar would otherwise clear the selection. */
+  const savedSelectionRef = useRef<Range | null>(null);
+  const linkInputRef = useRef<HTMLInputElement | null>(null);
 
   // Toolbar states
   const [currentFormat, setCurrentFormat] = useState("p");
@@ -533,8 +800,27 @@ ${head || ""}
       else setCurrentAlign("left");
       const color = doc.queryCommandValue("foreColor") as string;
       setTextColor(rgbToHex(color));
-      const linkHref = doc.queryCommandValue("createLink") as string;
-      setIsLink(!!linkHref);
+      const anchor = getAnchorFromSelection(doc);
+      setIsLink(Boolean(anchor?.getAttribute("href")));
+
+      // Keep last good selection while the iframe editor still has focus.
+      // When focus moves to the toolbar, we must NOT wipe this — link Apply needs it.
+      const sel = doc.getSelection();
+      const root = doc.getElementById("root");
+      const active = doc.activeElement;
+      if (
+        sel &&
+        sel.rangeCount > 0 &&
+        root &&
+        active &&
+        (active === root || root.contains(active))
+      ) {
+        try {
+          savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
+        } catch {
+          /* ignore */
+        }
+      }
 
       // Update image selection
       const imgElement = getSelectedImage();
@@ -711,85 +997,64 @@ ${head || ""}
     };
   }, [activeTab, uploadUrl]);
 
+  /** Keep iframe text selection when clicking the parent toolbar. */
+  const keepIframeSelection = (e: React.MouseEvent) => {
+    e.preventDefault();
+  };
+
+  const runDocCommand = (fn: (idoc: Document) => void) => {
+    const idoc = getIdoc();
+    if (!idoc) return;
+    fn(idoc);
+    commitFromIframe();
+  };
+
   // Commands
   const cmd = useMemo(
     () => ({
-      h1: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("formatBlock", false, currentFormat === "h1" ? "p" : "h1");
-      },
-      h2: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("formatBlock", false, currentFormat === "h2" ? "p" : "h2");
-      },
-      h3: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("formatBlock", false, currentFormat === "h3" ? "p" : "h3");
-      },
-      bold: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("bold");
-      },
-      italic: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("italic");
-      },
-      underline: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("underline");
-      },
-      bullet: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("insertUnorderedList");
-      },
-      ordered: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("insertOrderedList");
-      },
-      indent: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("indent");
-      },
-      outdent: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("outdent");
-      },
-      quote: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("formatBlock", false, currentFormat === "blockquote" ? "p" : "blockquote");
-      },
-      hr: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("insertHorizontalRule");
-      },
-      alignLeft: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("justifyLeft");
-        commitFromIframe();
-      },
-      alignCenter: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("justifyCenter");
-        commitFromIframe();
-      },
-      alignRight: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("justifyRight");
-        commitFromIframe();
-      },
-      alignJustify: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("justifyFull");
-        commitFromIframe();
-      },
+      h1: () =>
+        runDocCommand((idoc) => {
+          idoc.execCommand("formatBlock", false, currentFormat === "h1" ? "p" : "h1");
+        }),
+      h2: () =>
+        runDocCommand((idoc) => {
+          idoc.execCommand("formatBlock", false, currentFormat === "h2" ? "p" : "h2");
+        }),
+      h3: () =>
+        runDocCommand((idoc) => {
+          idoc.execCommand("formatBlock", false, currentFormat === "h3" ? "p" : "h3");
+        }),
+      bold: () => runDocCommand((idoc) => idoc.execCommand("bold")),
+      italic: () => runDocCommand((idoc) => idoc.execCommand("italic")),
+      underline: () => runDocCommand((idoc) => idoc.execCommand("underline")),
+      bullet: () => runDocCommand((idoc) => idoc.execCommand("insertUnorderedList")),
+      ordered: () => runDocCommand((idoc) => idoc.execCommand("insertOrderedList")),
+      indent: () => runDocCommand((idoc) => idoc.execCommand("indent")),
+      outdent: () => runDocCommand((idoc) => idoc.execCommand("outdent")),
+      quote: () =>
+        runDocCommand((idoc) => {
+          idoc.execCommand("formatBlock", false, currentFormat === "blockquote" ? "p" : "blockquote");
+        }),
+      hr: () => runDocCommand((idoc) => idoc.execCommand("insertHorizontalRule")),
+      alignLeft: () => runDocCommand((idoc) => idoc.execCommand("justifyLeft")),
+      alignCenter: () => runDocCommand((idoc) => idoc.execCommand("justifyCenter")),
+      alignRight: () => runDocCommand((idoc) => idoc.execCommand("justifyRight")),
+      alignJustify: () => runDocCommand((idoc) => idoc.execCommand("justifyFull")),
       unlink: () => {
         const idoc = getIdoc();
-        idoc?.execCommand("unlink");
+        if (!idoc) return;
+        // Prefer currently saved range (from link button), else snapshot now
+        const range = savedSelectionRef.current || saveIframeSelection(idoc);
+        unlinkInIframe(idoc, range);
+        savedSelectionRef.current = null;
+        setIsLink(false);
         commitFromIframe();
       },
       setColor: (c: string) => {
         const idoc = getIdoc();
-        idoc?.execCommand("foreColor", false, c);
+        if (!idoc) return;
+        const range = savedSelectionRef.current || saveIframeSelection(idoc);
+        applyColorInIframe(idoc, range, c);
         commitFromIframe();
       },
       clear: () => {
@@ -807,12 +1072,41 @@ ${head || ""}
         idoc?.execCommand("redo");
         commitFromIframe();
       },
+      /** Call from mousedown (before focus leaves iframe) so selection is kept. */
+      captureLinkSelection: () => {
+        const idoc = getIdoc();
+        if (!idoc) return;
+        savedSelectionRef.current = saveIframeSelection(idoc);
+      },
       openLinkBox: () => {
         const idoc = getIdoc();
         if (!idoc) return;
-        const href = idoc.queryCommandValue("createLink") as string;
+        // If capture wasn't called, try once more (may already be lost)
+        if (!savedSelectionRef.current) {
+          savedSelectionRef.current = saveIframeSelection(idoc);
+        }
+        restoreIframeSelection(idoc, savedSelectionRef.current);
+        const anchor = getAnchorFromSelection(idoc);
+        const href = anchor?.getAttribute("href") || "";
         setLinkUrl(href || "https://");
+        setIsLink(Boolean(href));
         setShowLinkInput(true);
+        // Focus URL field after paint — selection already saved
+        window.setTimeout(() => linkInputRef.current?.focus(), 0);
+      },
+      applyLink: (rawUrl: string) => {
+        const idoc = getIdoc();
+        if (!idoc) return;
+        const ok = applyLinkInIframe(idoc, savedSelectionRef.current, rawUrl);
+        if (!ok) {
+          toast.error("Select text in the editor first, then apply the link.");
+          return;
+        }
+        savedSelectionRef.current = null;
+        setShowLinkInput(false);
+        setIsLink(Boolean(normalizeHref(rawUrl)));
+        commitFromIframe();
+        toast.success(normalizeHref(rawUrl) ? "Link applied" : "Link removed");
       },
     }),
     [currentFormat]
@@ -951,46 +1245,79 @@ ${head || ""}
         <div className="space-y-2">
           {/* Toolbar */}
           <div className="flex flex-wrap gap-2 p-2 border rounded-md items-center">
-            <Button size="sm" variant={is.h1 ? "default" : "outline"} onClick={cmd.h1} aria-pressed={is.h1}><Heading1 className="h-4 w-4" /></Button>
-            <Button size="sm" variant={is.h2 ? "default" : "outline"} onClick={cmd.h2} aria-pressed={is.h2}><Heading2 className="h-4 w-4" /></Button>
-            <Button size="sm" variant={is.h3 ? "default" : "outline"} onClick={cmd.h3} aria-pressed={is.h3}><Heading3 className="h-4 w-4" /></Button>
+            <Button size="sm" variant={is.h1 ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.h1} aria-pressed={is.h1}><Heading1 className="h-4 w-4" /></Button>
+            <Button size="sm" variant={is.h2 ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.h2} aria-pressed={is.h2}><Heading2 className="h-4 w-4" /></Button>
+            <Button size="sm" variant={is.h3 ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.h3} aria-pressed={is.h3}><Heading3 className="h-4 w-4" /></Button>
 
-            <Button size="sm" variant={is.bold ? "default" : "outline"} onClick={cmd.bold} aria-pressed={is.bold}><Bold className="h-4 w-4" /></Button>
-            <Button size="sm" variant={is.italic ? "default" : "outline"} onClick={cmd.italic} aria-pressed={is.italic}><Italic className="h-4 w-4" /></Button>
-            <Button size="sm" variant={is.underline ? "default" : "outline"} onClick={cmd.underline} aria-pressed={is.underline}><UnderlineIcon className="h-4 w-4" /></Button>
+            <Button size="sm" variant={is.bold ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.bold} aria-pressed={is.bold}><Bold className="h-4 w-4" /></Button>
+            <Button size="sm" variant={is.italic ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.italic} aria-pressed={is.italic}><Italic className="h-4 w-4" /></Button>
+            <Button size="sm" variant={is.underline ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.underline} aria-pressed={is.underline}><UnderlineIcon className="h-4 w-4" /></Button>
 
-            <Button size="sm" variant={is.bullet ? "default" : "outline"} onClick={cmd.bullet} aria-pressed={is.bullet}><List className="h-4 w-4" /></Button>
-            <Button size="sm" variant={is.ordered ? "default" : "outline"} onClick={cmd.ordered} aria-pressed={is.ordered}><ListOrdered className="h-4 w-4" /></Button>
-            <Button size="sm" variant="outline" onClick={cmd.indent} title="Indent"><ChevronRight className="h-4 w-4" /></Button>
-            <Button size="sm" variant="outline" onClick={cmd.outdent} title="Outdent"><ChevronLeft className="h-4 w-4" /></Button>
+            <Button size="sm" variant={is.bullet ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.bullet} aria-pressed={is.bullet}><List className="h-4 w-4" /></Button>
+            <Button size="sm" variant={is.ordered ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.ordered} aria-pressed={is.ordered}><ListOrdered className="h-4 w-4" /></Button>
+            <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.indent} title="Indent"><ChevronRight className="h-4 w-4" /></Button>
+            <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.outdent} title="Outdent"><ChevronLeft className="h-4 w-4" /></Button>
 
-            <Button size="sm" variant={is.quote ? "default" : "outline"} onClick={cmd.quote} aria-pressed={is.quote}><Quote className="h-4 w-4" /></Button>
-            <Button size="sm" variant="outline" onClick={cmd.hr}><Minus className="h-4 w-4" /></Button>
+            <Button size="sm" variant={is.quote ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.quote} aria-pressed={is.quote}><Quote className="h-4 w-4" /></Button>
+            <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.hr}><Minus className="h-4 w-4" /></Button>
 
-            <Button size="sm" variant={currentAlign === "left" ? "default" : "outline"} onClick={cmd.alignLeft}><AlignLeft className="h-4 w-4" /></Button>
-            <Button size="sm" variant={currentAlign === "center" ? "default" : "outline"} onClick={cmd.alignCenter}><AlignCenter className="h-4 w-4" /></Button>
-            <Button size="sm" variant={currentAlign === "right" ? "default" : "outline"} onClick={cmd.alignRight}><AlignRight className="h-4 w-4" /></Button>
-            <Button size="sm" variant={currentAlign === "justify" ? "default" : "outline"} onClick={cmd.alignJustify}><AlignJustify className="h-4 w-4" /></Button>
+            <Button size="sm" variant={currentAlign === "left" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignLeft}><AlignLeft className="h-4 w-4" /></Button>
+            <Button size="sm" variant={currentAlign === "center" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignCenter}><AlignCenter className="h-4 w-4" /></Button>
+            <Button size="sm" variant={currentAlign === "right" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignRight}><AlignRight className="h-4 w-4" /></Button>
+            <Button size="sm" variant={currentAlign === "justify" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignJustify}><AlignJustify className="h-4 w-4" /></Button>
 
-            <Button size="sm" variant={is.link ? "default" : "outline"} onClick={cmd.openLinkBox} aria-pressed={is.link}>
+            <Button
+              size="sm"
+              variant={is.link ? "default" : "outline"}
+              aria-pressed={is.link}
+              title="Insert / edit link"
+              onMouseDown={(e) => {
+                // Prevent focus steal so iframe text selection is not cleared
+                e.preventDefault();
+                cmd.captureLinkSelection();
+              }}
+              onClick={() => cmd.openLinkBox()}
+            >
               <LinkIcon className="h-4 w-4" />
             </Button>
-            <Button size="sm" variant="outline" onClick={cmd.unlink}><Unlink className="h-4 w-4" /></Button>
+            <Button
+              size="sm"
+              variant="outline"
+              title="Remove link"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                cmd.captureLinkSelection();
+              }}
+              onClick={() => cmd.unlink()}
+            >
+              <Unlink className="h-4 w-4" />
+            </Button>
 
             <label className="flex items-center gap-1 text-sm px-2 py-1 rounded border">
               <Palette className="h-4 w-4" />
               <input
                 type="color"
                 value={textColor}
-                onChange={(e) => { setTextColor(e.target.value); cmd.setColor(e.target.value); }}
+                onMouseDown={() => {
+                  const idoc = getIdoc();
+                  if (idoc) savedSelectionRef.current = saveIframeSelection(idoc);
+                }}
+                onChange={(e) => {
+                  const idoc = getIdoc();
+                  if (idoc && savedSelectionRef.current) {
+                    restoreIframeSelection(idoc, savedSelectionRef.current);
+                  }
+                  setTextColor(e.target.value);
+                  cmd.setColor(e.target.value);
+                }}
                 title="Text color"
                 style={{ width: 24, height: 18, padding: 0, border: "none", background: "transparent" }}
               />
             </label>
 
-            <Button size="sm" variant="outline" onClick={cmd.undo}><Undo2 className="h-4 w-4" /></Button>
-            <Button size="sm" variant="outline" onClick={cmd.redo}><Redo2 className="h-4 w-4" /></Button>
-            <Button size="sm" variant="outline" onClick={cmd.clear}><Eraser className="h-4 w-4" /></Button>
+            <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.undo}><Undo2 className="h-4 w-4" /></Button>
+            <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.redo}><Redo2 className="h-4 w-4" /></Button>
+            <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.clear}><Eraser className="h-4 w-4" /></Button>
 
             <Button size="sm" variant="outline" onClick={onUploadClick} disabled={isUploading || disabled}>
               <ImageIcon className="h-4 w-4" />
@@ -1071,22 +1398,48 @@ ${head || ""}
           {showLinkInput && (
             <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/30">
               <input
+                ref={linkInputRef}
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    cmd.applyLink(linkUrl);
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setShowLinkInput(false);
+                  }
+                }}
                 placeholder="https://example.com"
                 className="flex-1 h-9 px-3 rounded-md border bg-background"
               />
-              <Button size="sm" onClick={() => {
-                const idoc = getIdoc();
-                if (!idoc) return;
-                const url = (linkUrl || "").trim();
-                if (!url) idoc.execCommand("unlink");
-                else idoc.execCommand("createLink", false, url);
-                setShowLinkInput(false);
-                commitFromIframe();
-              }}>Apply</Button>
-              <Button size="sm" variant="outline" onClick={() => { cmd.unlink(); setShowLinkInput(false); }}>Remove</Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowLinkInput(false)}>Close</Button>
+              <Button
+                size="sm"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => cmd.applyLink(linkUrl)}
+              >
+                Apply
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  cmd.applyLink("");
+                }}
+              >
+                Remove
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  savedSelectionRef.current = null;
+                  setShowLinkInput(false);
+                }}
+              >
+                Close
+              </Button>
             </div>
           )}
 

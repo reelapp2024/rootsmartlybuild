@@ -3,7 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
-import { emitBlogsFilter } from '../../../../lib/blogsApi';
+import { BLOGS_CATEGORIES_EVENT, emitBlogsFilter } from '../../../../lib/blogsApi';
 
 interface Props {
   section: Section;
@@ -62,11 +62,13 @@ export const BlogsSearchDefault: React.FC<Props> = ({
   };
 
   const searchPlaceholder = String(c.searchPlaceholder || 'Search articles…');
-  const categories: string[] = Array.isArray(c.categories) && c.categories.length
+  const contentCategories: string[] = Array.isArray(c.categories) && c.categories.length
     ? c.categories.map((x: any) => String(x))
     : DEFAULT_CATEGORIES;
 
   const [query, setQuery] = useState('');
+  const [liveCategories, setLiveCategories] = useState<string[] | null>(null);
+  const categories = liveCategories && liveCategories.length ? liveCategories : contentCategories;
   const [activeCategory, setActiveCategory] = useState(categories[0] || 'All');
 
   useEffect(() => {
@@ -74,6 +76,18 @@ export const BlogsSearchDefault: React.FC<Props> = ({
       setActiveCategory(categories[0] || 'All');
     }
   }, [categories, activeCategory]);
+
+  useEffect(() => {
+    const onCats = (event: Event) => {
+      const detail = (event as CustomEvent<{ categories?: string[] }>).detail || {};
+      const next = Array.isArray(detail.categories)
+        ? detail.categories.map(String).filter(Boolean)
+        : [];
+      if (next.length) setLiveCategories(next);
+    };
+    window.addEventListener(BLOGS_CATEGORIES_EVENT, onCats as EventListener);
+    return () => window.removeEventListener(BLOGS_CATEGORIES_EVENT, onCats as EventListener);
+  }, []);
 
   const emitFilter = useMemo(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;

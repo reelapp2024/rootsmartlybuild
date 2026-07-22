@@ -40,7 +40,7 @@ import { buildUpdatedComponentIds, buildWebsitePayload, buildSectionContentEntri
 import { hydrateSectionsForDisplay } from './utils/sectionHydration';
 import {
   findPageIdByHref,
-  isExternalOrSpecialHref,
+  isTrueExternalHref,
   normalizeInternalPath,
 } from './utils/resolveInternalPageLink';
 import {
@@ -846,10 +846,33 @@ const AppContent: React.FC = () => {
 
   const updateSection = (id: string, updates: Partial<Section>) => {
     setSiteData(prev => applyUpdateSection(prev, id, updates));
+    // Canvas inline edits go through SectionRenderer → updateSection. When a
+    // virtual element is upserted into `elements`, refresh the sidebar snapshot.
+    if (updates.elements && selectedElementId) {
+      const found = updates.elements.find((e) => e.id === selectedElementId);
+      if (found) setSelectedVirtualElement(found);
+    }
   };
 
   const updateElement = (sectionId: string, elementId: string, updates: Partial<WebsiteElement>) => {
     setSiteData(prev => applyUpdateElement(prev, sectionId, elementId, updates, selectedVirtualElement));
+    // Keep the sidebar snapshot in sync for virtual (not-yet-persisted) elements
+    // while the user types on the canvas.
+    setSelectedVirtualElement((prev) => {
+      if (!prev || prev.id !== elementId) return prev;
+      return {
+        ...prev,
+        ...updates,
+        content:
+          updates.content !== undefined
+            ? { ...(prev.content || {}), ...(updates.content || {}) }
+            : prev.content,
+        style:
+          updates.style !== undefined
+            ? { ...(prev.style || {}), ...(updates.style || {}) }
+            : prev.style,
+      };
+    });
   };
 
   /**
@@ -1173,7 +1196,8 @@ const AppContent: React.FC = () => {
       return;
     }
 
-    if (isExternalOrSpecialHref(raw) && !normalizeInternalPath(raw)) {
+    // True external only — never treat /contact-style paths as external (no new tab / no refresh).
+    if (isTrueExternalHref(raw)) {
       window.open(raw, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -1193,7 +1217,6 @@ const AppContent: React.FC = () => {
       toast.error(
         `No page matched “${path}” in this project. Check Pages panel / slug.`
       );
-      // Re-assert projectId on the URL so the builder context is not lost.
       syncGenieBuildUrl({
         projectId,
         pageId: getUrlParams().pageId,

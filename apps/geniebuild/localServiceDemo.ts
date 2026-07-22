@@ -1,5 +1,12 @@
 import type { Section, WebsiteData } from './types';
 import { INITIAL_TEMPLATE, SECTION_TEMPLATES } from './constants';
+import {
+  DEMO_BLOG_CATEGORIES,
+  extractDemoBlogSlugFromPath,
+  getDemoBlogBySlug,
+  getDemoBlogListItems,
+  getRelatedDemoBlogs,
+} from './demoBlogs';
 
 /**
  * When GenieBuild runs without `projectId` in the URL, `/service` shows a
@@ -209,7 +216,7 @@ export function resolveDemoWebsiteDataByPath(pathname: string): WebsiteData {
     if (legalTitle) data = buildLocalLegalDemoWebsiteData(legalTitle);
     else if (isLocalAreasListDemoPath(p)) data = buildLocalAllAreasDemoWebsiteData();
     else if (isLocalLocationDemoPath(p)) data = buildLocalLocationDemoWebsiteData();
-    else if (isLocalBlogDetailDemoPath(p)) data = buildLocalBlogDetailDemoWebsiteData();
+    else if (isLocalBlogDetailDemoPath(p)) data = buildLocalBlogDetailDemoWebsiteData(p);
     else if (isLocalBlogsDemoPath(p)) data = buildLocalBlogsDemoWebsiteData();
     else if (isLocalServiceDetailDemoPath(p)) data = buildLocalServiceDetailDemoWebsiteData();
     else if (isLocalServicesListDemoPath(p)) data = buildLocalServicesListDemoWebsiteData();
@@ -326,13 +333,26 @@ export function buildLocalBlogsDemoWebsiteData(): WebsiteData {
   const header = base.sections.find((s) => s.type === 'header');
   const footer = base.sections.find((s) => s.type === 'footer');
 
-  // Blogs listing page: hero + search/filter + post grid.
-  const blogsTypes = ['blogshero', 'blogssearch', 'blogslist'];
+  // Blogs listing page: hero + search/filter + post grid (seeded with 5 dummy posts).
   const sections: Section[] = [];
   if (header) sections.push({ ...cloneDeep(header), id: 'demo-header-1' });
-  blogsTypes.forEach((type, i) => {
-    sections.push(sectionFromTemplate(type, `demo-blogs-${type}-${i + 1}`));
-  });
+
+  sections.push(sectionFromTemplate('blogshero', 'demo-blogs-blogshero-1'));
+
+  const search = sectionFromTemplate('blogssearch', 'demo-blogs-blogssearch-2');
+  (search.content as any) = {
+    ...(search.content as any),
+    categories: [...DEMO_BLOG_CATEGORIES],
+  };
+  sections.push(search);
+
+  const list = sectionFromTemplate('blogslist', 'demo-blogs-blogslist-3');
+  (list.content as any) = {
+    ...(list.content as any),
+    items: getDemoBlogListItems(),
+  };
+  sections.push(list);
+
   if (footer) sections.push({ ...cloneDeep(footer), id: 'demo-footer-1' });
 
   return {
@@ -345,30 +365,76 @@ export function buildLocalBlogsDemoWebsiteData(): WebsiteData {
   };
 }
 
-export function buildLocalBlogDetailDemoWebsiteData(): WebsiteData {
+export function buildLocalBlogDetailDemoWebsiteData(pathname?: string): WebsiteData {
   const base = cloneDeep(INITIAL_TEMPLATE);
   const header = base.sections.find((s) => s.type === 'header');
   const footer = base.sections.find((s) => s.type === 'footer');
 
+  const slug = extractDemoBlogSlugFromPath(pathname || '');
+  const post = getDemoBlogBySlug(slug);
+
   // Blog Detail page: article header (+ breadcrumb + cover) → content → author
-  // → related articles → comments.
-  const blogDetailTypes = [
-    'blogarticlehero',
-    'blogcontent',
-    'blogauthor',
-    'blogrelated',
-    'blogcomments',
-  ];
+  // → related articles → comments — all filled from the matching demo post.
+  const hero = sectionFromTemplate('blogarticlehero', 'demo-blogdetail-blogarticlehero-1');
+  (hero.content as any) = {
+    ...(hero.content as any),
+    category: post.category,
+    badgeText: post.category,
+    title: post.title,
+    authorName: post.author.name,
+    author: post.author.name,
+    date: post.date,
+    readTime: post.readTime,
+    read: post.readTime,
+    coverImage: { url: post.coverImage, alt: post.title },
+    imageUrl: post.coverImage,
+  };
+
+  const body = sectionFromTemplate('blogcontent', 'demo-blogdetail-blogcontent-2');
+  (body.content as any) = {
+    ...(body.content as any),
+    content: post.body,
+    body: post.body,
+  };
+
+  const author = sectionFromTemplate('blogauthor', 'demo-blogdetail-blogauthor-3');
+  (author.content as any) = {
+    ...(author.content as any),
+    name: post.author.name,
+    authorName: post.author.name,
+    jobTitle: post.author.jobTitle,
+    role: post.author.jobTitle,
+    bio: post.author.bio,
+    image: post.author.image,
+    avatar: post.author.image,
+    links: post.author.links,
+  };
+
+  const related = sectionFromTemplate('blogrelated', 'demo-blogdetail-blogrelated-4');
+  (related.content as any) = {
+    ...(related.content as any),
+    badgeText: 'Keep Reading',
+    relatedTitle: 'Related Articles',
+    items: getRelatedDemoBlogs(post.slug, 3),
+  };
+
+  const comments = sectionFromTemplate('blogcomments', 'demo-blogdetail-blogcomments-5');
+  (comments.content as any) = {
+    ...(comments.content as any),
+    commentSectionTitle: 'Join the Conversation',
+    commentSectionSubtitle: "Share your thoughts — we'd love to hear from you.",
+    ctaText: 'Post Comment',
+    comments: post.comments,
+  };
+
   const sections: Section[] = [];
   if (header) sections.push({ ...cloneDeep(header), id: 'demo-header-1' });
-  blogDetailTypes.forEach((type, i) => {
-    sections.push(sectionFromTemplate(type, `demo-blogdetail-${type}-${i + 1}`));
-  });
+  sections.push(hero, body, author, related, comments);
   if (footer) sections.push({ ...cloneDeep(footer), id: 'demo-footer-1' });
 
   return {
     ...base,
-    name: 'GenieBuild — Blog Detail (local demo)',
+    name: `GenieBuild — ${post.title} (local demo)`,
     sections,
     pages: undefined,
     currentPageId: undefined,

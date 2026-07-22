@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Edit, Eye, Trash2, Sparkles, FileText, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Edit, Eye, Trash2, Sparkles, FileText, Search, ChevronLeft, ChevronRight, Loader2, CheckCircle2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import socket from "@/socket";
 
 type ApiBlog = {
   _id: string;
@@ -23,12 +24,30 @@ type ApiBlog = {
   scheduleTime?: string | null;
 };
 
+type AiBlogGenerationProgress = {
+  projectId?: string;
+  status?: string;
+  total?: number;
+  done?: number;
+  failed?: number;
+  pending?: number;
+  percent?: number;
+  parallelWorkers?: number;
+  activeWorkers?: number;
+  currentBlogs?: Array<{ jobId?: string; title?: string; step?: string; jobPercent?: number }>;
+  recentEvents?: Array<{ at?: string; message?: string; type?: string; title?: string }>;
+  message?: string;
+  startedAt?: string;
+  finishedAt?: string;
+};
+
 export default function BlogPosts() {
   const location = useLocation();
   const navigate = useNavigate();
   const stateProjectId = (location.state as any)?.projectId;
   const queryProjectId = new URLSearchParams(location.search).get("projectId");
   const projectId = stateProjectId || queryProjectId || "";
+  const cameFromAi = Boolean((location.state as any)?.aiBlogGenerating);
 
   // List state (server)
   const [posts, setPosts] = useState<ApiBlog[]>([]);
@@ -37,6 +56,9 @@ export default function BlogPosts() {
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+
+  // AI generation progress (sockets — same pattern as project content generation)
+  const [aiGen, setAiGen] = useState<AiBlogGenerationProgress | null>(null);
 
   // UI state
   const [searchQuery, setSearchQuery] = useState("");
@@ -49,7 +71,8 @@ export default function BlogPosts() {
   const [aiPostTitle, setAiPostTitle] = useState("");
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const BASE_URL = import.meta.env.VITE_API_URL  ;
+  const BASE_URL = String(import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+  const apiUrl = (path: string) => `${BASE_URL}/${String(path).replace(/^\/+/, "")}`;
 
   const mapStatus = (s: ApiBlog["status"]) => (s === 1 ? "published" : s === 2 ? "archived" : "draft");
   const statusBadgeVariant = (s: ApiBlog["status"]) =>
@@ -67,7 +90,7 @@ export default function BlogPosts() {
   };
 
   // Fetch list (adds projectId if present)
-  async function fetchPosts(nextPage = page, nextLimit = limit) {
+  const fetchPosts = useCallback(async (nextPage = 1, nextLimit = 10) => {
     try {
       if (!token) {
         toast({ title: "Auth error", description: "Missing token", variant: "destructive" });
@@ -75,7 +98,7 @@ export default function BlogPosts() {
       }
       setLoading(true);
 
-      const url = new URL(`${BASE_URL}/listBlogs`);
+      const url = new URL(apiUrl("listBlogs"));
       url.searchParams.set("page", String(nextPage));
       url.searchParams.set("limit", String(nextLimit));
       if (projectId) url.searchParams.set("projectId", projectId);
@@ -110,12 +133,124 @@ export default function BlogPosts() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [token, BASE_URL, projectId]);
 
+  const normalizeAiGen = (raw: AiBlogGenerationProgress | null): AiBlogGenerationProgress | null => {
+    if (!raw) return null;
+    const total = Number(raw.total || 0);
+    const done = Number(raw.done || 0);
+    const failed = Number(raw.failed || 0);
+    const finished = done + failed;
+    // Client-side safety net if API returned stale generating with full counters
+    if (
+      String(raw.status || "") === "generating" &&
+      total > 0 &&
+      finished >= total
+    ) {
+      return {
+        ...raw,
+        status: failed > 0 ? "completed_with_errors" : "completed",
+        pending: 0,
+        activeWorkers: 0,
+        percent: 100,
+        currentBlogs: [],
+        finishedAt: raw.finishedAt || new Date().toISOString(),
+      };
+    }
+    return raw;
+  };
+
+  const fetchAiProgressOnce = useCallback(async () => {
+    if (!projectId || !token || !BASE_URL) return;
+    try {
+      const res = await fetch(apiUrl("ai_blog_generation_progress"), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ projectId }),
+      });
+      const json = await res.json();
+      if (res.ok && json?.data) {
+        const next = normalizeAiGen(json.data as AiBlogGenerationProgress);
+        setAiGen(next);
+        // Refresh list when hydrate shows work already finished while user was away
+        const st = String(next?.status || "");
+        if (st === "completed" || st === "completed_with_errors" || st === "generating") {
+          void fetchPosts(page, limit);
+        }
+      } else if (res.ok && json?.data === null) {
+        setAiGen(null);
+      }
+    } catch (err) {
+      console.warn("ai_blog_generation_progress failed", err);
+    }
+  }, [projectId, token, BASE_URL, fetchPosts, page, limit]);
+
+  // Initial list load only
   useEffect(() => {
+    if (!projectId && !token) return;
     fetchPosts(1, limit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  // Sockets for live progress + hydrate on mount / tab focus (no polling loop)
+  useEffect(() => {
+    if (!projectId) return;
+
+    socket.emit("joinRoom", `project_${projectId}`);
+    socket.emit("joinProject", projectId);
+
+    void fetchAiProgressOnce();
+
+    let lastDone = -1;
+    const onProgress = (payload: AiBlogGenerationProgress) => {
+      if (!payload) return;
+      if (payload.projectId && String(payload.projectId) !== String(projectId)) return;
+      const next = normalizeAiGen(payload);
+      setAiGen(next);
+
+      const status = String(next?.status || "");
+      const done = Number(next?.done || 0);
+      if (
+        status === "completed" ||
+        status === "completed_with_errors" ||
+        (done > 0 && done !== lastDone)
+      ) {
+        lastDone = done;
+        void fetchPosts(1, limit);
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchAiProgressOnce();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+
+    socket.on("aiBlogGenerationProgress", onProgress);
+    return () => {
+      socket.off("aiBlogGenerationProgress", onProgress);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      socket.emit("leaveRoom", `project_${projectId}`);
+      socket.emit("leaveProject", projectId);
+    };
+    // intentionally stable: do not re-subscribe on fetch identity churn
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  // Clear one-shot navigation flag so it doesn't stick around
+  useEffect(() => {
+    if (!cameFromAi || !projectId) return;
+    void fetchAiProgressOnce();
+    navigate(`${location.pathname}${location.search}`, {
+      replace: true,
+      state: { projectId },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameFromAi, projectId]);
 
   const filteredPosts = useMemo(() => {
     if (!searchQuery.trim()) return posts;
@@ -124,6 +259,25 @@ export default function BlogPosts() {
       (p) => p.title.toLowerCase().includes(q) || (p.type || "").toLowerCase().includes(q) || (p.author || "").toLowerCase().includes(q)
     );
   }, [posts, searchQuery]);
+
+  const genStatus = String(aiGen?.status || "idle");
+  const isGenerating = genStatus === "generating";
+  const isComplete =
+    genStatus === "completed" || genStatus === "completed_with_errors";
+  const genTotal = Number(aiGen?.total || 0);
+  const genDone = Number(aiGen?.done || 0);
+  const genFailed = Number(aiGen?.failed || 0);
+  const genPending = Number(
+    aiGen?.pending ?? Math.max(0, genTotal - genDone - genFailed)
+  );
+  const genPercent = Number(aiGen?.percent || (isComplete ? 100 : 0));
+  // Banner: always while generating; finished only if completed in last 45 min (or just arrived from AI wizard)
+  const finishedAtMs = aiGen?.finishedAt ? Date.parse(aiGen.finishedAt) : NaN;
+  const finishedRecently =
+    Number.isFinite(finishedAtMs) && Date.now() - finishedAtMs < 45 * 60 * 1000;
+  const showAiBanner = Boolean(
+    projectId && (isGenerating || (isComplete && (finishedRecently || cameFromAi)))
+  );
 
   // AI
   const handleAIPost = () => {
@@ -211,6 +365,79 @@ const handleEditPost = (p: ApiBlog) => {
 
         </div>
       </div>
+
+      {/* AI blog generation progress (sockets only — no polling) */}
+      {showAiBanner ? (
+        <Card className="border-amber-200 bg-amber-50/40">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-amber-700" />
+                  AI blog generation in progress
+                </>
+              ) : isComplete ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  AI blog generation finished
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 text-amber-700" />
+                  AI blog generation
+                </>
+              )}
+            </CardTitle>
+            <CardDescription>
+              {aiGen?.message ||
+                (isGenerating
+                  ? "Generating rich article content in the background…"
+                  : "Latest batch status")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                {genDone}/{genTotal || "—"} done
+                {genFailed ? ` · ${genFailed} failed` : ""}
+                {genPending ? ` · ${genPending} left` : ""}
+                {aiGen?.parallelWorkers
+                  ? ` · ${aiGen.activeWorkers || 0}/${aiGen.parallelWorkers} workers`
+                  : ""}
+              </span>
+              <span className="font-semibold">{genPercent}%</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-amber-100 overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${
+                  isComplete ? "bg-green-500" : "bg-amber-500"
+                }`}
+                style={{ width: `${Math.max(isGenerating ? 2 : 0, genPercent)}%` }}
+              />
+            </div>
+            {Array.isArray(aiGen?.currentBlogs) && aiGen!.currentBlogs!.length > 0 ? (
+              <ul className="text-xs text-muted-foreground space-y-1 max-h-28 overflow-y-auto">
+                {aiGen!.currentBlogs!.slice(0, 6).map((b, i) => (
+                  <li key={`${b.jobId || i}-${b.title}`} className="truncate">
+                    <span className="font-medium text-foreground/80">{b.title || "Blog"}</span>
+                    {b.step ? ` — ${b.step}` : ""}
+                    {typeof b.jobPercent === "number" ? ` (${b.jobPercent}%)` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {Array.isArray(aiGen?.recentEvents) && aiGen!.recentEvents!.length > 0 ? (
+              <div className="text-[11px] text-muted-foreground border-t pt-2 space-y-0.5 max-h-24 overflow-y-auto">
+                {aiGen!.recentEvents!.slice(0, 8).map((ev, i) => (
+                  <div key={`${ev.at || i}-${ev.message}`} className="truncate">
+                    {ev.message || ev.type}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Search + page size */}
       <div className="flex items-center gap-4">

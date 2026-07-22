@@ -189,6 +189,11 @@ const userProjectsSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+    /** Live/last AI blog batch generation progress (admin Blog Posts). */
+    aiBlogGeneration: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     wantImages: {
       type: Number,
       enum: [0, 1], //  1 - yes, 0 - no

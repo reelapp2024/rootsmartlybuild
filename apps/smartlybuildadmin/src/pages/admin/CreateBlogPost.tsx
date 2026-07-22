@@ -223,8 +223,12 @@ export default function CreateBlogPost() {
     if (metaTitle.trim()) form.append("meta_title", metaTitle.trim());
     if (metaDescription.trim()) form.append("meta_description", metaDescription.trim());
     form.append("meta_keywords", JSON.stringify(keywordsArray));
-    if (coverUrl) form.append("coverImage.url", coverUrl);
-    if (coverAlt) form.append("coverImage.alt", coverAlt);
+    if (coverUrl) {
+      // Nested object (preferred) + flat keys for older parsers
+      form.append("coverImage", JSON.stringify({ url: coverUrl, alt: coverAlt || "" }));
+      form.append("coverImage.url", coverUrl);
+      if (coverAlt) form.append("coverImage.alt", coverAlt);
+    }
     form.append("status", String(status));
     form.append("slug", slug.trim()); // NEW: Add slug to form data
 

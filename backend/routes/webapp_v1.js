@@ -57,6 +57,8 @@ router.post("/fetch_my_reviews",authentication, ReviewsController.fetch_my_revie
 
 router.get("/getBlog", authentication, BlogsController.get_blog);
 router.post("/get_blog_by_slug", BlogsController.get_blog_by_slug);
+router.get("/getPublishedBlog", BlogsController.get_published_blog);
+router.post("/getPublishedBlog", BlogsController.get_published_blog);
 
 router.post("/get_blog_slugs", BlogsController.get_blog_slugs);
 

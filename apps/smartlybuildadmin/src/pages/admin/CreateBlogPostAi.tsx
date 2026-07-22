@@ -420,13 +420,22 @@ export default function AiBlogsWizard() {
     });
   };
 
+  // Keep count in sync with editable title list (Add Title → finish must queue ALL)
+  useEffect(() => {
+    if (titles.length > 0) setCount(titles.length);
+  }, [titles.length]);
+
   // ----- Finish: call create_ai_blog with titles[] + authorId + publish/schedule info -----
   const finish = async () => {
     if (!projectId) {
       toast({ title: "Missing projectId", description: "Cannot generate without projectId.", variant: "destructive" });
       return;
     }
-    if (!titles.length) {
+    // Always use the live editable list (includes manually added titles)
+    const finalTitles = titles
+      .map((t) => String(t || "").trim())
+      .filter(Boolean);
+    if (!finalTitles.length) {
       toast({ title: "No titles", description: "Add at least one title.", variant: "destructive" });
       return;
     }
@@ -445,8 +454,7 @@ export default function AiBlogsWizard() {
 
     // Validate schedule entries if scheduling chosen
     if (publishMode === "schedule") {
-      // ensure every title has a schedule datetime
-      const anyEmpty = titleSchedules.some(s => !s || !s.trim());
+      const anyEmpty = finalTitles.some((_, i) => !titleSchedules[i] || !String(titleSchedules[i]).trim());
       if (anyEmpty) {
         toast({ title: "Missing schedule datetimes", description: "Please set the datetime for each post.", variant: "destructive" });
         return;
@@ -468,53 +476,65 @@ export default function AiBlogsWizard() {
           throw new Error("Failed to create author");
         }
         finalAuthorId = String(newAuthor._id);
-        // Add to local list
         setAuthors(prev => [...prev, { _id: newAuthor._id, name: newAuthor.name }]);
         setAuthorId(finalAuthorId);
         setAuthorMode("existing");
         setNewAuthorName("");
       }
 
-      // Build payload
-      // For instant publish -> send status: 1
-      // For schedule -> send status: 0, and include per-title schedule info
       let payload: any = {
         projectId,
-        title: titles,     // array of titles (legacy param)
-        type: blogType,    // id: "how" | "best" | ...
-        authorId: finalAuthorId
+        title: finalTitles,
+        type: blogType,
+        authorId: finalAuthorId,
+        locations: locationBased ? locationNames : [],
       };
 
       if (publishMode === "instant") {
-        payload.status = 1; // published
+        payload.status = 1;
       } else {
-        payload.status = 0; // not published, scheduled
-        // Attach per-title schedule info
-        // We will build an array of objects: { title, scheduledAt: ISO-string (UTC), scheduleKey }
+        payload.status = 0;
         const convertLocalToUTCiso = (localIso: string) => {
-          // localIso is "YYYY-MM-DDTHH:MM" -> build Date in local timezone and return ISO string
           const [d, t] = localIso.split("T");
           const [y, m, day] = d.split("-").map(Number);
           const [hh, mm] = t.split(":").map(Number);
           const dt = new Date(y, m - 1, day, hh || 0, mm || 0, 0, 0);
-          return dt.toISOString(); // UTC ISO
+          return dt.toISOString();
         };
-        const titlesWithSchedule = titles.map((t, i) => ({
+        payload.titlesWithSchedule = finalTitles.map((t, i) => ({
           title: t,
           scheduledAt: convertLocalToUTCiso(titleSchedules[i] || firstPublishIso),
-          scheduleKey: frequency // send frequency key for backend to interpret
+          scheduleKey: frequency,
         }));
-        payload.titlesWithSchedule = titlesWithSchedule;
       }
+
+      console.log("[create-post-ai] finishing with titles:", finalTitles.length, finalTitles);
 
       const res = await httpFile.post("/create_ai_blog", payload, {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
       });
 
+      const queued = Number(res?.data?.count ?? finalTitles.length);
+      if (queued !== finalTitles.length) {
+        toast({
+          title: "Partial queue",
+          description: `Expected ${finalTitles.length} blogs but API queued ${queued}. Check server logs.`,
+          variant: "destructive",
+        });
+      }
+
       setDone(true);
       toast({
-        title: "Baground blogs creation started",
-        description: `Your ${res?.data?.count ?? titles.length} blog(s) will ready shortly.`
+        title: "Background blogs creation started",
+        description: `${queued} article(s) queued with ${res?.data?.parallelWorkers ?? 6} workers. Watch progress on Blog Posts.`,
+      });
+      navigate("/admin/blog-posts", {
+        state: {
+          projectId,
+          aiBlogJobIds: res?.data?.jobIds || [],
+          aiBlogGenerating: true,
+          aiBlogExpectedCount: finalTitles.length,
+        },
       });
     } catch (err: any) {
       console.error("create_ai_blog error:", err);
@@ -854,7 +874,9 @@ export default function AiBlogsWizard() {
                 </div>
 
                 <div className="border rounded-lg p-4 bg-gray-50">
-                  <div className="text-sm font-medium mb-2">Titles ({titles.length})</div>
+                  <div className="text-sm font-medium mb-2">
+                    Titles to generate ({titles.filter((t) => String(t || "").trim()).length})
+                  </div>
                   <ul className="list-disc pl-5 space-y-1">
                     {titles.map((t, i) => (
                       <li key={i} className="text-sm">
@@ -862,6 +884,9 @@ export default function AiBlogsWizard() {
                       </li>
                     ))}
                   </ul>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Finish queues every title above (including ones you added manually).
+                  </p>
                 </div>
               </>
             ) : (

@@ -7,9 +7,12 @@ import { useGlobalElementStyles } from '../builder/state/GlobalElementStylesCont
 import { useDefaultSizes } from '../builder/state/DefaultSizesContext';
 import {
   buildHeadingHighlightSpanStyle,
+  buildHeadingEditableHtml,
+  finishHeadingWord,
   resolveHeadingFontSize,
   resolveHighlightAccentColor,
   resolveTextFontSize,
+  splitHeadingToHighlightParts,
   type HeadingTag,
   type TextSizePreset,
 } from '../../utils/resolveElementTypography';
@@ -23,7 +26,14 @@ import {
   toDisplayImageUrl,
   SECTION_IMAGE_PLACEHOLDER,
 } from './homepage/utils/sectionImageResolve';
-import { bindEditableHtml, createEditableHtmlProps, editableFocusBlur } from './editableHtmlHelpers';
+import {
+  bindEditableHtml,
+  clearLiveCommit,
+  createEditableHtmlProps,
+  editableFocusBlur,
+  forceSyncEditableHtml,
+  getEditableNode,
+} from './editableHtmlHelpers';
 import {
   stripImageBoxImageKeys,
   normalizeImageBoxImageStyle,
@@ -36,6 +46,10 @@ import { isNavItemActive } from '../../lib/navActiveState';
 import { resolveHeadingHtmlTag } from '../../utils/htmlTagUtils';
 import { LinkClickChooser } from '../builder/canvas/LinkClickChooser';
 import { useOpenInternalLink } from '../builder/context/OpenInternalLinkContext';
+import {
+  hasUsableHref,
+  resolveAnchorTargetRel,
+} from '../../utils/resolveInternalPageLink';
 
 interface ElementsSectionProps {
   section: Section;
@@ -700,42 +714,84 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
 
     const el = elements.find(e => e.id === id);
     if (el) {
-      // Heading canonical content rule:
-      // - textBefore: all words except last
-      // - highlightedText: last word
-      // - textAfter: empty
-      // Keep this in sync on inline edits so render + sidebar always match.
+      // Heading: last-word highlight. Sidebar + canvas must stay identical while typing.
+      // Typing often lands inside the highlight <span>; we re-canonicalize DOM immediately.
       if (el.type === 'heading' && key === 'text') {
-        const rawHtml = String(value || '');
-        const plainText = (() => {
-          if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = rawHtml;
-            return (tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
-          }
-          return rawHtml.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-        })();
-
-        const words = plainText.split(' ').filter(Boolean);
-        const textBefore = words.length > 1 ? words.slice(0, -1).join(' ') : '';
-        const highlightedText = words.length > 0 ? words[words.length - 1] : '';
-        const textAfter = '';
-
-        onElementUpdate(id, {
-          ...el,
-          content: {
-            ...el.content,
-            text: plainText,
-            textBefore,
-            highlightedText,
-            textAfter,
-          },
-        });
+        handleHeadingTextCommit(id, el, String(value || ''));
         return;
       }
 
       onElementUpdate(id, { ...el, content: { ...el.content, [key]: value } });
+      return;
     }
+
+    // Virtual / hydrated element present in the canvas but not yet in section.elements —
+    // still push content so the sidebar + upsert path stay in sync while typing.
+    onElementUpdate(id, { content: { [key]: value } } as Partial<WebsiteElement>);
+  };
+
+  /**
+   * Heading live edit:
+   * - Normal keys → update sidebar only (never rewrite DOM mid-word — that broke Space)
+   * - Space → finish word: move all words into textBefore, empty highlight, caret ready
+   */
+  const applyHeadingParts = (
+    id: string,
+    el: WebsiteElement,
+    parts: ReturnType<typeof splitHeadingToHighlightParts>,
+    highlightSpanStyle: string | undefined,
+    opts: { rewriteDom: boolean }
+  ) => {
+    if (id.includes('-hero-title') && onTextEdit) {
+      onTextEdit('title', parts.text);
+    }
+
+    onElementUpdate(id, {
+      ...el,
+      content: {
+        ...el.content,
+        text: parts.text,
+        textBefore: parts.textBefore,
+        highlightedText: parts.highlightedText,
+        textAfter: parts.textAfter,
+      },
+    });
+
+    if (!opts.rewriteDom) return;
+
+    const node = getEditableNode(id);
+    const style =
+      highlightSpanStyle ||
+      node?.getAttribute('data-gb-highlight-style') ||
+      '';
+    forceSyncEditableHtml(id, buildHeadingEditableHtml(parts, style), {
+      caret: parts.awaitingNextWord || !parts.highlightedText ? 'highlight' : 'end',
+    });
+  };
+
+  const handleHeadingTextCommit = (
+    id: string,
+    el: WebsiteElement,
+    rawHtml: string,
+    highlightSpanStyle?: string
+  ) => {
+    const parts = splitHeadingToHighlightParts(rawHtml);
+    // Mid-word: sidebar only. Space/trailing-space: rewrite DOM.
+    applyHeadingParts(id, el, parts, highlightSpanStyle, {
+      rewriteDom: parts.awaitingNextWord,
+    });
+  };
+
+  const handleHeadingSpace = (
+    id: string,
+    el: WebsiteElement,
+    node: HTMLElement,
+    highlightSpanStyle: string
+  ) => {
+    // Cancel any pending onInput rAF so it can't undo this Space.
+    clearLiveCommit(id);
+    const parts = finishHeadingWord(node.innerHTML);
+    applyHeadingParts(id, el, parts, highlightSpanStyle, { rewriteDom: true });
   };
 
   const handleArrayContentUpdate = (id: string, arrayKey: string, index: number, itemKey: string, value: any) => {
@@ -758,7 +814,10 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
       }
   };
 
-  /** Edit mode: linked controls show Open | Select instead of navigating / auto-selecting. */
+  /**
+   * Edit mode: ONLY when the element has a real link → Open page | Select to edit.
+   * No link → normal select. Never navigates the iframe.
+   */
   const handleLinkedClick = (
     e: React.MouseEvent,
     element: WebsiteElement,
@@ -769,15 +828,33 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     try { (window as any).__gbElementClicked = true; } catch (_) {}
 
     const trimmed = String(href || '').trim();
-    if (!trimmed || trimmed === '#') {
-      handleClick(e, element);
+    if (!hasUsableHref(trimmed)) {
+      // No link on this element — just select for edit (no chooser).
+      if (onElementSelect) onElementSelect(element.id, element);
       return;
     }
 
-    // Prefer viewport coords so the chooser works inside PreviewFrame iframe too.
+    if (readOnly) {
+      resolveOpenInternalLink?.(trimmed);
+      return;
+    }
+
     const x = typeof e.clientX === 'number' ? e.clientX : 24;
     const y = typeof e.clientY === 'number' ? e.clientY : 24;
     setLinkChooser({ element, href: trimmed, x, y });
+  };
+
+  /** Select element, or show link chooser when this editable element has a link. */
+  const handleElementActivate = (
+    e: React.MouseEvent,
+    element: WebsiteElement,
+    href?: string | null
+  ) => {
+    if (!readOnly && hasUsableHref(href)) {
+      handleLinkedClick(e, element, href);
+      return;
+    }
+    handleClick(e, element);
   };
 
   const dismissLinkChooser = () => setLinkChooser(null);
@@ -816,7 +893,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     const editHandlers = (
       elementId: string,
       onCommit: (html: string) => void,
-      liveCommit = false
+      liveCommit = true
     ) => editableFocusBlur(elementId, readOnly, onCommit, liveCommit);
     const isSelected = selectedElementId === id;
     const selectedClass = readOnly
@@ -987,10 +1064,20 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             }
 
             if (highlightedText || textBefore || textAfter) {
-                headingText = `${textBefore} <span style="${highlightSpanStyle}">${highlightedText}</span> ${textAfter}`;
+                headingText = buildHeadingEditableHtml(
+                  {
+                    text: '',
+                    textBefore,
+                    highlightedText,
+                    textAfter,
+                    awaitingNextWord: !String(highlightedText || '').trim(),
+                  },
+                  highlightSpanStyle
+                );
             }
 
             const safeHeadingTag = resolveHeadingHtmlTag(headingTag, 'h2');
+            const headingLink = String(c.link || '').trim();
             const headingEl = React.createElement(
                 safeHeadingTag,
                 {
@@ -999,11 +1086,32 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     // selector, higher specificity) re-applies the right vertical rhythm.
                     className: `font-bold outline-none relative transition-all cursor-pointer m-0 ${selectedClass}`,
                     style: headingStyle,
-                    onClick: (e: React.MouseEvent) => handleClick(e, el),
+                    'data-gb-heading-id': id,
+                    'data-gb-highlight-style': highlightSpanStyle,
+                    ...(hasUsableHref(headingLink) && !readOnly
+                      ? { 'data-gb-editable-link': '1' as const }
+                      : {}),
+                    onClick: !readOnly
+                      ? (e: React.MouseEvent) => handleElementActivate(e, el, headingLink)
+                      : undefined,
                     contentEditable: !readOnly,
-                    ...createEditableHtmlProps(id, headingText, readOnly, (html) =>
-                        handleContentUpdate(id, 'text', html)
-                    ),
+                    ...createEditableHtmlProps(id, headingText, readOnly, (html) => {
+                      const target = elements.find((e) => e.id === id) || el;
+                      handleHeadingTextCommit(id, target, html, highlightSpanStyle);
+                    }),
+                    // Capture Space before contentEditable inserts it — one press finishes
+                    // the highlighted word and parks caret in a fresh highlight span.
+                    onKeyDown: !readOnly
+                      ? (e: React.KeyboardEvent) => {
+                          if (e.key !== ' ' && e.code !== 'Space') return;
+                          if (e.ctrlKey || e.metaKey || e.altKey) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const node = e.currentTarget as HTMLElement;
+                          const target = elements.find((item) => item.id === id) || el;
+                          handleHeadingSpace(id, target, node, highlightSpanStyle);
+                        }
+                      : undefined,
                 }
             );
 
@@ -1043,9 +1151,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                 letterSpacing: renderStyle.kickerLetterSpacing || '0.18em',
                                 textTransform: 'uppercase',
                             }}
-                            ref={bindHtml(id, kickerText)}
+                            ref={bindHtml(`${id}::kicker`, kickerText)}
                             contentEditable={!readOnly}
-                            {...editHandlers(id, (html) => handleContentUpdate(id, 'kicker', html))}
+                            {...editHandlers(`${id}::kicker`, (html) => handleContentUpdate(id, 'kicker', html))}
                         />
                     )}
                     {headingEl}
@@ -1173,7 +1281,10 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     id={scopedId}
                     className={`outline-none rounded px-1 relative transition-all cursor-pointer ${selectedClass}`}
                     style={textStyle}
-                    onClick={!readOnly ? (e: React.MouseEvent) => handleClick(e, el) : undefined}
+                    {...(hasUsableHref(String(c.link || '').trim()) && !readOnly
+                      ? { 'data-gb-editable-link': '1' }
+                      : {})}
+                    onClick={!readOnly ? (e: React.MouseEvent) => handleElementActivate(e, el, c.link) : undefined}
                     ref={bindHtml(id, c.text || '')}
                     contentEditable={!readOnly}
                     {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
@@ -1188,17 +1299,12 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             );
 
             const textLinkUrl = String(c.link || '').trim();
-            const textLinkIsExternal =
-                !!textLinkUrl &&
-                (/^(https?:)?\/\//i.test(textLinkUrl) || /^mailto:|^tel:/i.test(textLinkUrl));
-            const textLinkNewTabPref = c.openInNewTab === undefined ? true : !!c.openInNewTab;
-            const textLinkTarget = textLinkUrl
-                ? textLinkIsExternal && textLinkNewTabPref
-                    ? '_blank'
-                    : '_self'
-                : undefined;
-            const textLinkRel = textLinkTarget === '_blank' ? 'noopener noreferrer' : undefined;
+            const { target: textLinkTarget, rel: textLinkRel } = resolveAnchorTargetRel(
+              textLinkUrl,
+              c.openInNewTab
+            );
 
+            // Preview only: real <a>. Edit mode uses handleElementActivate (chooser if linked).
             const wrappedWithLink =
                 textLinkUrl && readOnly ? (
                     <a
@@ -1476,25 +1582,37 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const hasAnimation = animationPreset !== 'none';
 
             // Anchor wrapping:
-            // - external links may open in new tab (default true)
-            // - internal links always stay in same tab
-            const linkUrl = c.link as string | undefined;
-            const linkIsExternal = !!linkUrl && (/^(https?:)?\/\//i.test(linkUrl) || /^mailto:|^tel:/i.test(linkUrl));
-            const linkNewTabPref = (c.openInNewTab === undefined) ? true : !!c.openInNewTab;
-            const linkTarget = linkUrl ? ((linkIsExternal && linkNewTabPref) ? '_blank' : '_self') : undefined;
-            const linkRel = linkTarget === '_blank' ? 'noopener noreferrer' : undefined;
+            // - edit mode: never use a real <a href> (avoids iframe refresh / new tabs)
+            // - preview: real <a>; internal stays same-tab; external only if openInNewTab
+            const linkUrl = String(c.link || '').trim();
+            const { target: linkTarget, rel: linkRel } = resolveAnchorTargetRel(
+              linkUrl,
+              c.openInNewTab
+            );
 
-            const buttonWithLink = linkUrl ? (
-                <a
-                    href={linkUrl}
-                    target={linkTarget}
-                    rel={linkRel}
-                    onClick={!readOnly ? (e) => handleLinkedClick(e, el, linkUrl) : undefined}
-                    className={widthMode === 'full' ? 'block' : 'inline-block'}
-                    style={widthMode === 'full' ? { width: '100%' } : undefined}
-                >
-                    {buttonElement}
-                </a>
+            const buttonWithLink = hasUsableHref(linkUrl) ? (
+                !readOnly ? (
+                    <div
+                        role="link"
+                        data-gb-editable-link="1"
+                        data-gb-href={linkUrl}
+                        onClick={(e) => handleLinkedClick(e, el, linkUrl)}
+                        className={widthMode === 'full' ? 'block cursor-pointer' : 'inline-block cursor-pointer'}
+                        style={widthMode === 'full' ? { width: '100%' } : undefined}
+                    >
+                        {buttonElement}
+                    </div>
+                ) : (
+                    <a
+                        href={linkUrl}
+                        target={linkTarget}
+                        rel={linkRel}
+                        className={widthMode === 'full' ? 'block' : 'inline-block'}
+                        style={widthMode === 'full' ? { width: '100%' } : undefined}
+                    >
+                        {buttonElement}
+                    </a>
+                )
             ) : buttonElement;
 
             const wrapperJustify =
@@ -1604,12 +1722,12 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const altText = c.imageAlt || c.altText || c.alt || 'Image';
             const isLazy = c.lazy !== false;
             const linkUrl = (c.link || '').toString().trim();
-            const hasLink = linkUrl !== '';
+            const hasLink = hasUsableHref(linkUrl);
             const lightboxOn = !!c.lightbox;
-            const linkIsExternal = hasLink && (/^(https?:)?\/\//i.test(linkUrl) || /^mailto:|^tel:/i.test(linkUrl));
-            const linkNewTabPref = (c.openInNewTab === undefined) ? true : !!c.openInNewTab;
-            const linkTarget = hasLink ? ((linkIsExternal && linkNewTabPref) ? '_blank' : '_self') : undefined;
-            const linkRel = linkTarget === '_blank' ? 'noopener noreferrer' : undefined;
+            const { target: linkTarget, rel: linkRel } = resolveAnchorTargetRel(
+              linkUrl,
+              c.openInNewTab
+            );
 
             // Hover effect — scoped CSS on the outer container
             const hoverEffect: string = renderStyle?.hoverEffect || 'none';
@@ -1646,18 +1764,22 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const caption = (c.caption || '').toString();
             const hasCaption = caption.trim() !== '';
 
-            // Click handling: in builder always select; in preview, lightbox > link > nothing
+            // Click handling: in builder, linked images get Open|Select; otherwise select.
+            // In preview: lightbox > soft-nav via <a> / PreviewFrame.
             const handleImgClick = (e: React.MouseEvent) => {
-                if (!readOnly) { handleClick(e, el); return; }
+                if (!readOnly) {
+                  handleElementActivate(e, el, hasLink ? linkUrl : '');
+                  return;
+                }
                 if (lightboxOn) { e.preventDefault(); setOpenLightboxId(id); return; }
-                // else let the <a> wrapper handle navigation
             };
 
             const imageBlock = (
                 <div
                     id={`gb-img-${safeId}`}
                     style={outerStyle}
-                    className={`group transition-all duration-300 ${lightboxOn && readOnly ? 'cursor-zoom-in' : (hasLink && readOnly ? 'cursor-pointer' : '')}`}
+                    className={`group transition-all duration-300 ${lightboxOn && readOnly ? 'cursor-zoom-in' : (hasLink ? 'cursor-pointer' : '')}`}
+                    {...(hasLink && !readOnly ? { 'data-gb-editable-link': '1' } : {})}
                     onClick={handleImgClick}
                 >
                     <div style={innerStyle}>
@@ -2392,13 +2514,13 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 );
             }
 
-            // Wrap in <a> when linked (preview shows arrow + hover lift). In builder read mode
-            // the wrapper still selects the element on click (handleClick).
+            // Wrap in <a> when linked (preview shows arrow + hover lift). In builder,
+            // linked boxes get Open | Select via handleLinkedClick — never navigate.
             const wrapperClass = `relative overflow-hidden transition-all duration-300 ${textAlignClass} ${fbSelectedClass} ${hasLink && !isMinimal ? 'hover:-translate-y-0.5' : ''}`;
             const commonProps = {
                 style: featureBoxStyle,
+                ...(hasLink && !readOnly ? { 'data-gb-editable-link': '1' } : {}),
                 onClick: (e: React.MouseEvent) => {
-                    // In builder (not read-only) show Open | Select when linked
                     if (!readOnly) {
                       if (hasLink) {
                         handleLinkedClick(e, el, String((content as any).link || ''));
@@ -3274,7 +3396,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 <div
                     key={id}
                     className={`${safeImgId}-card ${selectedClass}`}
-                    onClick={!readOnly ? (e) => handleClick(e, el) : undefined}
+                    onClick={!readOnly ? (e) => handleElementActivate(e, el, wholeCardLink || ibBtnLink || (content as any).link) : undefined}
                     style={{
                         ...ibSafeStyle,
                         display: 'flex',
@@ -3808,18 +3930,16 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             // our explicit values win (avoid double-painting from spread).
             const badgeBgImage = (renderStyle as any)?.backgroundImage || '';
 
-            // Link support — preview mode wraps the badge in an <a>. New-tab
-            // defaults to ON when `linkNewTab` is undefined (the convention
-            // across our linkable elements). Edit mode never wraps in <a>
-            // since that would block element selection.
+            // Link support — preview wraps in <a>; edit mode uses chooser only if linked.
             const badgeLinkRaw: string = String((content as any).link || '').trim();
             const badgeLink: string =
               badgeLinkRaw && badgeLinkRaw !== '#' && !/^https?:\/\//i.test(badgeLinkRaw) && !/^mailto:|^tel:/i.test(badgeLinkRaw)
                 ? (badgeLinkRaw.startsWith('/') ? badgeLinkRaw : `/${badgeLinkRaw}`)
                 : badgeLinkRaw;
-            const badgeNewTabPref = (content as any).linkNewTab;
-            const badgeIsExternal = /^https?:\/\//i.test(badgeLink);
-            const badgeNewTab: boolean = badgeIsExternal && (badgeNewTabPref === undefined ? true : !!badgeNewTabPref);
+            const { target: badgeTarget, rel: badgeRel } = resolveAnchorTargetRel(
+              badgeLink,
+              (content as any).linkNewTab
+            );
 
             const badgeInner = (
                 <span
@@ -3842,7 +3962,11 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         maxWidth: '100%',
                         textAlign: 'left' as any, // text inside the badge always reads naturally L→R
                     }}
-                    onClick={!readOnly ? (e) => handleClick(e, el) : undefined}
+                    onClick={
+                      !readOnly && !hasUsableHref(badgeLink)
+                        ? (e) => handleClick(e, el)
+                        : undefined
+                    }
                 >
                     {pulseMode === 'pulse-dot' && (
                       <span
@@ -3876,13 +4000,21 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     {badgeLink && badgeLink !== '#' && readOnly ? (
                         <a
                             href={badgeLink}
-                            target={badgeNewTab ? '_blank' : undefined}
-                            rel={badgeNewTab ? 'noopener noreferrer' : undefined}
+                            target={badgeTarget}
+                            rel={badgeRel}
                             className="no-underline text-inherit inline-block cursor-pointer"
                         >
                             {badgeInner}
                         </a>
-                    ) : badgeInner}
+                    ) : (
+                        <span
+                          {...(hasUsableHref(badgeLink) && !readOnly ? { 'data-gb-editable-link': '1' } : {})}
+                          onClick={!readOnly ? (e) => handleElementActivate(e, el, badgeLink) : undefined}
+                          className="inline-block"
+                        >
+                          {badgeInner}
+                        </span>
+                    )}
                 </div>
             );
 
@@ -5135,9 +5267,8 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 isActive?: boolean,
             ) => {
                 const trimmed = (link || '').trim();
-                const newTab = newTabPref === undefined ? true : !!newTabPref;
-                const target = trimmed && newTab ? '_blank' : undefined;
-                const rel = target === '_blank' ? 'noopener noreferrer' : undefined;
+                // Internal nav must stay in-app; never default to new tab.
+                const { target, rel } = resolveAnchorTargetRel(trimmed, newTabPref);
                 const activeClass = isActive ? 'is-active' : '';
                 const inner = (
                     <>
@@ -5145,16 +5276,17 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         {label || 'Link'}
                     </>
                 );
-                // Edit mode: Open | Select chooser (don't navigate). Preview: live <a>.
+                // Edit mode: Open | Select only when this item has a real link.
                 if (!readOnly) {
                     return (
                         <span
                           key={key}
                           className={`gb-nav-link ${activeClass} inline-flex items-center cursor-pointer`}
                           style={{ padding: itemPadding, fontSize, fontWeight: fontWeight as any }}
+                          {...(hasUsableHref(trimmed) ? { 'data-gb-editable-link': '1' } : {})}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (trimmed) handleLinkedClick(e, el, trimmed);
+                            if (hasUsableHref(trimmed)) handleLinkedClick(e, el, trimmed);
                             else handleClick(e, el);
                           }}
                         >
@@ -6103,33 +6235,50 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     }
   };
 
-  // Wrap an element's output with an anchor tag if content.link is set and the element
-  // doesn't natively handle links (buttons and CTAs do their own <a> rendering).
+  // Wrap with a link only when content.link is set. Edit mode never uses a
+  // navigable <a href> (prevents iframe refresh). Preview uses soft-nav via PreviewFrame.
   const wrapWithLink = (el: WebsiteElement, node: React.ReactNode): React.ReactNode => {
-    const rawLink = (el.content as any)?.link;
-    if (!rawLink || typeof rawLink !== 'string' || !rawLink.trim()) return node;
-    // Types that handle their own link rendering — don't double-wrap
-    if (
-      el.type === 'button' ||
-      el.type === 'call-to-action' ||
-      el.type === 'image-box' ||
-      el.type === 'badge' ||
-      el.type === 'image' ||
-      el.type === 'feature-box'
-    ) {
-      return node;
+    const rawLink = String((el.content as any)?.link || '').trim();
+    if (!hasUsableHref(rawLink)) return node;
+
+    // These always wire links themselves (button markup / nav / cards).
+    const alwaysSelf = new Set([
+      'button',
+      'call-to-action',
+      'image-box',
+      'badge',
+      'image',
+      'feature-box',
+      'nav-menu',
+    ]);
+    if (alwaysSelf.has(el.type)) return node;
+
+    // Heading/text handle the chooser in edit mode; still need <a> in preview.
+    if (!readOnly && (el.type === 'heading' || el.type === 'text')) return node;
+
+    if (!readOnly) {
+      return (
+        <div
+          key={`lnk-${el.id}`}
+          role="link"
+          data-gb-editable-link="1"
+          data-gb-href={rawLink}
+          className="block no-underline text-inherit cursor-pointer"
+          onClick={(e) => handleLinkedClick(e, el, rawLink)}
+        >
+          {node}
+        </div>
+      );
     }
-    const isExternal = /^https?:\/\//i.test(rawLink);
+
+    const { target, rel } = resolveAnchorTargetRel(rawLink, (el.content as any)?.openInNewTab);
     return (
       <a
         key={`lnk-${el.id}`}
         href={rawLink}
-        target={isExternal ? '_blank' : undefined}
-        rel={isExternal ? 'noopener noreferrer' : undefined}
+        target={target}
+        rel={rel}
         className="block no-underline text-inherit"
-        onClick={(e) => {
-          if (!readOnly) handleLinkedClick(e, el, rawLink);
-        }}
       >
         {node}
       </a>

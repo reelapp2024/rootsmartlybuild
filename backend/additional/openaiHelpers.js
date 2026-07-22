@@ -150,7 +150,7 @@ function cleanAIString(str) {
 const fetchJSONFromOpenAI = async (
   prompt,
   label,
-  { userId, projectId, pageId, promptFrom, promptFor }
+  { userId, projectId, pageId, promptFrom, promptFor, model } = {}
 ) => {
   if (userId) {
     await ensureSufficientCredits({
@@ -200,18 +200,22 @@ Content:
 ${String(brokenText || "").slice(0, 12000)}
 `;
 
-    const repairedRaw = await getResponseFromOpenAI(repairPrompt);
+    const repairedRaw = await getResponseFromOpenAI(
+      repairPrompt,
+      model || 'gpt-3.5-turbo'
+    );
     return parseJsonWithFallbacks(repairedRaw?.text || "");
   };
 
   let raw, attempt;
   const maxAttempts = 3;
+  const useModel = model || 'gpt-3.5-turbo';
 
   for (attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       // Modify the prompt to make sure OpenAI knows to return only valid JSON
       const updatedPrompt = `${prompt}\n\nReturn ONLY the response as valid JSON. Don't include any other text, explanations, or markdown.`; // Updated prompt
-      raw = await getResponseFromOpenAI(updatedPrompt);
+      raw = await getResponseFromOpenAI(updatedPrompt, useModel);
 
       let parsed;
       try {

@@ -43,6 +43,8 @@ export function AuthorsManagement() {
     instagram: "",
     facebook: "",
     youtube: "",
+    twitter: "",
+    website: "",
   });
   const [otherLinks, setOtherLinks] = useState<{ label: string, url: string }[]>([{ label: "", url: "" }]);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -167,18 +169,22 @@ export function AuthorsManagement() {
       formDataToSend.append('about', formData.bio);
 
       // Combine social links and other links into the expected format
-      const allLinks = [];
+      const allLinks: { label: string; url: string }[] = [];
 
-      // Add social media links
-      if (socialLinks.linkedin) allLinks.push({ label: 'LinkedIn', url: socialLinks.linkedin });
-      if (socialLinks.instagram) allLinks.push({ label: 'Instagram', url: socialLinks.instagram });
-      if (socialLinks.facebook) allLinks.push({ label: 'Facebook', url: socialLinks.facebook });
-      if (socialLinks.youtube) allLinks.push({ label: 'YouTube', url: socialLinks.youtube });
+      // Add social media links (only non-empty)
+      if (socialLinks.linkedin.trim()) allLinks.push({ label: 'LinkedIn', url: socialLinks.linkedin.trim() });
+      if (socialLinks.instagram.trim()) allLinks.push({ label: 'Instagram', url: socialLinks.instagram.trim() });
+      if (socialLinks.facebook.trim()) allLinks.push({ label: 'Facebook', url: socialLinks.facebook.trim() });
+      if (socialLinks.youtube.trim()) allLinks.push({ label: 'YouTube', url: socialLinks.youtube.trim() });
+      if (socialLinks.twitter.trim()) allLinks.push({ label: 'X', url: socialLinks.twitter.trim() });
+      if (socialLinks.website.trim()) allLinks.push({ label: 'Website', url: socialLinks.website.trim() });
 
-      // Add other links
+      // Add other / custom links
       otherLinks.forEach(link => {
-        if (link.label && link.url) {
-          allLinks.push({ label: link.label, url: link.url });
+        const label = String(link.label || '').trim();
+        const url = String(link.url || '').trim();
+        if (label && url) {
+          allLinks.push({ label, url });
         }
       });
 
@@ -192,10 +198,10 @@ export function AuthorsManagement() {
         ? `/edit_author/${selectedAuthor._id}`
         : "/create_author";
 
+      // Do NOT set Content-Type manually — axios must add multipart boundary
       const res = await httpFile.post(endpoint, formDataToSend, {
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
         },
       });
 
@@ -217,7 +223,7 @@ export function AuthorsManagement() {
         });
         setView("list");
         setFormData({ name: "", jobTitle: "", bio: "" });
-        setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "" });
+        setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "", twitter: "", website: "" });
         setOtherLinks([{ label: "", url: "" }]);
         setImageFile(null);
         setImagePreview("");
@@ -272,23 +278,41 @@ export function AuthorsManagement() {
       bio: author.bio,
     });
 
-    // Parse author links into social links and other links
-    const socialLinksData = { linkedin: "", instagram: "", facebook: "", youtube: "" };
+    // Parse author links into social links and other links (fuzzy label match)
+    const socialLinksData = {
+      linkedin: "",
+      instagram: "",
+      facebook: "",
+      youtube: "",
+      twitter: "",
+      website: "",
+    };
     const otherLinksData: { label: string, url: string }[] = [];
 
     if (author.links && author.links.length > 0) {
-      author.links.forEach(link => {
-        const label = link.label.toLowerCase();
-        if (label === 'linkedin') {
-          socialLinksData.linkedin = link.url;
-        } else if (label === 'instagram') {
-          socialLinksData.instagram = link.url;
-        } else if (label === 'facebook') {
-          socialLinksData.facebook = link.url;
-        } else if (label === 'youtube') {
-          socialLinksData.youtube = link.url;
+      author.links.forEach((link) => {
+        const label = String(link.label || "").toLowerCase();
+        const url = String(link.url || "").trim();
+        if (!url) return;
+        if (label.includes("linkedin")) {
+          socialLinksData.linkedin = url;
+        } else if (label.includes("instagram")) {
+          socialLinksData.instagram = url;
+        } else if (label.includes("facebook")) {
+          socialLinksData.facebook = url;
+        } else if (label.includes("youtube") || label.includes("youtu")) {
+          socialLinksData.youtube = url;
+        } else if (label.includes("twitter") || label === "x" || label.includes("x-twitter")) {
+          socialLinksData.twitter = url;
+        } else if (
+          label.includes("website") ||
+          label.includes("portfolio") ||
+          label.includes("site") ||
+          label.includes("blog")
+        ) {
+          socialLinksData.website = url;
         } else {
-          otherLinksData.push(link);
+          otherLinksData.push({ label: link.label, url });
         }
       });
     }
@@ -317,7 +341,7 @@ export function AuthorsManagement() {
           <Button variant="outline" onClick={() => {
             setView("list");
             setFormData({ name: "", jobTitle: "", bio: "" });
-            setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "" });
+            setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "", twitter: "", website: "" });
             setOtherLinks([{ label: "", url: "" }]);
             setImageFile(null);
             setImagePreview("");
@@ -446,16 +470,40 @@ export function AuthorsManagement() {
                       onChange={(e) => handleSocialLinkChange('facebook', e.target.value)}
                     />
                   </div>
-                  <div>
+                    <div>
                     <label htmlFor="youtube" className="block text-sm font-medium mb-1">
                       YouTube
                     </label>
                     <Input
                       id="youtube"
                       name="youtube"
-                      placeholder="https://youtube.com/c/username"
+                      placeholder="https://youtube.com/@username"
                       value={socialLinks.youtube}
                       onChange={(e) => handleSocialLinkChange('youtube', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="twitter" className="block text-sm font-medium mb-1">
+                      X / Twitter
+                    </label>
+                    <Input
+                      id="twitter"
+                      name="twitter"
+                      placeholder="https://x.com/username"
+                      value={socialLinks.twitter}
+                      onChange={(e) => handleSocialLinkChange('twitter', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="website" className="block text-sm font-medium mb-1">
+                      Website
+                    </label>
+                    <Input
+                      id="website"
+                      name="website"
+                      placeholder="https://yoursite.com"
+                      value={socialLinks.website}
+                      onChange={(e) => handleSocialLinkChange('website', e.target.value)}
                     />
                   </div>
                 </div>
@@ -536,7 +584,7 @@ export function AuthorsManagement() {
                 onClick={() => {
                   setView("list");
                   setFormData({ name: "", jobTitle: "", bio: "" });
-                  setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "" });
+                  setSocialLinks({ linkedin: "", instagram: "", facebook: "", youtube: "", twitter: "", website: "" });
                   setOtherLinks([{ label: "", url: "" }]);
                   setImageFile(null);
                   setImagePreview("");
@@ -617,9 +665,20 @@ export function AuthorsManagement() {
                     </TableCell>
                     <TableCell>
                       {author.links && author.links.length > 0 ? (
-                        <span className="text-sm text-blue-600">
-                          {author.links.length} link(s)
-                        </span>
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {author.links.map((l, i) => (
+                            <a
+                              key={`${l.label}-${i}`}
+                              href={l.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs px-2 py-0.5 rounded-full bg-muted hover:underline"
+                              title={l.url}
+                            >
+                              {l.label || "Link"}
+                            </a>
+                          ))}
+                        </div>
                       ) : (
                         "-"
                       )}

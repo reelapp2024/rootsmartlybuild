@@ -14,10 +14,7 @@ const sharp = require("sharp");
 const { Readable } = require("stream");
 const mongoose = require('mongoose');
 
-
-const aiblogsQueue = require("../queue/aiblogsQueue")
-// expects helper.uploadFile(file, folderPath, originalResponse?) to save a stream and return the stored filename
-// FREEPIK_API_KEY must be set in env
+// AI queue worker is registered via AiblogsControllerV2 / routes
 const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY;
 const {
     fetchJSONFromOpenAI,
@@ -156,6 +153,9 @@ module.exports = {
             }
             // -----------------------
 
+            const { normalizeCoverImageForSave } = require("../services/blogSectionDynamics");
+            const normalizedCover = normalizeCoverImageForSave(coverImage, req.body);
+
             const blog = new Blog({
                 userId,
                 projectId,
@@ -164,7 +164,7 @@ module.exports = {
                 content,
                 status: finalStatus,
                 type: String(type).trim(),
-                coverImage,
+                coverImage: normalizedCover || undefined,
                 seoMeta: builtSeo,
                 authorId,               // ✅ store the Author reference
                 isSchedule: scheduleFlag,
@@ -245,6 +245,22 @@ module.exports = {
 
             if (Object.keys(payload).length === 0) {
                 return res.status(400).json({ message: "No valid fields to update" });
+            }
+
+            // Normalize coverImage from object, string, or FormData flat keys
+            const { normalizeCoverImageForSave } = require("../services/blogSectionDynamics");
+            if (
+                payload.coverImage !== undefined ||
+                req.body["coverImage.url"] !== undefined ||
+                req.body.coverImageUrl !== undefined
+            ) {
+                const normalizedCover = normalizeCoverImageForSave(payload.coverImage, req.body);
+                if (normalizedCover) payload.coverImage = normalizedCover;
+                else if (payload.coverImage === null || payload.coverImage === "") {
+                    payload.coverImage = { url: "", alt: "" };
+                } else {
+                    delete payload.coverImage;
+                }
             }
 
             // Ensure it exists & is owned by user
@@ -456,39 +472,118 @@ module.exports = {
 
     get_blog_by_slug: async (req, res) => {
         try {
-
-            console.log(req.body, "get blog by slug body");
-            const { projectId, slug } = req.body; // expect from body
-            console.log(req.body, "get blog by slug body");
+            const projectId = String(
+                req.body?.projectId || req.query?.projectId || ""
+            ).trim();
+            const rawSlug = String(
+                req.body?.slug || req.query?.slug || ""
+            ).trim();
+            const blogId = String(
+                req.body?.blogId || req.query?.blogId || ""
+            ).trim();
 
             if (!projectId || !mongoose.isValidObjectId(projectId)) {
                 return helper.sendError(res, 400, "Valid projectId is required");
             }
-            if (!slug || typeof slug !== 'string') {
-                return helper.sendError(res, 400, "Slug is required");
+            if (!rawSlug && !blogId) {
+                return helper.sendError(res, 400, "slug or blogId is required");
             }
 
-            // Public: only published posts, check both slug and oldSlugs
-            const blog = await Blog.findOne({
-                projectId,
-                $or: [
-                    { slug: slug.trim().toLowerCase() },
-                    { oldSlugs: slug.trim().toLowerCase() }
-                ],
-                status: 1 // Ensure only published posts
-            });
-            if (!blog) return helper.sendError(res, 404, "Blog not found");
+            const slug = rawSlug
+                .replace(/^\/+|\/+$/g, "")
+                .replace(/^blog\//i, "")
+                .toLowerCase();
 
-            // bump views (non-blocking)
-            Blog.updateOne({ _id: blog._id }, { $inc: { views: 1 } }).catch(() => { });
+            const {
+                buildPublishedBlogDetailPayload,
+            } = require("../services/blogSectionDynamics");
 
-            return helper.sendSuccess(res, 200, "OK", {
-                ...blog.toObject(),
-                currentSlug: blog.slug // Include current slug for SEO/frontend
+            const detail = await buildPublishedBlogDetailPayload(projectId, {
+                slug,
+                blogId,
             });
+            if (!detail) {
+                return helper.sendError(res, 404, "Blog not found");
+            }
+
+            // Non-blocking view bump
+            Blog.updateOne({ _id: detail.blogId }, { $inc: { views: 1 } }).catch(() => {});
+
+            return helper.sendSuccess(res, 200, "OK", detail);
         } catch (error) {
             console.error(error);
             return helper.sendError(res, 500, error);
+        }
+    },
+
+    /** Alias — GenieBuild / SiteNextJS live article API (same as get_blog_by_slug). */
+    get_published_blog: async (req, res) => {
+        return module.exports.get_blog_by_slug(req, res);
+    },
+
+    /**
+     * Public: full author for a blog (all social / custom links).
+     * Body/query: { blogId } | { authorId } | { projectId, slug }
+     */
+    get_blog_author: async (req, res) => {
+        try {
+            const { normalizeAuthorLinks } = require("../additional/authorLinks");
+            const {
+                absolutizeMediaUrl,
+                extractMediaUrl,
+            } = require("../services/blogSectionDynamics");
+
+            const src = { ...(req.query || {}), ...(req.body || {}) };
+            const blogId = String(src.blogId || "").trim();
+            const authorId = String(src.authorId || "").trim();
+            const projectId = String(src.projectId || "").trim();
+            const slug = String(src.slug || "")
+                .trim()
+                .toLowerCase()
+                .replace(/^\/+|\/+$/g, "")
+                .replace(/^blog\//, "");
+
+            let author = null;
+            if (authorId && mongoose.isValidObjectId(authorId)) {
+                author = await Author.findById(authorId).lean();
+            } else if (blogId && mongoose.isValidObjectId(blogId)) {
+                const blog = await Blog.findById(blogId).select("authorId").lean();
+                if (blog?.authorId) {
+                    author = await Author.findById(blog.authorId).lean();
+                }
+            } else if (projectId && slug) {
+                const blog = await Blog.findOne({
+                    projectId,
+                    status: 1,
+                    $or: [{ slug }, { oldSlugs: slug }],
+                })
+                    .select("authorId")
+                    .lean();
+                if (blog?.authorId) {
+                    author = await Author.findById(blog.authorId).lean();
+                }
+            }
+
+            if (!author) {
+                return res.status(404).json({ message: "Author not found" });
+            }
+
+            const image = absolutizeMediaUrl(extractMediaUrl(author.image));
+            return res.status(200).json({
+                message: "OK",
+                data: {
+                    authorId: String(author._id),
+                    name: String(author.name || "").trim(),
+                    jobTitle: String(author.jobTitle || "").trim(),
+                    bio: String(author.bio || "").trim(),
+                    image,
+                    avatar: image,
+                    links: normalizeAuthorLinks(author.links),
+                },
+            });
+        } catch (error) {
+            console.error("[get_blog_author]", error);
+            return helper.sendError(res, 500, error?.message || error);
         }
     },
 
@@ -515,7 +610,17 @@ module.exports = {
             if ([0, 1, 2].includes(Number(status))) filter.status = Number(status);
             if (projectId) filter.projectId = projectId;
             if (type) filter.type = type;
-            if (authorName) filter.authorName = { $regex: authorName, $options: "i" };
+            // Legacy query param authorName — resolve via Author collection when possible
+            if (authorName) {
+                const authors = await Author.find({
+                    name: { $regex: String(authorName), $options: "i" },
+                })
+                    .select("_id")
+                    .lean();
+                const ids = authors.map((a) => a._id);
+                if (ids.length) filter.authorId = { $in: ids };
+                else filter.authorId = null; // force empty
+            }
 
             if (isSchedule !== undefined) {
                 const flag = String(isSchedule).toLowerCase();
@@ -583,9 +688,10 @@ module.exports = {
                 title: d.title,
                 type: d.type,
                 views: d.views,
-                // ⬇️ Prefer name resolved from authorId; fallback to legacy authorName; else null
+                // Prefer name resolved from authorId; fallback to legacy authorName; else null
                 author: authorMap.get((d.authorId || "").toString()) || d.authorName || null,
-                coverImate: d.coverImage,
+                coverImage: d.coverImage,
+                coverImate: d.coverImage, // legacy typo alias (admin)
                 slug: d.slug,
                 status: d.status,
                 createdAt: d.createdAt,
@@ -629,14 +735,18 @@ module.exports = {
 
             const {
                 buildBlogListSectionData,
+                listPublishedBlogCategories,
             } = require("../services/blogSectionDynamics");
 
-            const payload = await buildBlogListSectionData(projectId, {
-                page,
-                limit,
-                search,
-                type,
-            });
+            const [payload, categories] = await Promise.all([
+                buildBlogListSectionData(projectId, {
+                    page,
+                    limit,
+                    search,
+                    type,
+                }),
+                listPublishedBlogCategories(projectId),
+            ]);
             const data = payload?.data || {};
             const pagination = data.pagination || payload?.meta?.pagination || {};
 
@@ -645,6 +755,7 @@ module.exports = {
                 data: {
                     items: Array.isArray(data.items) ? data.items : [],
                     emptyStateMessage: data.emptyStateMessage || "No blogs found",
+                    categories,
                     page: Number(pagination.page || page),
                     limit: Number(pagination.limit || limit),
                     total: Number(pagination.total || 0),
@@ -662,41 +773,31 @@ module.exports = {
 
     related_blogs: async (req, res) => {
         try {
+            const projectId = String(
+                req.body?.projectId || req.query?.projectId || ""
+            ).trim();
+            const limit = Number(req.body?.limit || req.query?.limit || 6) || 6;
+            const excludeSlug = String(
+                req.body?.excludeSlug || req.query?.excludeSlug || ""
+            ).trim();
+            const slug = String(req.body?.slug || req.query?.slug || excludeSlug || "").trim();
+            const blogId = String(req.body?.blogId || req.query?.blogId || "").trim();
 
-
-            const { projectId, limit = 6, excludeSlug } = req.body || {};
-            if (!projectId) {
-                return res.status(400).json({ message: "projectId is required in body" });
+            if (!projectId || !mongoose.isValidObjectId(projectId)) {
+                return res.status(400).json({ message: "Valid projectId is required" });
             }
 
-            // Build query
-            const query = {
-
-                projectId,
-                // If you use a published status, keep this; otherwise remove it
-                // status: 1, // 1 = published
-            };
-
-            if (excludeSlug) {
-                query.slug = { $ne: String(excludeSlug).trim() };
-            }
-
-            const docs = await Blog.find(query)
-                .select("title slug coverImage information createdAt")
-                .sort({ createdAt: -1 })
-                .limit(Number(limit) || 6)
-                .lean();
-
-            // Map to required keys (note: coverImate is intentionally spelled to match your request)
-            const items = (docs || []).map(d => ({
-                title: d.title || null,
-                slug: d.slug || null,
-                coverImage: d.coverImage || null,
-                information: d.information ?? null,
-            }));
+            const { buildBlogRelatedItems } = require("../services/blogSectionDynamics");
+            const items = await buildBlogRelatedItems(projectId, {
+                slug: slug.replace(/^blog\//i, ""),
+                blogId,
+                limit,
+            });
 
             return res.status(200).json({
                 message: "OK",
+                data: { items },
+                // legacy flat keys for aiblogsQueue consumers
                 items,
                 count: items.length,
             });
@@ -1191,7 +1292,7 @@ Output Rules:
                     content: content_html,
                     status: finalStatus,
                     type: styleText,
-                    coverImage: coverUrl || undefined,
+                    coverImage: coverUrl ? { url: String(coverUrl).trim(), alt: "" } : undefined,
                     images: usedImagesFinal.length ? usedImagesFinal : undefined,
                     seoMeta: { metaTitle, metaDescription, keywords },
                     authorName: authorName ? clean(authorName) : undefined
@@ -1248,58 +1349,8 @@ Output Rules:
     },
 
     create_ai_blog: async (req, res) => {
-        try {
-            const userId = req.user?.userId;
-            if (!userId) return res.status(401).json({ message: 'Unauthorized: user missing' });
-
-            const { projectId, type, authorId, status, title, titlesWithSchedule } = req.body;
-            if (!projectId) return res.status(400).json({ message: 'projectId is required' });
-            if (!type || !String(type).trim()) return res.status(400).json({ message: 'type is required' });
-
-            // accept string OR array for title(s)
-            const toArray = (v) => {
-                if (v == null) return [];
-                if (Array.isArray(v)) return v;
-                if (typeof v === 'string') {
-                    try { const p = JSON.parse(v); if (Array.isArray(p)) return p; } catch { }
-                    return v.split(/\n+/).map(s => String(s).trim()).filter(Boolean);
-                }
-                return [v].filter(Boolean);
-            };
-
-            const titlesArr = toArray(title).map(s => String(s || '').trim()).filter(Boolean);
-            if (!titlesArr.length) return res.status(400).json({ message: 'title (string or array) is required' });
-
-            // decide what to enqueue based on whether scheduled data exists
-            const jobs = await Promise.all(
-                (titlesWithSchedule && Array.isArray(titlesWithSchedule) && titlesWithSchedule.length
-                    ? titlesWithSchedule
-                    : titlesArr.map(t => ({ title: t, scheduledAt: null }))
-                ).map(({ title, scheduledAt }) =>
-                    aiblogsQueue.add({
-                        userId,
-                        projectId,
-                        type,
-                        authorId,
-                        status: scheduledAt ? 0 : 1,        // 0 = scheduled, 1 = immediate
-                        title,
-                        slug: slugify(title),
-                        isSchedule: !!scheduledAt,
-                        scheduleTime: scheduledAt ? new Date(scheduledAt) : null
-                    })
-                )
-            );
-
-            return res.status(202).json({
-                message: 'Queued AI blog generation',
-                count: jobs.length,
-                jobIds: jobs.map(j => j.id)
-            });
-
-        } catch (err) {
-            console.error('[create_ai_blog_queue] error:', err);
-            return res.status(500).json({ message: 'Failed to queue AI blogs' });
-        }
+        // Legacy entrypoint — delegate to V2 content-only Redis queue
+        return require("./AiblogsControllerV2").create_ai_blog(req, res);
     },
 
 

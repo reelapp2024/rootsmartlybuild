@@ -40,6 +40,7 @@ const Country = require("../models/adminCountires")
 const State = require("../models/adminStates");
 const City = require("../models/adminCities");
 const Author = require("../models/authors")
+const { normalizeAuthorLinks } = require("../additional/authorLinks");
 const AdminLocalArea = require('../models/adminLocalAreas'); // add this alongside your other model imports
 const BusinessLocation = require('../models/businessLocation');
 const WebsiteSection = require("../models/websiteSections");
@@ -4809,16 +4810,8 @@ Example format:
             const image = req.files?.image; // Ensure image is correctly accessed
             console.log(req.body, req.files)
 
-            if (typeof links === 'string') {
-
-                links = JSON.parse(links); // Attempt to parse the string
-
-                console.log(links, "inside of parsing")
-                if (!Array.isArray(links)) {
-                    return res.status(400).json({ message: 'Links must be an array of objects' });
-
-                }
-            }
+            // Accept JSON string, array, or map — keep every usable link
+            links = normalizeAuthorLinks(links);
 
             // Validate required fields
             if (!name || !name.trim()) {
@@ -4876,7 +4869,7 @@ Example format:
                 jobTitle: jobTitle ? jobTitle.trim() : '',
                 bio: about ? about.trim() : '',
                 image: imageUrl,
-                links: links || [], // links can be an empty array if not provided
+                links: links || [],
                 userId
             });
 
@@ -4958,28 +4951,12 @@ Example format:
                 existingAuthor.image = `/files/authors/images/${savedName}`; // Adjust the URL based on your folder structure
             }
 
-            // Ensure links is always an array
-            let parsedLinks = [];
-            if (links) {
-                // If links is a string, parse it as JSON, otherwise keep it as is if it's an array
-                if (typeof links === 'string') {
-                    try {
-                        parsedLinks = JSON.parse(links); // Attempt to parse the string
-                        if (!Array.isArray(parsedLinks)) {
-                            return res.status(400).json({ message: 'Links must be an array of objects' });
-                        }
-                    } catch (error) {
-                        return res.status(400).json({ message: 'Invalid format for links' });
-                    }
-                } else if (Array.isArray(links)) {
-                    parsedLinks = links; // Already an array, use it as is
-                } else {
-                    return res.status(400).json({ message: 'Links should be an array of objects' });
-                }
+            // Ensure links is always a clean [{label,url}] array when provided
+            // IMPORTANT: only update when the client actually sent `links`
+            // (otherwise image-only edits would wipe all social links)
+            if (typeof links !== "undefined") {
+                existingAuthor.links = normalizeAuthorLinks(links);
             }
-
-            // Update links if provided
-            existingAuthor.links = parsedLinks; // Update the links array if links were provided
 
             // Save the updated author object
             await existingAuthor.save();

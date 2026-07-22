@@ -35,6 +35,12 @@ const blogSchema = new mongoose.Schema(
     // SEO-friendly unique slug per project, provided by frontend
     slug: { type: String, required: true, trim: true },
     oldSlugs: [{ type: String, trim: true }], // New field for old slugs
+
+    /** Live/last fake-review generation progress (admin Generate Reviews). */
+    fakeReviewsGeneration: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
   },
   { timestamps: true }
 );

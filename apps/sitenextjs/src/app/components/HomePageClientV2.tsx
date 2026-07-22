@@ -17,6 +17,13 @@ import { preloadVariant } from '@geniebuild/components/sections/SectionRouter';
 import { hydrateSectionsForDisplay } from '@geniebuild/utils/sectionHydration';
 import { syncThemeFromApiSettings } from '@geniebuild/utils/themeResolver';
 import { buildSiteNextDemoWebsiteData } from '@geniebuild/localServiceDemo';
+import {
+  fetchPublishedBlogBySlug,
+} from '@geniebuild/lib/blogsApi';
+import {
+  assembleLiveBlogDetailSections,
+  extractBlogSlugFromPath,
+} from '@geniebuild/lib/assembleLiveBlogDetail';
 
 type HomePageClientV2Props = {
   /** Server-read env fallback when client bundle omits NEXT_PUBLIC_PROJECT_ID */
@@ -172,6 +179,63 @@ export default function HomePageClientV2({
 
         if (!projectId) {
           throw new Error('Set NEXT_PUBLIC_PROJECT_ID or pass ?projectId= in the URL');
+        }
+
+        // Live blog article: /blog/:slug → getPublishedBlog (GenieBuild-shaped) + chrome
+        const liveBlogSlug = extractBlogSlugFromPath(activePathname || '');
+        if (liveBlogSlug) {
+          const detail = await fetchPublishedBlogBySlug({
+            projectId,
+            slug: liveBlogSlug,
+          });
+          if (cancelled) return;
+          if (!detail) {
+            throw new Error(`Blog not found for “/blog/${liveBlogSlug}”.`);
+          }
+
+          // Prefer homepage chrome (header/footer + theme); fall back to empty chrome templates.
+          let chromeSections: Section[] = [];
+          let apiThemeSettings: any = null;
+          try {
+            const homeResponse = await getWebsitePageData({
+              projectId,
+              slug: '',
+            });
+            if (cancelled) return;
+            const homeData = homeResponse?.data;
+            chromeSections = Array.isArray(homeData?.sections) ? homeData.sections : [];
+            apiThemeSettings = homeData?.themeSettings || null;
+          } catch {
+            /* chrome optional */
+          }
+
+          const assembled = assembleLiveBlogDetailSections(detail, chromeSections);
+          const themeSync = syncThemeFromApiSettings(apiThemeSettings, { projectId });
+          const normalized = hydrateSectionsForDisplay(assembled, {
+            themeSettings: apiThemeSettings,
+            stripPresetColors: themeSync.shouldStripPresetColors,
+          });
+          if (cancelled) return;
+          setSections(normalized);
+          setThemeSettings(apiThemeSettings);
+          setGlobalElementStyles(themeSync.globalElementStyles);
+          setGlobalColors(themeSync.globalColors);
+          setSitePageType('blog');
+          setSeoData(
+            normalizePageSeoFromApi({
+              seo: {
+                title: detail.seo?.metaTitle || detail.title || detail.hero?.title,
+                description:
+                  detail.seo?.metaDescription ||
+                  detail.information ||
+                  detail.content?.information ||
+                  '',
+                keywords: detail.seo?.keywords,
+              },
+            })
+          );
+          setLoading(false);
+          return;
         }
 
         let resolvedProjectId = projectId;

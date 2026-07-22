@@ -28,7 +28,7 @@ const nextConfig = {
       'motion/react': path.resolve(__dirname, '../geniebuild/motionStub.tsx'),
     },
   },
-  webpack: (config) => {
+  webpack: (config, { dev }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
       '@ui/blocks': path.resolve(__dirname, '../geniebuild/src/ui-blocks/index.tsx'),
@@ -40,6 +40,12 @@ const nextConfig = {
       ),
       'motion/react': path.resolve(__dirname, '../geniebuild/motionStub.tsx'),
     };
+    // GenieBuild graph is large; cold webpack compiles of the catch-all route
+    // can exceed the default chunk load timeout and surface ChunkLoadError.
+    if (dev) {
+      config.output = config.output || {};
+      config.output.chunkLoadTimeout = 300000; // 5 minutes
+    }
     return config;
   },
 };

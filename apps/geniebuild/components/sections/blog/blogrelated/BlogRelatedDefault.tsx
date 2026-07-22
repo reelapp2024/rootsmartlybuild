@@ -1,8 +1,14 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { toAbsoluteMediaUrl, extractMediaUrl } from '../../../../config';
+import {
+  fetchRelatedPublishedBlogs,
+  type PublishedBlogItem,
+} from '../../../../lib/blogsApi';
+import { getProjectIdFromUrl } from '../../../../lib/aboutUsApi';
 
 interface Props {
   section: Section;
@@ -13,22 +19,57 @@ interface Props {
   selectedElementId?: string | null;
   readOnly?: boolean;
   themeColors?: any;
+  projectId?: string;
+  sitePathname?: string;
 }
 
-const DEFAULT_POSTS = [
-  { img: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&q=80', category: 'Tips & Guides', title: '10 Signs You Need a Professional Right Away', excerpt: 'Spot the early warning signs before a small issue becomes an expensive emergency.' },
-  { img: 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=800&q=80', category: 'How-To', title: 'A Simple Maintenance Checklist for Every Season', excerpt: 'Keep everything running smoothly year-round with these easy, proven steps.' },
-  { img: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=800&q=80', category: 'Industry News', title: 'What the Latest Standards Mean for Your Home', excerpt: 'New regulations are changing the game — here is what you should know today.' },
+type RelatedCard = {
+  img: string;
+  category: string;
+  title: string;
+  excerpt: string;
+  link: string;
+};
+
+const BUILDER_PLACEHOLDER_POSTS: RelatedCard[] = [
+  { img: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&q=80', category: 'Tips & Guides', title: '10 Signs You Need a Professional Right Away', excerpt: 'Spot the early warning signs before a small issue becomes an expensive emergency.', link: '#' },
+  { img: 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=800&q=80', category: 'How-To', title: 'A Simple Maintenance Checklist for Every Season', excerpt: 'Keep everything running smoothly year-round with these easy, proven steps.', link: '#' },
+  { img: 'https://images.unsplash.com/photo-1585771724684-38269d6639fd?w=800&q=80', category: 'Industry News', title: 'What the Latest Standards Mean for Your Home', excerpt: 'New regulations are changing the game — here is what you should know today.', link: '#' },
 ];
 
+function normalizeRelatedItem(it: any): RelatedCard {
+  const slug = String(it?.slug || '').trim();
+  const imgRaw =
+    extractMediaUrl(it?.img) ||
+    extractMediaUrl(it?.image) ||
+    extractMediaUrl(it?.imageUrl) ||
+    extractMediaUrl(it?.coverImage) ||
+    '';
+  return {
+    img: toAbsoluteMediaUrl(imgRaw),
+    category: String(it?.category || it?.type || 'Article').trim() || 'Article',
+    title: String(it?.title || '').trim(),
+    excerpt: String(it?.excerpt || it?.description || it?.information || '').trim(),
+    link: String(it?.link || (slug ? `/blog/${slug}` : '') || '#').trim() || '#',
+  };
+}
+
+function extractSlugFromPath(pathname?: string): string {
+  const normalized = String(pathname || (typeof window !== 'undefined' ? window.location.pathname : '') || '')
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '');
+  const match = normalized.match(/(?:^|\/)blog\/([^/]+)$/i);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 /**
- * BlogRelatedDefault — "related articles" cards grid at the bottom of a post.
- * Light section (tc.light). Header (badge + heading) editable; each post card's
- * title + excerpt editable via ElementsSection.
+ * BlogRelatedDefault — "related articles" from Blog DB on live site.
+ * Never shows dummy Unsplash cards when readOnly / projectId is present.
  */
 export const BlogRelatedDefault: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
-  selectedElementId, readOnly = false, themeColors: tc,
+  selectedElementId, readOnly = false, themeColors: tc, projectId: projectIdProp,
+  sitePathname,
 }) => {
   const { content, styles } = section;
   const s = styles as any;
@@ -65,14 +106,56 @@ export const BlogRelatedDefault: React.FC<Props> = ({
     ...(isCssValue(padB) ? { paddingBottom: padB } : {}),
   };
 
-  const rawPosts = (content.items && content.items.length > 0)
-    ? content.items.map((it: any, i: number) => ({
-        img:      it.img || it.image || it.imageUrl || DEFAULT_POSTS[i % 3].img,
-        category: it.category || DEFAULT_POSTS[i % 3].category,
-        title:    it.title || DEFAULT_POSTS[i % 3].title,
-        excerpt:  it.excerpt || it.description || DEFAULT_POSTS[i % 3].excerpt,
-      }))
-    : DEFAULT_POSTS;
+  const seededItems = useMemo(() => {
+    if (!Array.isArray(content?.items) || !content.items.length) return [] as RelatedCard[];
+    return content.items.map(normalizeRelatedItem).filter((p) => p.title);
+  }, [content?.items]);
+
+  const projectId = String(projectIdProp || getProjectIdFromUrl() || '').trim();
+  const useLiveRelated = Boolean(readOnly && projectId);
+  const [liveItems, setLiveItems] = useState<RelatedCard[] | null>(null);
+  const [loading, setLoading] = useState(useLiveRelated && seededItems.length === 0);
+
+  useEffect(() => {
+    if (!useLiveRelated) {
+      setLiveItems(null);
+      setLoading(false);
+      return;
+    }
+    // Prefer items already injected from getPublishedBlog
+    if (seededItems.length > 0) {
+      setLiveItems(seededItems);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    const slug = extractSlugFromPath(sitePathname);
+    const blogId = String(c.blogId || c.contentRef?.blogId || '').trim();
+
+    fetchRelatedPublishedBlogs({ projectId, slug, blogId, limit: 3 })
+      .then((items: PublishedBlogItem[]) => {
+        if (cancelled) return;
+        setLiveItems((items || []).map(normalizeRelatedItem).filter((p) => p.title));
+      })
+      .catch(() => {
+        if (!cancelled) setLiveItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [useLiveRelated, projectId, seededItems, sitePathname, c.blogId, c.contentRef?.blogId]);
+
+  const rawPosts: RelatedCard[] = useLiveRelated
+    ? (liveItems || seededItems)
+    : seededItems.length
+      ? seededItems
+      : BUILDER_PLACEHOLDER_POSTS;
 
   const themeColors = { ...tc, titleColor, textColor, accentColor: accent, secondaryHeadingColor: accent };
   const passThrough = {
@@ -127,6 +210,11 @@ export const BlogRelatedDefault: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || excerpt } };
   };
 
+  // Live with zero related posts — hide the whole section (no dummy cards).
+  if (useLiveRelated && !loading && rawPosts.length === 0) {
+    return null;
+  }
+
   return (
     <div className="w-full text-center" style={{ backgroundColor: bg }}>
       <div className={innerClass} style={innerStyle}>
@@ -138,28 +226,50 @@ export const BlogRelatedDefault: React.FC<Props> = ({
           <ElementsSection section={{ ...section, elements: [titleEl] }} {...passThrough} />
         </motion.div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 text-left">
-          {rawPosts.map((p: any, i: number) => (
-            <motion.article key={i}
-              initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }} transition={{ duration: 0.5, delay: (i % 3) * 0.08 }}
-              className="group rounded-2xl overflow-hidden flex flex-col cursor-pointer transition-all duration-300 hover:-translate-y-1"
-              style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}`, boxShadow: `0 10px 30px -18px ${accent}30` }}
-            >
-              <div className="relative h-44 overflow-hidden">
-                <img src={p.img} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                <span className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: accent, color: '#FFFFFF' }}>{p.category}</span>
-              </div>
-              <div className="flex-1 flex flex-col p-5 gap-2">
-                <ElementsSection section={{ ...section, elements: [getCardTitleEl(i, p.title)] }} {...passThrough} />
-                <ElementsSection section={{ ...section, elements: [getCardExcerptEl(i, p.excerpt)] }} {...passThrough} />
-                <span className="mt-auto inline-flex items-center gap-2 text-sm font-semibold pt-1" style={{ color: accent }}>
-                  Read Article <i className="fas fa-arrow-right text-xs transition-transform group-hover:translate-x-1" aria-hidden="true" />
-                </span>
-              </div>
-            </motion.article>
-          ))}
-        </div>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={`sk-${i}`} className="rounded-2xl overflow-hidden animate-pulse h-72" style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}` }} />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 text-left">
+            {rawPosts.map((p, i) => {
+              const href = String(p.link || '#').trim() || '#';
+              const CardTag: any = readOnly && href !== '#' ? 'a' : 'div';
+              const cardProps =
+                CardTag === 'a'
+                  ? { href, className: 'block no-underline h-full' }
+                  : {};
+              return (
+                <CardTag key={`${p.link}-${i}`} {...cardProps}>
+                  <motion.article
+                    initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }} transition={{ duration: 0.5, delay: (i % 3) * 0.08 }}
+                    className="group rounded-2xl overflow-hidden flex flex-col cursor-pointer transition-all duration-300 hover:-translate-y-1 h-full"
+                    style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}`, boxShadow: `0 10px 30px -18px ${accent}30` }}
+                  >
+                    <div className="relative h-44 overflow-hidden" style={{ backgroundColor: `${accent}12` }}>
+                      {p.img ? (
+                        <img src={p.img} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                      ) : null}
+                      <span className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: accent, color: '#FFFFFF' }}>{p.category}</span>
+                    </div>
+                    <div className="flex-1 flex flex-col p-5 gap-2">
+                      <ElementsSection section={{ ...section, elements: [getCardTitleEl(i, p.title)] }} {...passThrough} />
+                      {p.excerpt ? (
+                        <ElementsSection section={{ ...section, elements: [getCardExcerptEl(i, p.excerpt)] }} {...passThrough} />
+                      ) : null}
+                      <span className="mt-auto inline-flex items-center gap-2 text-sm font-semibold pt-1" style={{ color: accent }}>
+                        Read Article <i className="fas fa-arrow-right text-xs transition-transform group-hover:translate-x-1" aria-hidden="true" />
+                      </span>
+                    </div>
+                  </motion.article>
+                </CardTag>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
