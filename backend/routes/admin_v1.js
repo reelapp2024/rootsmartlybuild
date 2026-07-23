@@ -279,6 +279,56 @@ router.get("/businessWebsite/:projectId/locations", authentication, ProjectContr
 router.post("/businessWebsite/:projectId/locations", authentication, ProjectControoler.syncBusinessWebsiteLocations);
 router.get("/businessWebsite/:projectId/localAreas", authentication, ProjectControoler.getBusinessWebsiteLocalAreas);
 router.post("/businessWebsite/:projectId/localAreas", authentication, ProjectControoler.syncBusinessWebsiteLocalAreas);
+
+// Google Places (admin location pickers) — key stays server-side
+router.post("/places/autocomplete", authentication, async (req, res) => {
+  try {
+    const { placesAutocomplete } = require("../services/googlePlaces");
+    const predictions = await placesAutocomplete(req.body?.input, {
+      sessionToken: req.body?.sessionToken,
+      types: req.body?.types,
+      components: req.body?.components,
+    });
+    return res.status(200).json({ success: true, predictions });
+  } catch (err) {
+    console.error("[places/autocomplete]", err?.message || err);
+    return res.status(err.status || 500).json({
+      success: false,
+      message: err.message || "Places autocomplete failed",
+    });
+  }
+});
+router.post("/places/details", authentication, async (req, res) => {
+  try {
+    const { placesDetails } = require("../services/googlePlaces");
+    const place = await placesDetails(req.body?.placeId, {
+      sessionToken: req.body?.sessionToken,
+    });
+    return res.status(200).json({ success: true, place });
+  } catch (err) {
+    console.error("[places/details]", err?.message || err);
+    return res.status(err.status || 500).json({
+      success: false,
+      message: err.message || "Place details failed",
+    });
+  }
+});
+router.post("/places/geocode", authentication, async (req, res) => {
+  try {
+    const { geocodeAddress } = require("../services/googlePlaces");
+    const place = await geocodeAddress(req.body?.address || req.body?.query);
+    if (!place) {
+      return res.status(404).json({ success: false, message: "No geocode result" });
+    }
+    return res.status(200).json({ success: true, place });
+  } catch (err) {
+    console.error("[places/geocode]", err?.message || err);
+    return res.status(err.status || 500).json({
+      success: false,
+      message: err.message || "Geocode failed",
+    });
+  }
+});
 router.get("/businessWebsite/:projectId/services", authentication, ProjectControoler.getBusinessWebsiteServices);
 router.get("/businessWebsite/:projectId/contact", authentication, ProjectControoler.getBusinessWebsiteContact);
 router.put("/businessWebsite/:projectId/contact", authentication, ProjectControoler.updateBusinessAboutUs);

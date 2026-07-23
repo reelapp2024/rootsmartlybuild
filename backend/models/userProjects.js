@@ -199,10 +199,10 @@ const userProjectsSchema = new mongoose.Schema(
       enum: [0, 1], //  1 - yes, 0 - no
       default: 1, // Always default to 1 (yes)
     },
-    /** 1 = Freepik stock search, 2 = Gemini (nano) AI images — used when images_mode env is 1 */
+    /** 1 Freepik · 2 Gemini · 4 Leonardo Lucid · 5 Flux 1 Schnell — when images_mode=1 */
     sectionImageOrigin: {
       type: Number,
-      enum: [1, 2],
+      enum: [1, 2, 4, 5],
       default: 1,
     },
     isCountry: {

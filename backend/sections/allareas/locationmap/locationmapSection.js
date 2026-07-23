@@ -1,5 +1,6 @@
 /**
- * Location map — GenieBuild `locationmap`. Lat/lng from BusinessLocation (DB).
+ * Location map — GenieBuild `locationmap` (All Areas listing).
+ * Single pin or multi markers from BusinessLocation.
  */
 
 module.exports = {
@@ -14,14 +15,15 @@ module.exports = {
     lng: "number",
     mapEmbedUrl: "string",
     formattedAddress: "string",
+    markers: "array",
   },
 
   prompt() {
     return `
 Return STRICT JSON ONLY:
-{ "badgeText": "Service Area", "title": "Find Us On The Map", "subtitle": "", "lat": null, "lng": null, "mapEmbedUrl": "", "formattedAddress": "" }
+{ "badgeText": "Service Area", "title": "Find Us On The Map", "subtitle": "", "lat": null, "lng": null, "mapEmbedUrl": "", "formattedAddress": "", "markers": [] }
 
-NOTE: Coordinates come from BusinessLocation — do not invent addresses.
+NOTE: Coordinates and markers come from BusinessLocation — do not invent addresses or pins.
 `;
   },
 };

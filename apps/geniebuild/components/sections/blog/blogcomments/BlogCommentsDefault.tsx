@@ -20,14 +20,14 @@ interface Props {
 const DEFAULT_COMMENTS: BlogReviewComment[] = [
   {
     name: 'Michael R.',
-    avatar: 'https://i.pravatar.cc/80?img=12',
+    avatar: '',
     date: '2 days ago',
     text: 'Really helpful article — the point about verifying insurance saved me from a bad decision. Thank you!',
     rating: 5,
   },
   {
     name: 'Sarah L.',
-    avatar: 'https://i.pravatar.cc/80?img=5',
+    avatar: '',
     date: '5 days ago',
     text: 'Great read. I always forget to ask for references. Bookmarking this for next time.',
     rating: 4,
@@ -122,6 +122,24 @@ export const BlogCommentsDefault: React.FC<Props> = ({
     () => String(c.ctaText || content.ctaText || 'Post Comment').trim() || 'Post Comment',
     [c.ctaText, content.ctaText]
   );
+
+  const reviewerInitials = (name: string) => {
+    const parts = String(name || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+    }
+    return (parts[0] || '?').slice(0, 2).toUpperCase();
+  };
+
+  const isPlaceholderAvatar = (url?: string) => {
+    const u = String(url || '').trim();
+    if (!u) return true;
+    // Stock/demo avatars — prefer themed initials on live sites
+    return /ui-avatars\.com|pravatar\.cc/i.test(u);
+  };
 
   const onSubmit = useCallback(
     async (e?: React.FormEvent) => {
@@ -270,11 +288,25 @@ export const BlogCommentsDefault: React.FC<Props> = ({
                 className="flex gap-4 p-4 rounded-xl"
                 style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}` }}
               >
-                <img
-                  src={cm.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(cm.name || 'R')}`}
-                  alt=""
-                  className="w-11 h-11 rounded-full object-cover flex-shrink-0"
-                />
+                {isPlaceholderAvatar(cm.avatar) ? (
+                  <div
+                    className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
+                    style={{
+                      backgroundColor: accent,
+                      color: btnText || '#FFFFFF',
+                    }}
+                    aria-hidden="true"
+                    title={cm.name}
+                  >
+                    {reviewerInitials(cm.name || 'R')}
+                  </div>
+                ) : (
+                  <img
+                    src={cm.avatar}
+                    alt=""
+                    className="w-11 h-11 rounded-full object-cover flex-shrink-0"
+                  />
+                )}
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="font-semibold" style={{ color: titleColor }}>

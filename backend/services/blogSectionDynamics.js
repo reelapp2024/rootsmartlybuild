@@ -482,7 +482,8 @@ function mapReviewToComment(review) {
   const avatar = String(user.image || review.image || "").trim();
   return {
     name,
-    avatar: absolutizeMediaUrl(avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=E11D48&color=fff`,
+    // Leave avatar empty for initials — UI paints theme accent (not hardcoded red)
+    avatar: absolutizeMediaUrl(avatar) || "",
     date: formatRelativeCommentDate(review.createdAt || review.updatedAt),
     text: String(review.reviewText || "").trim(),
     rating: Number(review.rating) || undefined,

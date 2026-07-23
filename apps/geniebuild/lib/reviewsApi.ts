@@ -102,13 +102,11 @@ function mapApiReview(raw: any): BlogReviewComment | null {
     String(user.fullName || user.name || raw?.fullName || 'Reader').trim() || 'Reader';
   const text = String(raw?.reviewText || raw?.text || '').trim();
   if (!text) return null;
-  const avatar =
-    String(user.image || raw?.image || raw?.avatar || '').trim() ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=E11D48&color=fff`;
+  const avatar = String(user.image || raw?.image || raw?.avatar || '').trim();
   return {
     id: raw?._id ? String(raw._id) : undefined,
     name,
-    avatar,
+    avatar, // empty → themed initials in BlogCommentsDefault
     date: formatRelativeDate(raw?.createdAt || raw?.updatedAt) || 'Recently',
     text,
     rating: Number(raw?.rating) || undefined,

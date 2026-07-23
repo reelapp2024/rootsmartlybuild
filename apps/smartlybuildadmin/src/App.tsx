@@ -94,6 +94,12 @@ const App = () => (
           <Route path="/admin/projects/:projectId/dashboard/forms/list" element={<AdminLayout><ProjectForms /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/forms/create" element={<AdminLayout><ProjectForms /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/forms/responses" element={<AdminLayout><ProjectForms /></AdminLayout>} />
+          <Route path="/admin/projects/:projectId/dashboard/blog-posts" element={<AdminLayout><BlogPosts /></AdminLayout>} />
+          <Route path="/admin/projects/:projectId/dashboard/create-post" element={<AdminLayout><CreateBlogPost /></AdminLayout>} />
+          <Route path="/admin/projects/:projectId/dashboard/create-post-ai" element={<AdminLayout><CreateBlogPostAi /></AdminLayout>} />
+          <Route path="/admin/projects/:projectId/dashboard/edit-post" element={<AdminLayout><EditBlogPost /></AdminLayout>} />
+          <Route path="/admin/projects/:projectId/dashboard/reviews" element={<AdminLayout><Reviews /></AdminLayout>} />
+          <Route path="/admin/projects/:projectId/dashboard/fake-reviews" element={<AdminLayout><FakeReviews /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/deploy" element={<AdminLayout><Deploy /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/pages" element={<AdminLayout><PageManagement /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/header-footer" element={<AdminLayout><HeaderFooter /></AdminLayout>} />

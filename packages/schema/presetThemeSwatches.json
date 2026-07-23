@@ -1,0 +1,154 @@
+[
+  {
+    "id": "crimson-jet",
+    "name": "Crimson Jet",
+    "primary": "#E11D48",
+    "surface": "#0C1015",
+    "heading": "#F8FAFC",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "midnight-emerald",
+    "name": "Midnight Emerald",
+    "primary": "#10B981",
+    "surface": "#0B1120",
+    "heading": "#F1F5F9",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "slate-violet",
+    "name": "Slate Violet",
+    "primary": "#8B5CF6",
+    "surface": "#0F0F1A",
+    "heading": "#F8FAFC",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "warm-sand-stone",
+    "name": "Warm Sand Stone",
+    "primary": "#EA580C",
+    "surface": "#1C1917",
+    "heading": "#FAFAF9",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "corporate-navy",
+    "name": "Corporate Navy",
+    "primary": "#0EA5E9",
+    "surface": "#0F172A",
+    "heading": "#F8FAFC",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "obsidian-gold",
+    "name": "Obsidian Gold",
+    "primary": "#CA8A04",
+    "surface": "#12100E",
+    "heading": "#FAFAF9",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "graphite-indigo",
+    "name": "Graphite Indigo",
+    "primary": "#6366F1",
+    "surface": "#121214",
+    "heading": "#FAFAFA",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "teal-mist",
+    "name": "Teal Mist",
+    "primary": "#14B8A6",
+    "surface": "#0A1614",
+    "heading": "#F0FDFA",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "coral-dusk",
+    "name": "Coral Dusk",
+    "primary": "#F97316",
+    "surface": "#170F0A",
+    "heading": "#FFF7ED",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "royal-plum",
+    "name": "Royal Plum",
+    "primary": "#A21CAF",
+    "surface": "#130A17",
+    "heading": "#FAF5FF",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "forest-sage",
+    "name": "Forest Sage",
+    "primary": "#65A30D",
+    "surface": "#0D130A",
+    "heading": "#F1F8E9",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "copper-bronze",
+    "name": "Copper Bronze",
+    "primary": "#B45309",
+    "surface": "#150E07",
+    "heading": "#FEF6EC",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "steel-cyan",
+    "name": "Steel Cyan",
+    "primary": "#0891B2",
+    "surface": "#08131A",
+    "heading": "#ECFEFF",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "rosewood-blush",
+    "name": "Rosewood Blush",
+    "primary": "#BE185D",
+    "surface": "#160A0F",
+    "heading": "#FFF1F5",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "arctic-blue",
+    "name": "Arctic Blue",
+    "primary": "#3B82F6",
+    "surface": "#0A121E",
+    "heading": "#EFF6FF",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "mocha-taupe",
+    "name": "Mocha Taupe",
+    "primary": "#A18072",
+    "surface": "#14100D",
+    "heading": "#F5EEE8",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "aubergine-wine",
+    "name": "Aubergine Wine",
+    "primary": "#9F1239",
+    "surface": "#140708",
+    "heading": "#FDF2F4",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "midnight-sapphire",
+    "name": "Midnight Sapphire",
+    "primary": "#1D4ED8",
+    "surface": "#080B1A",
+    "heading": "#EEF2FF",
+    "description": "GenieBuild preset"
+  },
+  {
+    "id": "mustard-ochre",
+    "name": "Mustard Ochre",
+    "primary": "#CA8A04",
+    "surface": "#131005",
+    "heading": "#FEFBEB",
+    "description": "GenieBuild preset"
+  }
+]

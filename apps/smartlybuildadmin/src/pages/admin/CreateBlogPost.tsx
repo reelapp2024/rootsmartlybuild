@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { Save, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { httpFile } from "../../config.js";
+import { resolveAdminProjectId, blogPostsListPath } from "@/lib/adminProjectPaths";
 
 const BASE_URL = import.meta.env.VITE_API_URL ;
 const UPLOAD_URL = `${BASE_URL.replace(/\/$/, "")}/uploadFile`;
@@ -49,7 +50,13 @@ type AuthorItem = { _id: string; name: string };
 export default function CreateBlogPost() {
   const navigate = useNavigate();
   const location = useLocation();
-  const projectId = (location.state as any)?.projectId || "";
+  const { projectId: paramProjectId } = useParams<{ projectId?: string }>();
+  const projectId = resolveAdminProjectId({
+    paramProjectId,
+    stateProjectId: (location.state as any)?.projectId,
+    queryProjectId: new URLSearchParams(location.search).get("projectId"),
+  });
+  const postsListHref = blogPostsListPath(projectId);
 
   // Basic fields
   const [title, setTitle] = useState("");
@@ -242,7 +249,7 @@ export default function CreateBlogPost() {
         headers: { Authorization: `Bearer ${token}` },
       });
       toast.success("Blog created successfully");
-      navigate("/admin/blog-posts", { state: { projectId } });
+      navigate(postsListHref, { state: { projectId } });
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || "Create failed");
       if (e?.response?.status === 401) {

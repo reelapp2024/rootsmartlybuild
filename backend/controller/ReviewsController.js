@@ -96,11 +96,11 @@ module.exports = {
                 return res.status(400).json({ message: "count must be a positive number (1–50)" });
             }
 
-            // --- Normalize exampleNames ---
+            // Style references only — empty is fine (allocator invents diverse names)
             let namesArr = [];
             if (Array.isArray(exampleNames)) {
                 namesArr = exampleNames.map((n) => String(n).trim()).filter(Boolean);
-            } else if (typeof exampleNames === "string") {
+            } else if (typeof exampleNames === "string" && exampleNames.trim()) {
                 try {
                     const parsed = JSON.parse(exampleNames);
                     if (Array.isArray(parsed)) {
@@ -111,9 +111,6 @@ module.exports = {
                 } catch {
                     namesArr = exampleNames.split(",").map((n) => n.trim()).filter(Boolean);
                 }
-            }
-            if (namesArr.length === 0) {
-                namesArr = ["Rahul", "Rajat", "Priya", "Ankit", "Sneha"];
             }
 
             const blog = await Blog.findById(blogId).select("_id title projectId userId").lean();
@@ -127,19 +124,50 @@ module.exports = {
             const workers = getDefaultParallelWorkers();
             const chunkSize = getChunkSize();
 
-            // Split into parallel Redis jobs (each job generates `chunkSize` reviews)
+            // Reserve names already used on this blog so re-runs don't collide
+            const existingReviews = await Review.find({ blog: blogId })
+                .populate("user", "fullName")
+                .select("user")
+                .lean();
+            const reservedNames = (existingReviews || [])
+                .map((r) => String(r?.user?.fullName || "").trim())
+                .filter(Boolean);
+
+            const {
+                allocateUniqueReviewerNames,
+            } = require("../sections/aiblogreviews");
+
+            // Pre-allocate unique first+last names for the WHOLE batch (shared across workers).
+            // Style tips do not burn first/last; only existing blog reviewers are reserved.
+            const batchNames = allocateUniqueReviewerNames(totalCount, {
+                referenceNames: namesArr,
+                reservedNames,
+                salt: Date.now() % 100000,
+            });
+
+            // Split into parallel Redis jobs — each gets a disjoint slice of names
             const chunks = [];
             let remaining = totalCount;
             let chunkIndex = 0;
+            let nameOffset = 0;
             while (remaining > 0) {
                 const size = Math.min(chunkSize, remaining);
-                chunks.push({ size, chunkIndex });
+                chunks.push({
+                    size,
+                    chunkIndex,
+                    assignedNames: batchNames.slice(nameOffset, nameOffset + size),
+                });
+                nameOffset += size;
                 remaining -= size;
                 chunkIndex += 1;
             }
 
             console.log(
                 `[add_fake_reviews] queueing ${totalCount} review(s) → ${chunks.length} job(s) · workers=${workers} · chunk=${chunkSize} blog=${blogId}`
+            );
+            console.log(
+                `[add_fake_reviews] unique names:`,
+                batchNames.join(" | ")
             );
 
             const jobs = [];
@@ -150,9 +178,11 @@ module.exports = {
                     projectId,
                     title,
                     exampleNames: namesArr,
+                    assignedNames: ch.assignedNames,
                     chunkSize: ch.size,
                     chunkIndex: ch.chunkIndex,
-                    version: 1,
+                    totalChunks: chunks.length,
+                    version: 2,
                 });
                 jobs.push(job);
             }
@@ -448,12 +478,33 @@ module.exports = {
                 return helper.sendError(res, 401, "Unauthorized: user missing");
             }
 
-            let { page = 1, limit = 10, status } = req.body;
+            let { page = 1, limit = 10, status, projectId } = req.body;
             page = parseInt(page);
             limit = parseInt(limit);
 
-            // Step 1: Find blogs owned by current user
-            const blogs = await Blog.find({ userId: userId }).select("_id title type");
+            // Step 1: Resolve blogs — project-scoped (dashboard) vs account-scoped (main panel)
+            const blogFilter = {};
+            const pid = String(projectId || "").trim();
+            if (pid && mongoose.isValidObjectId(pid)) {
+                const UserProject = require("../models/userProjects");
+                const User = require("../models/users");
+                const project = await UserProject.findById(pid).select("_id userId").lean();
+                if (!project) {
+                    return helper.sendError(res, 404, "Project not found");
+                }
+                const user = await User.findById(userId).select("isSuper").lean();
+                const isSuper = Number(user?.isSuper || 0) === 1;
+                const isOwner = String(project.userId) === String(userId);
+                if (!isSuper && !isOwner) {
+                    return helper.sendError(res, 403, "You do not have access to this project");
+                }
+                // Same as live site: all blogs for this projectId
+                blogFilter.projectId = new mongoose.Types.ObjectId(pid);
+            } else {
+                blogFilter.userId = userId;
+            }
+
+            const blogs = await Blog.find(blogFilter).select("_id title type projectId");
             if (!blogs.length) {
                 return helper.sendSuccess(res, 200, "No blogs found for this user", {
                     reviews: [],
@@ -474,7 +525,7 @@ module.exports = {
             const reviews = await Review.find(query)
                 .populate({
                     path: "blog",
-                    select: "title type", // attach blog info
+                    select: "title type projectId", // attach blog info
                 })
                 .populate({
                     path: "user",
@@ -495,6 +546,7 @@ module.exports = {
                         pages: Math.ceil(total / limit),
                         limit,
                     },
+                    projectId: projectId || null,
                 },
             });
 

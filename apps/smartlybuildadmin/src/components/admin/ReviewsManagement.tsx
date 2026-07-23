@@ -42,7 +42,7 @@ type Review = {
   createdAt: string;
 };
 
-export function ReviewsManagement() {
+export function ReviewsManagement({ projectId }: { projectId?: string }) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
@@ -65,6 +65,7 @@ export function ReviewsManagement() {
       formData.append("page", page.toString());
       formData.append("limit", limit.toString());
       formData.append("status", status);
+      if (projectId) formData.append("projectId", projectId);
 
       const response = await http.post("/fetch_my_reviews", formData, {
         headers: {
@@ -148,7 +149,7 @@ export function ReviewsManagement() {
 
   useEffect(() => {
     fetchReviews(activeTab);
-  }, [activeTab, page, limit]);
+  }, [activeTab, page, limit, projectId]);
 
   const getStatusBadge = (status: number) => {
     switch (status) {

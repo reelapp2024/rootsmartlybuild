@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,12 @@ import { toast } from "@/hooks/use-toast";
 import { Edit, Eye, Trash2, Sparkles, FileText, Search, ChevronLeft, ChevronRight, Loader2, CheckCircle2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import socket from "@/socket";
+import {
+  resolveAdminProjectId,
+  createBlogPostPath,
+  createBlogPostAiPath,
+  editBlogPostPath,
+} from "@/lib/adminProjectPaths";
 
 type ApiBlog = {
   _id: string;
@@ -24,6 +30,16 @@ type ApiBlog = {
   scheduleTime?: string | null;
 };
 
+type AiBlogJobRow = {
+  jobId?: string;
+  title?: string;
+  status?: string;
+  step?: string;
+  jobPercent?: number;
+  error?: string;
+  blogId?: string;
+};
+
 type AiBlogGenerationProgress = {
   projectId?: string;
   status?: string;
@@ -34,20 +50,38 @@ type AiBlogGenerationProgress = {
   percent?: number;
   parallelWorkers?: number;
   activeWorkers?: number;
-  currentBlogs?: Array<{ jobId?: string; title?: string; step?: string; jobPercent?: number }>;
+  currentBlogs?: AiBlogJobRow[];
   recentEvents?: Array<{ at?: string; message?: string; type?: string; title?: string }>;
+  jobs?: Record<string, AiBlogJobRow>;
   message?: string;
   startedAt?: string;
   finishedAt?: string;
 };
 
+const jobStatusOrder: Record<string, number> = {
+  active: 0,
+  queued: 1,
+  waiting: 1,
+  done: 2,
+  failed: 3,
+};
+
 export default function BlogPosts() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { projectId: paramProjectId } = useParams<{ projectId?: string }>();
   const stateProjectId = (location.state as any)?.projectId;
   const queryProjectId = new URLSearchParams(location.search).get("projectId");
-  const projectId = stateProjectId || queryProjectId || "";
-  const cameFromAi = Boolean((location.state as any)?.aiBlogGenerating);
+  const pathProjectId = location.pathname.match(/\/projects\/([^/]+)/)?.[1] || "";
+  const projectId = resolveAdminProjectId({
+    paramProjectId: paramProjectId || pathProjectId,
+    stateProjectId,
+    queryProjectId,
+  });
+  const navState = (location.state as any) || {};
+  const cameFromAi = Boolean(navState?.aiBlogGenerating);
+  const seededProgress = (navState?.aiBlogProgress as AiBlogGenerationProgress | null) || null;
+  const isProjectScoped = Boolean(paramProjectId || pathProjectId);
 
   // List state (server)
   const [posts, setPosts] = useState<ApiBlog[]>([]);
@@ -57,8 +91,30 @@ export default function BlogPosts() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // AI generation progress (sockets — same pattern as project content generation)
-  const [aiGen, setAiGen] = useState<AiBlogGenerationProgress | null>(null);
+  // AI generation progress (sockets + poll backup — same idea as Project List)
+  const [aiGen, setAiGen] = useState<AiBlogGenerationProgress | null>(() =>
+    seededProgress
+      ? {
+          ...seededProgress,
+          status: seededProgress.status || "generating",
+          projectId: seededProgress.projectId || projectId,
+        }
+      : cameFromAi
+        ? {
+            projectId,
+            status: "generating",
+            total: Number(navState?.aiBlogExpectedCount || 0),
+            done: 0,
+            failed: 0,
+            pending: Number(navState?.aiBlogExpectedCount || 0),
+            percent: 0,
+            message: "Queued — connecting to live progress…",
+            jobs: {},
+            currentBlogs: [],
+            recentEvents: [],
+          }
+        : null
+  );
 
   // UI state
   const [searchQuery, setSearchQuery] = useState("");
@@ -89,11 +145,19 @@ export default function BlogPosts() {
     return isNaN(d.getTime()) ? "—" : d.toLocaleString();
   };
 
-  // Fetch list (adds projectId if present)
+  // Fetch list — ALWAYS pass projectId on project dashboard (same scope as live /blog)
   const fetchPosts = useCallback(async (nextPage = 1, nextLimit = 10) => {
     try {
       if (!token) {
         toast({ title: "Auth error", description: "Missing token", variant: "destructive" });
+        return;
+      }
+      if (isProjectScoped && !projectId) {
+        toast({
+          title: "Missing project",
+          description: "Open blog posts from a project dashboard.",
+          variant: "destructive",
+        });
         return;
       }
       setLoading(true);
@@ -101,16 +165,21 @@ export default function BlogPosts() {
       const url = new URL(apiUrl("listBlogs"));
       url.searchParams.set("page", String(nextPage));
       url.searchParams.set("limit", String(nextLimit));
-      if (projectId) url.searchParams.set("projectId", projectId);
+      if (projectId) url.searchParams.set("projectId", String(projectId));
 
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.message || "Failed to fetch blogs");
 
       const data = json?.data || {};
-      const items: ApiBlog[] = (data.items || []).map((it: any) => ({
+      const rawItems = Array.isArray(data.items)
+        ? data.items
+        : Array.isArray(json?.items)
+          ? json.items
+          : [];
+      const items: ApiBlog[] = rawItems.map((it: any) => ({
         _id: it._id,
         title: it.title,
         type: it.type,
@@ -126,14 +195,15 @@ export default function BlogPosts() {
       setPage(Number(data.page || nextPage));
       setLimit(Number(data.limit || nextLimit));
       setPages(Number(data.pages || 1));
-      setTotal(Number(data.total || 0));
+      setTotal(Number(data.total || items.length || 0));
     } catch (e: any) {
-      console.error(e);
+      console.error("[BlogPosts] listBlogs failed", { projectId, error: e });
+      setPosts([]);
       toast({ title: "Error", description: e.message || "Could not load blogs", variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }, [token, BASE_URL, projectId]);
+  }, [token, BASE_URL, projectId, isProjectScoped]);
 
   const normalizeAiGen = (raw: AiBlogGenerationProgress | null): AiBlogGenerationProgress | null => {
     if (!raw) return null;
@@ -141,6 +211,10 @@ export default function BlogPosts() {
     const done = Number(raw.done || 0);
     const failed = Number(raw.failed || 0);
     const finished = done + failed;
+    const jobs =
+      raw.jobs && typeof raw.jobs === "object" && !Array.isArray(raw.jobs)
+        ? raw.jobs
+        : {};
     // Client-side safety net if API returned stale generating with full counters
     if (
       String(raw.status || "") === "generating" &&
@@ -149,6 +223,7 @@ export default function BlogPosts() {
     ) {
       return {
         ...raw,
+        jobs,
         status: failed > 0 ? "completed_with_errors" : "completed",
         pending: 0,
         activeWorkers: 0,
@@ -157,7 +232,7 @@ export default function BlogPosts() {
         finishedAt: raw.finishedAt || new Date().toISOString(),
       };
     }
-    return raw;
+    return { ...raw, jobs };
   };
 
   const fetchAiProgressOnce = useCallback(async () => {
@@ -171,17 +246,24 @@ export default function BlogPosts() {
         },
         body: JSON.stringify({ projectId }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (res.ok && json?.data) {
         const next = normalizeAiGen(json.data as AiBlogGenerationProgress);
         setAiGen(next);
-        // Refresh list when hydrate shows work already finished while user was away
         const st = String(next?.status || "");
         if (st === "completed" || st === "completed_with_errors" || st === "generating") {
           void fetchPosts(page, limit);
         }
-      } else if (res.ok && json?.data === null) {
-        setAiGen(null);
+      } else if (res.ok && (json?.data === null || json?.data === undefined)) {
+        // Keep optimistic banner if we just arrived from Finish
+        setAiGen((prev) => {
+          if (prev && String(prev.status) === "generating" && Number(prev.total || 0) > 0) {
+            return prev;
+          }
+          return null;
+        });
+      } else if (!res.ok) {
+        console.warn("ai_blog_generation_progress failed", res.status, json?.message);
       }
     } catch (err) {
       console.warn("ai_blog_generation_progress failed", err);
@@ -195,13 +277,15 @@ export default function BlogPosts() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // Sockets for live progress + hydrate on mount / tab focus (no polling loop)
+  // Sockets for live progress + hydrate + rejoin on reconnect
   useEffect(() => {
     if (!projectId) return;
 
-    socket.emit("joinRoom", `project_${projectId}`);
-    socket.emit("joinProject", projectId);
-
+    const joinRooms = () => {
+      socket.emit("joinRoom", `project_${projectId}`);
+      socket.emit("joinProject", projectId);
+    };
+    joinRooms();
     void fetchAiProgressOnce();
 
     let lastDone = -1;
@@ -226,29 +310,46 @@ export default function BlogPosts() {
     const onVisible = () => {
       if (document.visibilityState === "visible") void fetchAiProgressOnce();
     };
+    const onConnect = () => joinRooms();
+
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
-
+    socket.on("connect", onConnect);
     socket.on("aiBlogGenerationProgress", onProgress);
     return () => {
       socket.off("aiBlogGenerationProgress", onProgress);
+      socket.off("connect", onConnect);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
       socket.emit("leaveRoom", `project_${projectId}`);
       socket.emit("leaveProject", projectId);
     };
-    // intentionally stable: do not re-subscribe on fetch identity churn
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // Clear one-shot navigation flag so it doesn't stick around
+  // Poll while generating (socket backup — same as Project List section gen)
+  useEffect(() => {
+    if (!projectId) return;
+    const st = String(aiGen?.status || "");
+    if (st !== "generating" && !cameFromAi) return;
+
+    const id = window.setInterval(() => {
+      void fetchAiProgressOnce();
+    }, 2500);
+    return () => window.clearInterval(id);
+  }, [projectId, aiGen?.status, cameFromAi, fetchAiProgressOnce]);
+
+  // Clear one-shot navigation flag after first hydrate (keep projectId)
   useEffect(() => {
     if (!cameFromAi || !projectId) return;
     void fetchAiProgressOnce();
-    navigate(`${location.pathname}${location.search}`, {
-      replace: true,
-      state: { projectId },
-    });
+    const t = window.setTimeout(() => {
+      navigate(`${location.pathname}${location.search}`, {
+        replace: true,
+        state: { projectId },
+      });
+    }, 1500);
+    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameFromAi, projectId]);
 
@@ -271,13 +372,36 @@ export default function BlogPosts() {
     aiGen?.pending ?? Math.max(0, genTotal - genDone - genFailed)
   );
   const genPercent = Number(aiGen?.percent || (isComplete ? 100 : 0));
-  // Banner: always while generating; finished only if completed in last 45 min (or just arrived from AI wizard)
   const finishedAtMs = aiGen?.finishedAt ? Date.parse(aiGen.finishedAt) : NaN;
   const finishedRecently =
     Number.isFinite(finishedAtMs) && Date.now() - finishedAtMs < 45 * 60 * 1000;
   const showAiBanner = Boolean(
-    projectId && (isGenerating || (isComplete && (finishedRecently || cameFromAi)))
+    projectId && (isGenerating || cameFromAi || (isComplete && finishedRecently))
   );
+
+  const allJobs = useMemo(() => {
+    const fromMap = Object.values(aiGen?.jobs || {}).filter(Boolean) as AiBlogJobRow[];
+    if (fromMap.length) {
+      return [...fromMap].sort((a, b) => {
+        const oa = jobStatusOrder[String(a.status || "queued")] ?? 9;
+        const ob = jobStatusOrder[String(b.status || "queued")] ?? 9;
+        if (oa !== ob) return oa - ob;
+        return String(a.title || "").localeCompare(String(b.title || ""));
+      });
+    }
+    return (aiGen?.currentBlogs || []).map((b) => ({
+      ...b,
+      status: b.status || "active",
+    }));
+  }, [aiGen?.jobs, aiGen?.currentBlogs]);
+
+  const jobBadge = (status?: string) => {
+    const s = String(status || "queued").toLowerCase();
+    if (s === "done") return { label: "Done", className: "bg-green-100 text-green-800 border-green-200" };
+    if (s === "failed") return { label: "Failed", className: "bg-red-100 text-red-800 border-red-200" };
+    if (s === "active") return { label: "Generating", className: "bg-amber-100 text-amber-900 border-amber-200" };
+    return { label: "Queued", className: "bg-slate-100 text-slate-700 border-slate-200" };
+  };
 
   // AI
   const handleAIPost = () => {
@@ -295,11 +419,10 @@ export default function BlogPosts() {
     setIsAIDialogOpen(false);
   };
 
-  // Edit
-// Edit -> go to /admin/edit-post and pass the blog id (and projectId for context)
-const handleEditPost = (p: ApiBlog) => {
-  navigate(`/admin/edit-post?id=${p._id}`, { state: { projectId } });
-};
+  // Edit -> project-scoped path when inside a project dashboard
+  const handleEditPost = (p: ApiBlog) => {
+    navigate(editBlogPostPath(projectId, p._id), { state: { projectId } });
+  };
 
 
   const handleUpdatePost = async () => {
@@ -336,7 +459,11 @@ const handleEditPost = (p: ApiBlog) => {
         <div>
           <h1 className="text-3xl font-bold">Blog Posts</h1>
           <p className="text-muted-foreground mt-2">
-            {projectId ? "Showing blogs for selected project" : "Create and manage your blog posts (server list with pagination)"}
+            {projectId
+              ? isProjectScoped
+                ? "Showing blogs for this project only"
+                : "Showing blogs for selected project"
+              : "All blog posts across your projects"}
           </p>
         </div>
 
@@ -344,7 +471,7 @@ const handleEditPost = (p: ApiBlog) => {
         <div className="flex gap-2">
           {/* Add Manual Blog -> navigate */}
           <Button
-            onClick={() => navigate("/admin/create-post", { state: { projectId } })}
+            onClick={() => navigate(createBlogPostPath(projectId), { state: { projectId } })}
             className="flex items-center gap-2"
           >
             <FileText className="h-4 w-4" />
@@ -352,10 +479,9 @@ const handleEditPost = (p: ApiBlog) => {
           </Button>
 
 
-          {/* AI Generated Blogs -> open dialog */}
-        {/* AI Generated Blogs -> go to new page */}
+          {/* AI Generated Blogs -> go to new page */}
 <Button
-  onClick={() => navigate("/admin/create-post-ai", { state: { projectId } })}
+  onClick={() => navigate(createBlogPostAiPath(projectId), { state: { projectId } })}
   variant="outline"
   className="flex items-center gap-2"
 >
@@ -366,12 +492,12 @@ const handleEditPost = (p: ApiBlog) => {
         </div>
       </div>
 
-      {/* AI blog generation progress (sockets only — no polling) */}
+      {/* AI blog generation progress — sockets + poll; lists every blog in the batch */}
       {showAiBanner ? (
         <Card className="border-amber-200 bg-amber-50/40">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              {isGenerating ? (
+              {isGenerating || cameFromAi ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin text-amber-700" />
                   AI blog generation in progress
@@ -390,7 +516,7 @@ const handleEditPost = (p: ApiBlog) => {
             </CardTitle>
             <CardDescription>
               {aiGen?.message ||
-                (isGenerating
+                (isGenerating || cameFromAi
                   ? "Generating rich article content in the background…"
                   : "Latest batch status")}
             </CardDescription>
@@ -400,7 +526,7 @@ const handleEditPost = (p: ApiBlog) => {
               <span className="text-muted-foreground">
                 {genDone}/{genTotal || "—"} done
                 {genFailed ? ` · ${genFailed} failed` : ""}
-                {genPending ? ` · ${genPending} left` : ""}
+                {genPending ? ` · ${genPending} queued` : ""}
                 {aiGen?.parallelWorkers
                   ? ` · ${aiGen.activeWorkers || 0}/${aiGen.parallelWorkers} workers`
                   : ""}
@@ -412,23 +538,50 @@ const handleEditPost = (p: ApiBlog) => {
                 className={`h-full transition-all duration-500 ${
                   isComplete ? "bg-green-500" : "bg-amber-500"
                 }`}
-                style={{ width: `${Math.max(isGenerating ? 2 : 0, genPercent)}%` }}
+                style={{ width: `${Math.max(isGenerating || cameFromAi ? 2 : 0, genPercent)}%` }}
               />
             </div>
-            {Array.isArray(aiGen?.currentBlogs) && aiGen!.currentBlogs!.length > 0 ? (
-              <ul className="text-xs text-muted-foreground space-y-1 max-h-28 overflow-y-auto">
-                {aiGen!.currentBlogs!.slice(0, 6).map((b, i) => (
-                  <li key={`${b.jobId || i}-${b.title}`} className="truncate">
-                    <span className="font-medium text-foreground/80">{b.title || "Blog"}</span>
-                    {b.step ? ` — ${b.step}` : ""}
-                    {typeof b.jobPercent === "number" ? ` (${b.jobPercent}%)` : ""}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+
+            {allJobs.length > 0 ? (
+              <div className="border-t pt-2 space-y-1.5 max-h-64 overflow-y-auto">
+                <div className="text-xs font-medium text-foreground/80 mb-1">
+                  All blogs in this batch ({allJobs.length})
+                </div>
+                {allJobs.map((b, i) => {
+                  const badge = jobBadge(b.status);
+                  return (
+                    <div
+                      key={`${b.jobId || i}-${b.title}`}
+                      className="flex items-start gap-2 text-xs rounded-md border bg-white/70 px-2 py-1.5"
+                    >
+                      <Badge variant="outline" className={`shrink-0 ${badge.className}`}>
+                        {badge.label}
+                      </Badge>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-foreground/90">
+                          {b.title || "Untitled blog"}
+                        </div>
+                        <div className="text-muted-foreground truncate">
+                          {b.step || badge.label}
+                          {typeof b.jobPercent === "number" && String(b.status) === "active"
+                            ? ` · ${b.jobPercent}%`
+                            : ""}
+                          {b.error ? ` · ${b.error}` : ""}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Waiting for queue details… ({genPending || genTotal || "—"} blogs)
+              </p>
+            )}
+
             {Array.isArray(aiGen?.recentEvents) && aiGen!.recentEvents!.length > 0 ? (
               <div className="text-[11px] text-muted-foreground border-t pt-2 space-y-0.5 max-h-24 overflow-y-auto">
-                {aiGen!.recentEvents!.slice(0, 8).map((ev, i) => (
+                {aiGen!.recentEvents!.slice(0, 10).map((ev, i) => (
                   <div key={`${ev.at || i}-${ev.message}`} className="truncate">
                     {ev.message || ev.type}
                   </div>

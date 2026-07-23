@@ -53,7 +53,7 @@ function decodeJwtUserId(token: string | null): string {
   }
 }
 
-export function FakeReviewsManagement() {
+export function FakeReviewsManagement({ projectId }: { projectId?: string }) {
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -75,9 +75,11 @@ export function FakeReviewsManagement() {
   const fetchBlogs = useCallback(async () => {
     try {
       setLoading(true);
+      const params: Record<string, string | number> = { page: currentPage, limit };
+      if (projectId) params.projectId = projectId;
       const response = await http.get("/listBlogs", {
         headers: { Authorization: `Bearer ${token}` },
-        params: { page: currentPage, limit },
+        params,
       });
 
       if (response.data && response.data.data) {
@@ -92,7 +94,7 @@ export function FakeReviewsManagement() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, token]);
+  }, [currentPage, token, projectId]);
 
   useEffect(() => {
     void fetchBlogs();
@@ -262,7 +264,9 @@ export function FakeReviewsManagement() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Generate Fake Reviews</h1>
         <p className="text-muted-foreground mt-2">
-          Queue AI reviews in Redis — multiple workers generate in parallel with live progress
+          {projectId
+            ? "Queue AI reviews for blogs in this project only — parallel workers with live progress"
+            : "Queue AI reviews across all of your projects — parallel workers with live progress"}
         </p>
       </div>
 
@@ -423,16 +427,16 @@ export function FakeReviewsManagement() {
                           </div>
 
                           <div>
-                            <Label htmlFor="exampleNames">Example Names (optional)</Label>
+                            <Label htmlFor="exampleNames">Name style references (optional)</Label>
                             <Textarea
                               id="exampleNames"
-                              placeholder="John Doe, Jane Smith, Mike Johnson"
+                              placeholder="Rahul Sharma, Priya Patel, Mike Johnson"
                               value={formData.exampleNames}
                               onChange={(e) => handleInputChange("exampleNames", e.target.value)}
                               rows={3}
                             />
                             <p className="text-sm text-muted-foreground mt-1">
-                              Comma-separated. Defaults used if empty.
+                              Style only — we invent unique names in a similar vibe (never reuse these as-is).
                             </p>
                           </div>
 

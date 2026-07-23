@@ -37,6 +37,7 @@ import {
   Globe,
   CheckCircle,
   AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
@@ -111,6 +112,7 @@ const getBaseSidebarItems = () => [
     icon: Newspaper,
     submenu: [
       { id: "project-blogs", label: "Blog Projects", icon: Newspaper, route: "/admin/project-blogs" },
+      { id: "all-blog-posts", label: "All Blog Posts", icon: FileText, route: "/admin/blog-posts" },
       { id: "blog-authors", label: "Blog Authors", icon: Users, route: "/admin/authors" },
     ],
   },
@@ -287,7 +289,7 @@ export function AdminSidebar({ activeSection, setActiveSection, onCollapseChange
         { id: "project-header-footer", label: "Header/Footer", icon: FileText, route: `/admin/projects/${projectId}/dashboard/header-footer` }
       );
       
-      // Services, Locations, Forms, Deploy - Core Features
+      // Services, Locations, Forms, Blog, Reviews, Deploy - Core Features
       projectItems.push(
         { id: "project-services", label: "Services", icon: Wrench, route: `/admin/projects/${projectId}/dashboard/services` },
         { id: "project-locations", label: "Locations", icon: MapPin, route: `/admin/projects/${projectId}/dashboard/locations` },
@@ -301,6 +303,25 @@ export function AdminSidebar({ activeSection, setActiveSection, onCollapseChange
             { id: "create-form", label: "Create Form", icon: Plus, route: `/admin/projects/${projectId}/dashboard/forms/create` },
             { id: "forms-list", label: "List", icon: FileText, route: `/admin/projects/${projectId}/dashboard/forms/list` },
             { id: "forms-responses", label: "Responses", icon: MessageSquare, route: `/admin/projects/${projectId}/dashboard/forms/responses` },
+          ],
+        },
+        {
+          id: "project-blog",
+          label: "Blogs",
+          icon: Newspaper,
+          submenu: [
+            { id: "project-blog-posts", label: "Blog Posts", icon: Newspaper, route: `/admin/projects/${projectId}/dashboard/blog-posts` },
+            { id: "project-create-post", label: "Create Post", icon: Plus, route: `/admin/projects/${projectId}/dashboard/create-post` },
+            { id: "project-create-post-ai", label: "Create with AI", icon: Sparkles, route: `/admin/projects/${projectId}/dashboard/create-post-ai` },
+          ],
+        },
+        {
+          id: "project-reviews",
+          label: "Reviews",
+          icon: MessageSquare,
+          submenu: [
+            { id: "project-reviews-approval", label: "Approval", icon: MessageSquare, route: `/admin/projects/${projectId}/dashboard/reviews` },
+            { id: "project-generate-reviews", label: "Generate Reviews", icon: Tags, route: `/admin/projects/${projectId}/dashboard/fake-reviews` },
           ],
         },
         { id: "project-deploy", label: "Deploy", icon: Rocket, route: `/admin/projects/${projectId}/dashboard/deploy` }

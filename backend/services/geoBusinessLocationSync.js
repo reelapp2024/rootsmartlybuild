@@ -262,9 +262,34 @@ async function syncLocalAreasToBusinessLocations(projectId, localAreas = []) {
       parentBusinessLocationId: parent?._id || null,
       structuralType: 1,
       city: parent?.areaName || null,
+      lat: entry.lat != null ? Number(entry.lat) : null,
+      lng: entry.lng != null ? Number(entry.lng) : null,
       status: 1,
     });
-    if (doc) keptIds.push(String(entry.localAreaId));
+    if (doc) {
+      if (entry.googlePlaceId) doc.googlePlaceId = String(entry.googlePlaceId);
+      if (entry.formattedAddress) doc.formattedAddress = String(entry.formattedAddress);
+      if (entry.lat != null && entry.lng != null) {
+        doc.lat = Number(entry.lat);
+        doc.lng = Number(entry.lng);
+      } else if ((doc.lat == null || doc.lng == null) && entry.localAreaId) {
+        // Pull coords from admin local-area table when present
+        try {
+          const AdminLocalArea = require("../models/adminLocalAreas");
+          const admin = await AdminLocalArea.findOne({ id: String(entry.localAreaId) })
+            .select("lat lng")
+            .lean();
+          if (admin?.lat != null && admin?.lng != null) {
+            doc.lat = admin.lat;
+            doc.lng = admin.lng;
+          }
+        } catch {
+          /* non-fatal */
+        }
+      }
+      await doc.save();
+      keptIds.push(String(entry.localAreaId));
+    }
   }
 
   if (keptIds.length) {

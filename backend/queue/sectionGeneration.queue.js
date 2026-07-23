@@ -1527,36 +1527,133 @@ Rules:
       locationId || pageDoc?.locationId
         ? String(locationId || pageDoc.locationId)
         : null;
-    if (!scopeLocationId) return null;
 
-    const loc = await BusinessLocation.findOne({
-      _id: scopeLocationId,
+    const toMarker = (loc, idx = 0) => {
+      const lat = typeof loc.lat === "number" ? loc.lat : Number(loc.lat);
+      const lng = typeof loc.lng === "number" ? loc.lng : Number(loc.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return {
+        id: String(loc._id || `m-${idx}`),
+        locationId: String(loc._id || ""),
+        name: String(loc.areaName || loc.formattedAddress || "Area").trim(),
+        lat,
+        lng,
+        formattedAddress: String(loc.formattedAddress || "").trim(),
+      };
+    };
+
+    // Scoped page (area detail / single location) → one pin
+    if (scopeLocationId) {
+      const loc = await BusinessLocation.findOne({
+        _id: scopeLocationId,
+        projectId,
+        status: 1,
+      })
+        .select("areaName lat lng formattedAddress googlePlaceId")
+        .lean();
+      if (!loc) return null;
+
+      const marker = toMarker(loc);
+      const lat = marker?.lat ?? null;
+      const lng = marker?.lng ?? null;
+      let mapEmbedUrl = "";
+      if (lat != null && lng != null) {
+        mapEmbedUrl = `https://maps.google.com/maps?q=${lat},${lng}&z=14&output=embed`;
+      }
+
+      return {
+        data: {
+          badgeText: "Service Area",
+          title: `Find Us in ${String(loc.areaName || "Your Area").trim()}`,
+          subtitle: String(loc.formattedAddress || "").trim(),
+          lat,
+          lng,
+          mapEmbedUrl,
+          formattedAddress: String(loc.formattedAddress || "").trim(),
+          markers: marker ? [marker] : [],
+          contentRef: { source: "location_map", locationId: scopeLocationId },
+        },
+        meta: { source: "database", scopeLocationId, markerCount: marker ? 1 : 0 },
+      };
+    }
+
+    // Homepage / All Areas (no location scope) → all areas with coordinates highlighted
+    const allLocations = await BusinessLocation.find({
       projectId,
       status: 1,
+      lat: { $ne: null },
+      lng: { $ne: null },
     })
-      .select("areaName lat lng formattedAddress googlePlaceId")
+      .select("_id areaName lat lng formattedAddress type locationType parentId")
       .lean();
-    if (!loc) return null;
 
-    const lat = typeof loc.lat === "number" ? loc.lat : null;
-    const lng = typeof loc.lng === "number" ? loc.lng : null;
-    let mapEmbedUrl = "";
-    if (lat != null && lng != null) {
-      mapEmbedUrl = `https://maps.google.com/maps?q=${lat},${lng}&z=14&output=embed`;
+    // Prefer leaf areas (local / city / business children) so the map isn't only countries
+    const scored = (allLocations || [])
+      .map((loc, idx) => {
+        const marker = toMarker(loc, idx);
+        if (!marker) return null;
+        const lt = Number(loc.locationType);
+        const st = Number(loc.type);
+        let score = 0;
+        if (lt === 3 || st === 1) score = 3; // local areas
+        else if (lt === 2) score = 2; // cities
+        else if (lt === 4 || st === 0) score = 1; // business parents
+        else score = 0; // country/state
+        return { marker, score, loc };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score);
+
+    let markers = scored.map((s) => s.marker);
+    // If we only have coarse geo (countries), still show them
+    if (!markers.length) {
+      return {
+        data: {
+          badgeText: "Service Area",
+          title: "Find Us On The Map",
+          subtitle: "Add locations with Google Maps to pin them here.",
+          lat: null,
+          lng: null,
+          mapEmbedUrl: "",
+          formattedAddress: "",
+          markers: [],
+          contentRef: { source: "location_map", locationId: null },
+        },
+        meta: { source: "database", scopeLocationId: null, markerCount: 0 },
+      };
     }
+
+    // Cap for embed performance
+    markers = markers.slice(0, 80);
+
+    const avgLat = markers.reduce((s, m) => s + m.lat, 0) / markers.length;
+    const avgLng = markers.reduce((s, m) => s + m.lng, 0) / markers.length;
+    const projectLabel = String(project?.projectName || "Our").trim();
 
     return {
       data: {
-        badgeText: "Service Area",
-        title: `Find Us in ${String(loc.areaName || "Your Area").trim()}`,
-        subtitle: String(loc.formattedAddress || "").trim(),
-        lat,
-        lng,
-        mapEmbedUrl,
-        formattedAddress: String(loc.formattedAddress || "").trim(),
-        contentRef: { source: "location_map", locationId: scopeLocationId },
+        badgeText: "Coverage Map",
+        title: markers.length > 1 ? `Areas We Serve` : `Find Us On The Map`,
+        subtitle:
+          markers.length > 1
+            ? `${projectLabel} coverage across ${markers.length} locations — explore every pin on the map.`
+            : String(markers[0]?.formattedAddress || markers[0]?.name || "").trim(),
+        lat: avgLat,
+        lng: avgLng,
+        mapEmbedUrl:
+          markers.length === 1
+            ? `https://maps.google.com/maps?q=${markers[0].lat},${markers[0].lng}&z=13&output=embed`
+            : "",
+        formattedAddress: "",
+        markers,
+        contentRef: { source: "location_map", locationId: null, multi: true },
       },
-      meta: { source: "database", scopeLocationId },
+      meta: {
+        source: "database",
+        scopeLocationId: null,
+        markerCount: markers.length,
+        locationIds: markers.map((m) => m.locationId).filter(Boolean),
+      },
     };
   };
 

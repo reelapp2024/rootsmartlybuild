@@ -9,6 +9,7 @@ const mongoose = require("mongoose");
 const slugify = require("../additional/slugify");
 const Author = require("../models/authors");
 const UserProject = require("../models/userProjects");
+const User = require("../models/users");
 const aiblogsQueue = require("../queue/aiblogsQueue");
 const { normalizeBlogType } = require("../sections/aiblogs");
 const {
@@ -42,6 +43,17 @@ function normalizeLocations(locations) {
     .filter(Boolean);
 }
 
+/** Owner or super-admin may manage AI blogs for a project. */
+async function assertCanAccessProject(userId, projectId) {
+  if (!projectId || !mongoose.isValidObjectId(String(projectId))) return null;
+  const project = await UserProject.findById(projectId).select("_id userId").lean();
+  if (!project) return null;
+  if (String(project.userId) === String(userId)) return project;
+  const user = await User.findById(userId).select("isSuper").lean();
+  if (Number(user?.isSuper || 0) === 1) return project;
+  return null;
+}
+
 module.exports = {
   /**
    * POST /create_ai_blog
@@ -73,20 +85,25 @@ module.exports = {
         return res.status(400).json({ message: "valid authorId is required" });
       }
 
-      const project = await UserProject.findOne({ _id: projectId, userId })
-        .select("_id")
-        .lean();
+      const project = await assertCanAccessProject(userId, projectId);
       if (!project) {
         return res
           .status(404)
           .json({ message: "Project not found or you do not have permission" });
       }
 
-      const author = await Author.findOne({ _id: authorId, userId })
+      // Author: logged-in user (super) or project owner
+      const author = await Author.findOne({
+        _id: authorId,
+        $or: [{ userId }, { userId: project.userId }],
+      })
         .select("_id name")
         .lean();
       if (!author) {
-        return res.status(404).json({ message: "Author not found" });
+        return res.status(404).json({
+          message:
+            "Author not found. Create or select an author under your account, then try again.",
+        });
       }
 
       const blogType = normalizeBlogType(type);
@@ -123,8 +140,11 @@ module.exports = {
           .json({ message: "Maximum 20 blogs per request" });
       }
 
+      // Stamp blogs with project owner so ownership stays with the project account
+      const blogOwnerUserId = String(project.userId || userId);
+
       console.log(
-        `[AiblogsControllerV2] queueing ${scheduleItems.length} blog(s) type=${blogType} workers=${workers} project=${projectId}`
+        `[AiblogsControllerV2] queueing ${scheduleItems.length} blog(s) type=${blogType} workers=${workers} project=${projectId} owner=${blogOwnerUserId} actor=${userId}`
       );
       console.log(
         `[AiblogsControllerV2] titles:`,
@@ -147,7 +167,8 @@ module.exports = {
         else if ([0, 1, 2].includes(requestedStatus)) finalStatus = requestedStatus;
 
         const job = await aiblogsQueue.add({
-          userId: String(userId),
+          userId: blogOwnerUserId,
+          actorUserId: String(userId),
           projectId: String(projectId),
           type: blogType,
           authorId: String(authorId),
@@ -207,9 +228,7 @@ module.exports = {
 
       const projectId = String(req.body?.projectId || "").trim();
       if (projectId) {
-        const owned = await UserProject.findOne({ _id: projectId, userId })
-          .select("_id")
-          .lean();
+        const owned = await assertCanAccessProject(userId, projectId);
         if (!owned) {
           return res.status(404).json({ message: "Project not found" });
         }
@@ -271,23 +290,27 @@ module.exports = {
         return res.status(400).json({ message: "valid projectId is required" });
       }
 
-      const project = await UserProject.findOne({ _id: projectId, userId })
-        .select("_id")
-        .lean();
+      const project = await assertCanAccessProject(userId, projectId);
       if (!project) {
         return res.status(404).json({ message: "Project not found" });
       }
 
-      // Reconcile vs Bull so refresh / re-login never shows a zombie "generating" batch
+      // Reconcile vs Bull so refresh / poll / re-login never shows zombie "generating"
       let data = await reconcileWithQueue(projectId, aiblogsQueue);
+      // Fall back to in-memory if Mongo had nothing yet (just queued)
+      if (!data) data = getLiveProgress(projectId);
+
       if (data) {
+        const jobs =
+          data.jobs && typeof data.jobs === "object" ? data.jobs : {};
         data = {
           ...data,
+          jobs,
           recentEvents: Array.isArray(data.recentEvents)
-            ? data.recentEvents.slice(0, 8)
+            ? data.recentEvents.slice(0, 12)
             : [],
           currentBlogs: Array.isArray(data.currentBlogs)
-            ? data.currentBlogs.slice(0, 6)
+            ? data.currentBlogs.slice(0, 12)
             : [],
         };
       }

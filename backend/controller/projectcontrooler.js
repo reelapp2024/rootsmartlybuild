@@ -20,6 +20,7 @@ const axios = require("axios");
 const slugify = require("../additional/slugify");
 const { buildBusinessLocationPathMap } = require("../additional/businessLocationPaths");
 const { attachGeneratedImagesToSectionData } = require("../additional/sectionImageGenerationHelper");
+const { parseSectionOrigin } = require("../imageengines");
 const { enqueueSectionGeneration } = require("../queue/sectionGeneration.queue");
 const {
   GEO_LOCATION_TYPE,
@@ -962,8 +963,7 @@ module.exports = {
 
       let finalSectionImageOrigin = 1;
       if (sectionImageOrigin !== undefined && sectionImageOrigin !== null) {
-        const o = parseInt(sectionImageOrigin, 10);
-        if (o === 2) finalSectionImageOrigin = 2;
+        finalSectionImageOrigin = parseSectionOrigin(sectionImageOrigin, 1);
       }
 
       if (!projectKeywordsText || !focusKeyword) {
@@ -1117,8 +1117,10 @@ module.exports = {
 
       let finalSectionImageOrigin = project.sectionImageOrigin ?? 1;
       if (sectionImageOrigin !== undefined && sectionImageOrigin !== null) {
-        const o = parseInt(sectionImageOrigin, 10);
-        if (o === 2) finalSectionImageOrigin = 2;
+        finalSectionImageOrigin = parseSectionOrigin(
+          sectionImageOrigin,
+          project.sectionImageOrigin ?? 1
+        );
       }
 
       const { processedSubCategories, processedMicroCategories } =
@@ -1222,10 +1224,17 @@ module.exports = {
           });
         }
 
+        const {
+          resolveGeoForLocation,
+          applyGeoToBusinessLocation,
+        } = require("../services/googlePlaces");
+        const geo = await resolveGeoForLocation(areaName, loc);
+
         if (doc) {
           doc.areaName = areaName;
           doc.status = 1;
           doc.locationType = GEO_LOCATION_TYPE.BUSINESS;
+          applyGeoToBusinessLocation(doc, geo);
           await doc.save();
         } else {
           doc = await BusinessLocation.create({
@@ -1237,6 +1246,14 @@ module.exports = {
             adminLocationId: null,
             status: 1,
             pageGenerated: false,
+            lat: geo.lat,
+            lng: geo.lng,
+            googlePlaceId: geo.googlePlaceId || undefined,
+            formattedAddress: geo.formattedAddress || undefined,
+            bounds: geo.bounds || undefined,
+            country: geo.country || undefined,
+            state: geo.state || undefined,
+            city: geo.city || undefined,
           });
         }
 
@@ -1378,10 +1395,18 @@ module.exports = {
           });
         }
 
+        const {
+          resolveGeoForLocation,
+          applyGeoToBusinessLocation,
+        } = require("../services/googlePlaces");
+        const geoLabel = [areaName, parent.areaName].filter(Boolean).join(", ");
+        const geo = await resolveGeoForLocation(geoLabel, item);
+
         if (doc) {
           doc.areaName = areaName;
           doc.status = 1;
           doc.locationType = GEO_LOCATION_TYPE.BUSINESS;
+          applyGeoToBusinessLocation(doc, geo);
           await doc.save();
         } else {
           doc = await BusinessLocation.create({
@@ -1393,6 +1418,14 @@ module.exports = {
             adminLocationId: null,
             status: 1,
             pageGenerated: false,
+            lat: geo.lat,
+            lng: geo.lng,
+            googlePlaceId: geo.googlePlaceId || undefined,
+            formattedAddress: geo.formattedAddress || undefined,
+            bounds: geo.bounds || undefined,
+            country: geo.country || undefined,
+            state: geo.state || undefined,
+            city: geo.city || parent.areaName || undefined,
           });
         }
 
@@ -1925,6 +1958,24 @@ module.exports = {
           .map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase())
           .join(" ");
 
+        const {
+          resolveGeoForLocation,
+          extractGeoFromPayload,
+        } = require("../services/googlePlaces");
+        let geo = extractGeoFromPayload(la);
+        if (geo.lat == null || geo.lng == null) {
+          const cityDoc = cityId
+            ? await City.findOne({ id: String(cityId) }).select("name lat lng").lean()
+            : null;
+          const label = [name, cityDoc?.name].filter(Boolean).join(", ");
+          geo = await resolveGeoForLocation(label, la);
+          // Prefer city coords as last resort for neighborhood names
+          if ((geo.lat == null || geo.lng == null) && cityDoc?.lat != null && cityDoc?.lng != null) {
+            geo.lat = cityDoc.lat;
+            geo.lng = cityDoc.lng;
+          }
+        }
+
         let area = await AdminLocalArea.findOne({
           name,
           city_id: cityId,
@@ -1936,13 +1987,23 @@ module.exports = {
             id: idStr,
             name,
             city_id: cityId,
-            manual: 1
+            manual: 1,
+            lat: geo.lat,
+            lng: geo.lng,
           }).save();
+        } else if (geo.lat != null && geo.lng != null) {
+          area.lat = geo.lat;
+          area.lng = geo.lng;
+          await area.save();
         }
         payload.push({
           localAreaId: area.id,
           name,
-          cityId
+          cityId,
+          lat: area.lat ?? geo.lat ?? null,
+          lng: area.lng ?? geo.lng ?? null,
+          googlePlaceId: geo.googlePlaceId || null,
+          formattedAddress: geo.formattedAddress || null,
         });
       }
 
@@ -2041,15 +2102,60 @@ module.exports = {
       const projectId = req.query.projectId || req.body.projectId;
       if (!projectId) return res.status(400).json({ message: "projectId is required" });
 
-      const proj = await UserProject.findById(projectId, {
-        "locations.country": 1,
-        "locations.state": 1,
-        "locations.city": 1,
-        "locations.localArea": 1
-      }).lean();
-
+      const proj = await UserProject.findById(projectId)
+        .select("projectType locations")
+        .lean();
       if (!proj) return res.status(404).json({ message: "Project not found" });
 
+      // Prefer BusinessLocation hierarchy (business sites + synced bulk sites).
+      // AI blog generator / pickers need parent + child nodes selectable independently.
+      const bizRows = await BusinessLocation.find({ projectId, status: 1 })
+        .select("_id areaName type parentId locationType")
+        .lean();
+
+      if (bizRows.length > 0 || Number(proj.projectType) === 1) {
+        const byId = new Map(bizRows.map((r) => [String(r._id), r]));
+        const childrenByParent = new Map();
+        for (const r of bizRows) {
+          const parentKey = r.parentId ? String(r.parentId) : "__root__";
+          if (!childrenByParent.has(parentKey)) childrenByParent.set(parentKey, []);
+          childrenByParent.get(parentKey).push(r);
+        }
+
+        const walk = (node) => {
+          const id = String(node._id);
+          const children = (childrenByParent.get(id) || []).map(walk);
+          children.sort((a, b) => a.name.localeCompare(b.name));
+          const isParent = Number(node.type) === 0;
+          return {
+            id,
+            name: node.areaName,
+            type: Number(node.type || 0),
+            locationType: node.locationType != null ? Number(node.locationType) : null,
+            parentId: node.parentId ? String(node.parentId) : null,
+            label: isParent ? "Parent" : "Local area",
+            children,
+          };
+        };
+
+        const roots = bizRows
+          .filter((r) => !r.parentId || !byId.has(String(r.parentId)))
+          .map(walk)
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        return res.status(200).json({
+          message: "OK",
+          data: roots,
+          meta: {
+            source: "business_locations",
+            total: bizRows.length,
+            parents: bizRows.filter((r) => Number(r.type) === 0).length,
+            children: bizRows.filter((r) => Number(r.type) === 1).length,
+          },
+        });
+      }
+
+      // Bulk-site fallback: embedded country → state → city → localArea
       const loc = proj.locations || {};
       const countries = Array.isArray(loc.country) ? loc.country : [];
       const states = Array.isArray(loc.state) ? loc.state : [];
@@ -2081,13 +2187,25 @@ module.exports = {
       const roots = [];
 
       for (const c of A_COUNTRY) {
-        const node = { name: c.name, id: String(c.countryId || ""), children: [] };
+        const node = {
+          name: c.name,
+          id: String(c.countryId || ""),
+          type: 0,
+          label: "Country",
+          children: [],
+        };
         countryNodesById[node.id] = node;
         roots.push(node);
       }
 
       for (const s of A_STATE) {
-        const node = { name: s.name, id: String(s.stateId || ""), children: [] };
+        const node = {
+          name: s.name,
+          id: String(s.stateId || ""),
+          type: 0,
+          label: "State",
+          children: [],
+        };
         stateNodesById[node.id] = node;
         const parentCountry = countryNodesById[String(s.countryId || "")];
         if (parentCountry) parentCountry.children.push(node);
@@ -2095,7 +2213,13 @@ module.exports = {
       }
 
       for (const c of A_CITY) {
-        const node = { name: c.name, id: String(c.cityId || ""), children: [] };
+        const node = {
+          name: c.name,
+          id: String(c.cityId || ""),
+          type: 0,
+          label: "City",
+          children: [],
+        };
         cityNodesById[node.id] = node;
 
         const sId = String(c.stateId || "");
@@ -2112,7 +2236,13 @@ module.exports = {
       }
 
       for (const l of A_LOCAL) {
-        const node = { name: l.name, id: String(l.localAreaId || ""), children: [] };
+        const node = {
+          name: l.name,
+          id: String(l.localAreaId || ""),
+          type: 1,
+          label: "Local area",
+          children: [],
+        };
 
         const cId = String(l.cityId || "");
         const activeCity = cityNodesById[cId];
@@ -2143,7 +2273,11 @@ module.exports = {
       roots.sort((a, b) => a.name.localeCompare(b.name));
       roots.forEach(sortRec);
 
-      return res.status(200).json({ message: "OK", data: roots });
+      return res.status(200).json({
+        message: "OK",
+        data: roots,
+        meta: { source: "embedded_locations", total: roots.length },
+      });
     } catch (err) {
       console.error("getProjectLocationsHierarchy error:", err);
       return res.status(500).json({ message: "Failed to fetch project locations" });
@@ -2188,6 +2322,10 @@ module.exports = {
         });
 
         if (!exists) {
+          const {
+            resolveGeoForLocation,
+          } = require("../services/googlePlaces");
+          const geo = await resolveGeoForLocation(loc.areaName, loc);
           const newLoc = await BusinessLocation.create({
             projectId,
             areaName: loc.areaName,
@@ -2196,6 +2334,12 @@ module.exports = {
             createPage: loc.createPage ?? true,
             status: 1,
             pageGenerated: false,
+            locationType: GEO_LOCATION_TYPE.BUSINESS,
+            lat: geo.lat,
+            lng: geo.lng,
+            googlePlaceId: geo.googlePlaceId || undefined,
+            formattedAddress: geo.formattedAddress || undefined,
+            bounds: geo.bounds || undefined,
           });
 
           createdLocations.push(newLoc);

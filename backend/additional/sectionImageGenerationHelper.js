@@ -1,11 +1,16 @@
 /**
  * Section pipeline: generate images from prompts and attach to SectionContent.data.images
  * - images_mode env: "1" = run generation, anything else = skip
- * - project.sectionImageOrigin: 1 = Freepik stock (non_ai prompt), 2 = Gemini (ai prompt)
+ * - project.sectionImageOrigin: 1 Freepik · 2 Gemini · 4 Leonardo · 5 Flux
  * - Files land under public/images/{sanitizedProjectName}_{projectId}/
  */
 
 const generateImages = require("./imageProviderHelper");
+const {
+  isValidSectionOrigin,
+  usesAiPrompt,
+  normalizeOrigin,
+} = require("../imageengines");
 const UserProject = require("../models/userProjects");
 
 function getImagesMode() {
@@ -59,14 +64,13 @@ async function attachGeneratedImagesToSectionData({
   if (!lean) return data;
   if (Number(lean.wantImages) === 0) return data;
 
-  const origin = [1, 2].includes(Number(lean.sectionImageOrigin))
-    ? Number(lean.sectionImageOrigin)
+  const origin = isValidSectionOrigin(lean.sectionImageOrigin)
+    ? normalizeOrigin(lean.sectionImageOrigin)
     : 1;
 
-  const prompt =
-    origin === 2
-      ? String(data.ai_image_prompt || "").trim()
-      : String(data.non_ai_image_prompt || data.ai_image_prompt || "").trim();
+  const prompt = usesAiPrompt(origin)
+    ? String(data.ai_image_prompt || "").trim()
+    : String(data.non_ai_image_prompt || data.ai_image_prompt || "").trim();
 
   if (!prompt) {
     return { ...data, images: [] };

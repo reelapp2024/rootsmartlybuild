@@ -15,6 +15,10 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Plus, Search } from "lucide-react";
+import {
+  GooglePlacesAutocomplete,
+  type GooglePlaceSelection,
+} from "@/components/admin/GooglePlacesAutocomplete";
 
 export type BulkGeoLocationPanelHandle = {
   saveCurrentStep: () => Promise<boolean>;
@@ -23,7 +27,14 @@ export type BulkGeoLocationPanelHandle = {
 type CountryRow = { countryId?: string; name: string; status: number };
 type StateRow = { id: string; name: string; countryId: string; manual?: boolean; status?: number };
 type CityRow = { id: string; name: string; status?: number };
-type LocalAreaRow = { id: string; name: string };
+type LocalAreaRow = {
+  id: string;
+  name: string;
+  lat?: number | null;
+  lng?: number | null;
+  googlePlaceId?: string | null;
+  formattedAddress?: string | null;
+};
 
 type BulkGeoLocationPanelProps = {
   step: 2 | 3 | 4 | 5;
@@ -295,14 +306,21 @@ export const BulkGeoLocationPanel = forwardRef<
     });
   };
 
-  const addLocalArea = (cityName: string) => {
-    const raw = (localAreaInput[cityName] || "").trim();
+  const addLocalArea = (cityName: string, place?: GooglePlaceSelection | null) => {
+    const raw = String(place?.name || localAreaInput[cityName] || "").trim();
     if (!raw) return;
     setLocalAreas((prev) => ({
       ...prev,
       [cityName]: [
         ...(prev[cityName] || []),
-        { id: `manual-${Date.now()}`, name: raw },
+        {
+          id: `manual-${Date.now()}`,
+          name: raw,
+          lat: place?.lat ?? null,
+          lng: place?.lng ?? null,
+          googlePlaceId: place?.placeId || null,
+          formattedAddress: place?.formattedAddress || null,
+        },
       ],
     }));
     setLocalAreaInput((prev) => ({ ...prev, [cityName]: "" }));
@@ -448,7 +466,14 @@ export const BulkGeoLocationPanel = forwardRef<
             : null;
           const city = stateName ? (citiesByState[stateName] || []).find((c) => c.name === cityName) : null;
           const cityId = city?.id || null;
-          return (areas || []).map((a) => ({ name: a.name, cityId }));
+          return (areas || []).map((a) => ({
+            name: a.name,
+            cityId,
+            lat: a.lat ?? null,
+            lng: a.lng ?? null,
+            googlePlaceId: a.googlePlaceId || null,
+            formattedAddress: a.formattedAddress || null,
+          }));
         });
 
         if (!formatted.length) {
@@ -636,22 +661,26 @@ export const BulkGeoLocationPanel = forwardRef<
           <div key={cityName} className="space-y-2 border rounded-lg p-3">
             <Label>{cityName}</Label>
             <div className="flex gap-2">
-              <Input
-                placeholder="Local area name"
+              <GooglePlacesAutocomplete
+                placeholder={`Search area near ${cityName}`}
                 value={localAreaInput[cityName] || ""}
-                onChange={(e) =>
-                  setLocalAreaInput((prev) => ({ ...prev, [cityName]: e.target.value }))
+                onChange={(v) =>
+                  setLocalAreaInput((prev) => ({ ...prev, [cityName]: v }))
                 }
-                onKeyDown={(e) => e.key === "Enter" && addLocalArea(cityName)}
+                onPlaceSelect={(place) => addLocalArea(cityName, place)}
+                onEnterWithoutSelection={() => addLocalArea(cityName, null)}
               />
-              <Button type="button" variant="outline" onClick={() => addLocalArea(cityName)}>
+              <Button type="button" variant="outline" onClick={() => addLocalArea(cityName, null)}>
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
             <ul className="text-sm space-y-1">
               {(localAreas[cityName] || []).map((a) => (
-                <li key={a.id} className="text-gray-700">
-                  • {a.name}
+                <li key={a.id} className="text-gray-700 flex items-center gap-2">
+                  <span>• {a.name}</span>
+                  {a.lat != null && a.lng != null ? (
+                    <span className="text-[11px] text-green-600">pin</span>
+                  ) : null}
                 </li>
               ))}
             </ul>

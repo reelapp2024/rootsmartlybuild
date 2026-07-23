@@ -1,6 +1,5 @@
-// components/.../AiBlogsWizard.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -21,11 +20,19 @@ import {
   SelectContent,
   SelectItem
 } from "@/components/ui/select";
-import { Check, ChevronLeft, ChevronRight, Search, Sparkles } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Search, Sparkles, ChevronDown } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { httpFile } from "../../config.js";
+import { resolveAdminProjectId, blogPostsListPath } from "@/lib/adminProjectPaths";
 
-type TreeNode = { name: string; id: string; children: TreeNode[] };
+type TreeNode = {
+  name: string;
+  id: string;
+  children: TreeNode[];
+  type?: number;
+  label?: string;
+  parentId?: string | null;
+};
 type AuthorItem = { _id: string; name: string };
 
 const BLOG_TYPES = [
@@ -45,9 +52,13 @@ const STYLE_MAP: Record<(typeof BLOG_TYPES)[number]["id"], string> = {
 export default function AiBlogsWizard() {
   const navigate = useNavigate();
   const location = useLocation();
-  const stateProjectId = (location.state as any)?.projectId;
-  const queryProjectId = new URLSearchParams(location.search).get("projectId");
-  const projectId = stateProjectId || queryProjectId || "";
+  const { projectId: paramProjectId } = useParams<{ projectId?: string }>();
+  const projectId = resolveAdminProjectId({
+    paramProjectId,
+    stateProjectId: (location.state as any)?.projectId,
+    queryProjectId: new URLSearchParams(location.search).get("projectId"),
+  });
+  const postsListHref = blogPostsListPath(projectId);
 
   const [step, setStep] = useState(1);
 
@@ -60,6 +71,7 @@ export default function AiBlogsWizard() {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [locSearch, setLocSearch] = useState("");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   // Step 3: quantity or manual
   const [mode, setMode] = useState<"auto" | "manual">("auto");
@@ -142,6 +154,24 @@ export default function AiBlogsWizard() {
         );
         const data: TreeNode[] = Array.isArray(res?.data?.data) ? res.data.data : [];
         setTree(data);
+        // Expand all parents by default so hierarchy is visible
+        const parentIds = new Set<string>();
+        const collectParents = (nodes: TreeNode[]) => {
+          nodes.forEach((n) => {
+            if (n.children?.length) {
+              parentIds.add(n.id);
+              collectParents(n.children);
+            }
+          });
+        };
+        collectParents(data);
+        setExpandedIds(parentIds);
+        if (!data.length) {
+          toast({
+            title: "No locations",
+            description: "Add locations for this project first (Locations in the project dashboard).",
+          });
+        }
       } catch (err: any) {
         console.log(err, "error while loading locations");
         toast({
@@ -180,8 +210,41 @@ export default function AiBlogsWizard() {
   };
   const allIds = (nodes: TreeNode[]): string[] =>
     nodes.flatMap(n => [n.id, ...(n.children?.length ? allIds(n.children) : [])]);
+  const parentIdsOnly = (nodes: TreeNode[]): string[] => {
+    const out: string[] = [];
+    const walk = (list: TreeNode[]) => {
+      list.forEach((n) => {
+        if (Number(n.type) === 0 || (n.children?.length ?? 0) > 0) out.push(n.id);
+        if (n.children?.length) walk(n.children);
+      });
+    };
+    walk(nodes);
+    return out;
+  };
+  /** Local areas / nested children — not top-level parents */
+  const childIdsOnly = (nodes: TreeNode[]): string[] => {
+    const out: string[] = [];
+    const walk = (list: TreeNode[], depth: number) => {
+      list.forEach((n) => {
+        if (Number(n.type) === 1 || depth > 0) out.push(n.id);
+        if (n.children?.length) walk(n.children, depth + 1);
+      });
+    };
+    walk(nodes, 0);
+    return out;
+  };
   const selectAll = () => setSelectedIds(new Set(allIds(tree)));
+  const selectParentsOnly = () => setSelectedIds(new Set(parentIdsOnly(tree)));
+  const selectChildrenOnly = () => setSelectedIds(new Set(childIdsOnly(tree)));
   const clearAll = () => setSelectedIds(new Set());
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const filteredTree = useMemo<TreeNode[]>(() => {
     if (!locSearch.trim()) return tree;
@@ -528,12 +591,14 @@ export default function AiBlogsWizard() {
         title: "Background blogs creation started",
         description: `${queued} article(s) queued with ${res?.data?.parallelWorkers ?? 6} workers. Watch progress on Blog Posts.`,
       });
-      navigate("/admin/blog-posts", {
+      navigate(postsListHref, {
         state: {
           projectId,
           aiBlogJobIds: res?.data?.jobIds || [],
           aiBlogGenerating: true,
           aiBlogExpectedCount: finalTitles.length,
+          // Seed Blog Posts banner immediately (sockets/poll take over after)
+          aiBlogProgress: res?.data?.progress || null,
         },
       });
     } catch (err: any) {
@@ -591,16 +656,62 @@ export default function AiBlogsWizard() {
   );
 
   const Tree = ({ nodes, depth = 0 }: { nodes: TreeNode[]; depth?: number }) => (
-    <div className={depth === 0 ? "space-y-2" : "space-y-1"}>
-      {nodes.map(n => (
-        <div key={n.id} className="flex flex-col">
-          <label className="flex items-center gap-2" style={{ paddingLeft: depth * 16 }}>
-            <Checkbox checked={isNodeChecked(n)} onCheckedChange={() => toggleNode(n)} />
-            <span className="text-sm">{n.name}</span>
-          </label>
-          {n.children?.length ? <Tree nodes={n.children} depth={depth + 1} /> : null}
-        </div>
-      ))}
+    <div className={depth === 0 ? "space-y-1" : "space-y-0.5 mt-1"}>
+      {nodes.map((n) => {
+        const hasKids = (n.children?.length ?? 0) > 0;
+        const expanded = locSearch.trim() ? true : expandedIds.has(n.id);
+        const isParent = Number(n.type) === 0 || hasKids;
+        const badgeLabel =
+          n.label ||
+          (isParent ? (depth === 0 ? "Parent" : "Area") : "Local area");
+        return (
+          <div key={n.id} className="flex flex-col">
+            <div
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-white/80"
+              style={{ paddingLeft: 8 + depth * 18 }}
+            >
+              {hasKids ? (
+                <button
+                  type="button"
+                  className="h-5 w-5 flex items-center justify-center text-gray-500 shrink-0"
+                  onClick={() => toggleExpand(n.id)}
+                  aria-label={expanded ? "Collapse" : "Expand"}
+                >
+                  {expanded ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </button>
+              ) : (
+                <span className="w-5 shrink-0" />
+              )}
+              <Checkbox
+                checked={isNodeChecked(n)}
+                onCheckedChange={() => toggleNode(n)}
+                id={`loc-${n.id}`}
+              />
+              <label
+                htmlFor={`loc-${n.id}`}
+                className="flex items-center gap-2 flex-1 cursor-pointer min-w-0"
+              >
+                <span className="text-sm font-medium truncate">{n.name}</span>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] shrink-0 ${
+                    isParent
+                      ? "border-blue-300 text-blue-700 bg-blue-50"
+                      : "border-emerald-300 text-emerald-700 bg-emerald-50"
+                  }`}
+                >
+                  {badgeLabel}
+                </Badge>
+              </label>
+            </div>
+            {hasKids && expanded ? <Tree nodes={n.children} depth={depth + 1} /> : null}
+          </div>
+        );
+      })}
     </div>
   );
 
@@ -620,11 +731,14 @@ export default function AiBlogsWizard() {
               <Checkbox checked={locationBased} onCheckedChange={v => setLocationBased(!!v)} id="locbased" />
               <Label htmlFor="locbased">Make titles location-based?</Label>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Pick any mix: parents only, local areas only, or both. Each checked location can appear in titles.
+            </p>
 
             {locationBased && (
               <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-1 min-w-[180px]">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     <Input
                       placeholder="Search locations…"
@@ -633,26 +747,47 @@ export default function AiBlogsWizard() {
                       onChange={e => setLocSearch(e.target.value)}
                     />
                   </div>
-                  <Button variant="outline" onClick={selectAll} disabled={locLoading}>
+                  <Button variant="outline" size="sm" onClick={selectAll} disabled={locLoading || !tree.length}>
                     Select All
                   </Button>
-                  <Button variant="outline" onClick={clearAll} disabled={locLoading}>
+                  <Button variant="outline" size="sm" onClick={selectParentsOnly} disabled={locLoading || !tree.length}>
+                    Parents only
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={selectChildrenOnly} disabled={locLoading || !tree.length}>
+                    Local areas only
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={clearAll} disabled={locLoading}>
                     Clear
                   </Button>
                 </div>
 
-                <div className="border rounded-lg p-4 max-h-96 overflow-y-auto bg-gray-50">
+                <div className="border rounded-lg p-3 max-h-96 overflow-y-auto bg-gray-50">
                   {locLoading ? (
                     <div className="text-sm text-gray-500">Loading locations…</div>
                   ) : filteredTree.length ? (
                     <Tree nodes={filteredTree} />
+                  ) : tree.length === 0 ? (
+                    <div className="text-sm text-gray-500 space-y-1">
+                      <p>No locations found for this project.</p>
+                      <p className="text-xs">
+                        Add parent areas and local areas under Project → Locations, then come back here.
+                      </p>
+                    </div>
                   ) : (
-                    <div className="text-sm text-gray-500">No matching locations.</div>
+                    <div className="text-sm text-gray-500">No matching locations for “{locSearch}”.</div>
                   )}
                 </div>
 
-                <div className="text-xs text-gray-600">
-                  Selected: <Badge variant="outline">{selectedIds.size}</Badge>
+                <div className="text-xs text-gray-600 flex flex-wrap gap-3 items-center">
+                  <span>
+                    Selected: <Badge variant="outline">{selectedIds.size}</Badge>
+                  </span>
+                  {locationNames.length > 0 && (
+                    <span className="text-muted-foreground truncate max-w-full">
+                      {locationNames.slice(0, 8).join(", ")}
+                      {locationNames.length > 8 ? ` +${locationNames.length - 8} more` : ""}
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -897,7 +1032,7 @@ export default function AiBlogsWizard() {
                 <p className="text-sm text-gray-600">You can manage or schedule them from the posts page.</p>
                 <Button
                   variant="outline"
-                  onClick={() => navigate("/admin/blog-posts", { state: { projectId } })}
+                  onClick={() => navigate(postsListHref, { state: { projectId } })}
                 >
                   Go to Blogs
                 </Button>

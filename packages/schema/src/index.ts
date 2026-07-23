@@ -44,3 +44,11 @@ export {
   resolveAdminThemeIdFromSettings,
 } from "./presetThemeCatalog";
 export type { PresetThemeCatalogEntry } from "./presetThemeCatalog";
+
+export {
+  PRESET_THEMES,
+  PRESET_THEME_SWATCHES,
+  getPresetThemeSwatchById,
+  assertThemeCatalogAligned,
+} from "./presetThemeSwatches";
+export type { PresetThemeSwatch } from "./presetThemeSwatches";

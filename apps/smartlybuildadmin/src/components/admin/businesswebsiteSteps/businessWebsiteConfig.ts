@@ -122,6 +122,8 @@ export const DEFAULT_PAGES: PageOption[] = [
 
       { id: "areas", name: "Areas", description: "Service areas/locations section", defaultSelected: false },
 
+      { id: "locationmap", name: "Service Area Map", description: "Map with all location pins highlighted", defaultSelected: false },
+
       { id: "faq", name: "FAQ", description: "Frequently asked questions", defaultSelected: false },
 
     ]),
@@ -412,6 +414,7 @@ export const DEFAULT_PAGES: PageOption[] = [
       { id: "guarantee", name: "Guarantee", description: "Service guarantees and promises", defaultSelected: false },
       { id: "testimonials", name: "Testimonials", description: "Customer reviews and proof", defaultSelected: false },
       { id: "areas", name: "Areas", description: "Nearby areas teaser on this location page", defaultSelected: false },
+      { id: "locationmap", name: "Location Map", description: "Map pin for this area", defaultSelected: false },
       { id: "faq", name: "FAQ", description: "Frequently asked questions", defaultSelected: false },
     ]),
   },
@@ -441,31 +444,9 @@ export function buildDefaultPerLocationByPage(
 
 
 
-export const PRESET_THEMES = [
-
-  { id: "crimson-jet", name: "Crimson Jet", primary: "#E11D48", surface: "#0E1214", heading: "#F8FAFC", description: "Bold and modern" },
-
-  { id: "indigo-sand", name: "Indigo Sand", primary: "#4F46E5", surface: "#0F1222", heading: "#F8FAFC", description: "Professional and trustworthy" },
-
-  { id: "saffron-charcoal", name: "Saffron Charcoal", primary: "#FDB022", surface: "#121212", heading: "#FFFFFF", description: "Vivid and energetic" },
-
-  { id: "mint-slate", name: "Mint Slate", primary: "#22C55E", surface: "#0B1412", heading: "#FFFFFF", description: "Fresh and punchy" },
-
-  { id: "marine-teal", name: "Marine Teal", primary: "#0EA5A4", surface: "#0B1720", heading: "#FFFFFF", description: "Crisp and modern" },
-
-  { id: "royal-plum", name: "Royal Plum", primary: "#A855F7", surface: "#120C18", heading: "#FFFFFF", description: "Elegant and creative" },
-
-  { id: "electric-cobalt", name: "Electric Cobalt", primary: "#2563EB", surface: "#0A1220", heading: "#F8FAFC", description: "Bold and dynamic" },
-
-  { id: "copper-forest", name: "Copper Forest", primary: "#D97706", surface: "#0D1512", heading: "#FFFFFF", description: "Warm and natural" },
-
-  { id: "ruby-night", name: "Ruby Night", primary: "#DC2626", surface: "#140A0D", heading: "#FFFFFF", description: "Bold and dramatic" },
-
-  { id: "citrus-navy", name: "Citrus Navy", primary: "#F59E0B", surface: "#0A1224", heading: "#FFFFFF", description: "Vibrant and energetic" },
-
-  { id: "midnight-amber", name: "Midnight Amber", primary: "#F59E0B", surface: "#060504", heading: "#FFFBF0", description: "Warm amber on deep night" },
-
-] as const;
+/** GenieBuild-aligned presets — single source: @schema/core (from GenieBuild PRESET_THEMES). */
+export { PRESET_THEMES } from "@schema/core/presetThemeSwatches";
+export type { PresetThemeSwatch } from "@schema/core/presetThemeSwatches";
 
 export type WebsiteWizardVariant = "business" | "bulk";
 

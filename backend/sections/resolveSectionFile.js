@@ -209,6 +209,18 @@ function resolveSectionFile(sectionId, options = {}) {
     if (legacyServicesHit) return legacyServicesHit;
   }
 
+  // Prefer homepage for home / location detail pages (incl. locationmap multi-pin)
+  if (
+    pageFolder === "homepage" ||
+    pageType === "home" ||
+    pageType === "homepage" ||
+    pageType === "default" ||
+    pageType === "location"
+  ) {
+    const homeHit = trySectionPath("homepage", normalized);
+    if (homeHit) return homeHit;
+  }
+
   // Prefer allareas folder for All Areas page / allareas section ids
   if (
     pageFolder === "allareas" ||
@@ -222,18 +234,6 @@ function resolveSectionFile(sectionId, options = {}) {
   ) {
     const areasHit = trySectionPath("allareas", normalized);
     if (areasHit) return areasHit;
-  }
-
-  // Prefer homepage for shared section ids / location DB helpers
-  if (
-    pageFolder === "homepage" ||
-    pageType === "home" ||
-    pageType === "homepage" ||
-    pageType === "default" ||
-    pageType === "location"
-  ) {
-    const homeHit = trySectionPath("homepage", normalized);
-    if (homeHit) return homeHit;
   }
 
   for (const page of PAGE_FOLDERS) {

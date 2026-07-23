@@ -271,6 +271,9 @@ const THEME_TYPOGRAPHY = {
 };
 
 export const PRESET_THEMES = [
+  // SOURCE OF TRUTH for live site colors.
+  // Admin swatches/catalog are derived via: node scripts/extract-theme-swatches.cjs
+  // → packages/schema/presetThemeSwatches.json + presetThemeCatalog.json
   {
     "name": "Crimson Jet",
     "typography": THEME_TYPOGRAPHY,
@@ -2454,14 +2457,19 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
     styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'SubLocationsDefault' }
   },
 
-  /** All Areas listing — map (`allareas/locationmap`). */
+  /** Homepage / All Areas map (`locationmap`) — single Google embed or multi pins. */
   locationmap: {
     type: 'locationmap',
     content: {
         badgeText: 'Find Us',
         title: 'Our Service Area',
         lat: '40.7128',
-        lng: '-74.0060'
+        lng: '-74.0060',
+        markers: [
+          { id: '1', name: 'Austin, TX', lat: 30.2672, lng: -97.7431 },
+          { id: '2', name: 'Dallas, TX', lat: 32.7767, lng: -96.7970 },
+          { id: '3', name: 'Houston, TX', lat: 29.7604, lng: -95.3698 },
+        ],
     },
     styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'LocationMapDefault' }
   },

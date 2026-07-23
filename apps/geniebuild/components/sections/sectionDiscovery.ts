@@ -36,6 +36,7 @@ const fallbackModules: GlobModuleMap = {
   './about/corevalues/CoreValuesDefault.tsx': () => import('./about/corevalues/CoreValuesDefault'),
   './about/usp/USPDefault.tsx': () => import('./about/usp/USPDefault'),
   './homepage/areas/AreasPlumbing.tsx': () => import('./homepage/areas/AreasPlumbing'),
+  './homepage/locationmap/LocationMapDefault.tsx': () => import('./homepage/locationmap/LocationMapDefault'),
   './homepage/cta/CTAPlumbing1.tsx': () => import('./homepage/cta/CTAPlumbing1'),
   './homepage/cta/CTAPlumbing2.tsx': () => import('./homepage/cta/CTAPlumbing2'),
   './homepage/cta/CTAPlumbing3.tsx': () => import('./homepage/cta/CTAPlumbing3'),

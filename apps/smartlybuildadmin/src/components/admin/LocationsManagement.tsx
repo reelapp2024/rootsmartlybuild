@@ -29,6 +29,10 @@ import {
   Globe2,
   AlertCircle,
 } from "lucide-react";
+import {
+  GooglePlacesAutocomplete,
+  type GooglePlaceSelection,
+} from "@/components/admin/GooglePlacesAutocomplete";
 
 export type LocationNode = {
   id: string;
@@ -49,6 +53,11 @@ type DraftLocation = {
   name: string;
   type: 0 | 1;
   parentId: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  googlePlaceId?: string | null;
+  formattedAddress?: string | null;
+  bounds?: GooglePlaceSelection["bounds"];
 };
 
 type LocationsManagementProps = {
@@ -136,6 +145,7 @@ export default function LocationsManagement({ projectId: propProjectId }: Locati
     anchorType: number;
   } | null>(null);
   const [newLocationName, setNewLocationName] = useState("");
+  const [pendingPlace, setPendingPlace] = useState<GooglePlaceSelection | null>(null);
 
   const displayTree = useMemo(
     () => mergeDraftIntoTree(savedTree, drafts),
@@ -190,12 +200,22 @@ export default function LocationsManagement({ projectId: propProjectId }: Locati
       anchorType: anchor?.type ?? -1,
     });
     setNewLocationName("");
+    setPendingPlace(null);
     setAddDialogOpen(true);
   };
 
-  const handleConfirmAdd = () => {
-    const name = newLocationName.trim();
+  const handleConfirmAdd = (placeOverride?: GooglePlaceSelection | null) => {
+    const place = placeOverride !== undefined ? placeOverride : pendingPlace;
+    const name = String(place?.name || newLocationName || "").trim();
     if (!name || !addContext) return;
+
+    const geo = {
+      lat: place?.lat ?? null,
+      lng: place?.lng ?? null,
+      googlePlaceId: place?.placeId || null,
+      formattedAddress: place?.formattedAddress || null,
+      bounds: place?.bounds || null,
+    };
 
     if (addContext.mode === "child") {
       if (!addContext.anchorId || addContext.anchorType !== 0) {
@@ -209,6 +229,7 @@ export default function LocationsManagement({ projectId: propProjectId }: Locati
           name,
           type: 1,
           parentId: addContext.anchorId,
+          ...geo,
         },
       ]);
     } else {
@@ -219,6 +240,7 @@ export default function LocationsManagement({ projectId: propProjectId }: Locati
           name,
           type: 0,
           parentId: null,
+          ...geo,
         },
       ]);
     }
@@ -227,6 +249,8 @@ export default function LocationsManagement({ projectId: propProjectId }: Locati
       setExpanded((prev) => ({ ...prev, [addContext.anchorId!]: true }));
     }
     setAddDialogOpen(false);
+    setPendingPlace(null);
+    setNewLocationName("");
     toast.success("Location added to draft — click Generate Pages to save & create pages");
   };
 
@@ -250,7 +274,14 @@ export default function LocationsManagement({ projectId: propProjectId }: Locati
         {
           locations: [
             ...existingParents.map((p) => ({ id: p.id, areaName: p.name })),
-            ...parentDrafts.map((d) => ({ areaName: d.name })),
+            ...parentDrafts.map((d) => ({
+              areaName: d.name,
+              lat: d.lat ?? null,
+              lng: d.lng ?? null,
+              googlePlaceId: d.googlePlaceId || null,
+              formattedAddress: d.formattedAddress || null,
+              bounds: d.bounds || null,
+            })),
           ],
         },
         { headers }
@@ -271,7 +302,15 @@ export default function LocationsManagement({ projectId: propProjectId }: Locati
 
     const childDrafts = drafts.filter((d) => d.type === 1);
     if (childDrafts.length) {
-      const localAreas: { areaName: string; parentId: string }[] = [];
+      const localAreas: {
+        areaName: string;
+        parentId: string;
+        lat?: number | null;
+        lng?: number | null;
+        googlePlaceId?: string | null;
+        formattedAddress?: string | null;
+        bounds?: DraftLocation["bounds"];
+      }[] = [];
       for (const d of childDrafts) {
         let parentId = d.parentId;
         if (parentId?.startsWith("draft-")) {
@@ -281,7 +320,15 @@ export default function LocationsManagement({ projectId: propProjectId }: Locati
           }
         }
         if (!parentId || parentId.startsWith("draft-")) continue;
-        localAreas.push({ areaName: d.name, parentId });
+        localAreas.push({
+          areaName: d.name,
+          parentId,
+          lat: d.lat ?? null,
+          lng: d.lng ?? null,
+          googlePlaceId: d.googlePlaceId || null,
+          formattedAddress: d.formattedAddress || null,
+          bounds: d.bounds || null,
+        });
       }
 
       if (localAreas.length) {
@@ -643,25 +690,39 @@ export default function LocationsManagement({ projectId: propProjectId }: Locati
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
-            <Label htmlFor="new-loc-name">Location name</Label>
-            <Input
+            <Label htmlFor="new-loc-name">Search Google Maps</Label>
+            <GooglePlacesAutocomplete
               id="new-loc-name"
               value={newLocationName}
-              onChange={(e) => setNewLocationName(e.target.value)}
-              placeholder={addContext?.mode === "child" ? "e.g. Downtown, Westside" : "e.g. Austin, Dallas"}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleConfirmAdd();
-                }
+              onChange={(v) => {
+                setNewLocationName(v);
+                setPendingPlace(null);
               }}
+              onPlaceSelect={(place) => {
+                setPendingPlace(place);
+                setNewLocationName(place.name);
+                handleConfirmAdd(place);
+              }}
+              onEnterWithoutSelection={() => handleConfirmAdd(null)}
+              placeholder={
+                addContext?.mode === "child"
+                  ? "Search local area (e.g. Downtown Austin)"
+                  : "Search location (e.g. Austin, TX)"
+              }
             />
+            <p className="text-xs text-gray-500">
+              Pick a Google suggestion to save lat/lng for the map pin.
+            </p>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setAddDialogOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" onClick={handleConfirmAdd} disabled={!newLocationName.trim()}>
+            <Button
+              type="button"
+              onClick={() => handleConfirmAdd(null)}
+              disabled={!newLocationName.trim()}
+            >
               Add to draft
             </Button>
           </DialogFooter>

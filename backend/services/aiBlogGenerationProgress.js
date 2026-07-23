@@ -149,12 +149,12 @@ function emitProgress(projectId, payload) {
     const slim = {
       ...payload,
       recentEvents: Array.isArray(payload?.recentEvents)
-        ? payload.recentEvents.slice(0, 8)
+        ? payload.recentEvents.slice(0, 12)
         : [],
       currentBlogs: Array.isArray(payload?.currentBlogs)
-        ? payload.currentBlogs.slice(0, 6)
+        ? payload.currentBlogs.slice(0, 12)
         : [],
-      // Keep jobs map for UI/debug but cap size in socket payload
+      // Full per-blog map so Blog Posts can list every queued/active/done item
       jobs: payload?.jobs || {},
     };
     ioRef.to(`project_${projectId}`).emit("aiBlogGenerationProgress", slim);
@@ -486,7 +486,15 @@ async function reconcileWithQueue(projectId, queue) {
     }
 
     if (!bullJob) {
-      // removeOnComplete: true → missing job usually means success
+      // removeOnComplete: true → missing job usually means success.
+      // But right after enqueue / Redis blip, avoid false "done".
+      const startedMs = Date.parse(row.startedAt || row.updatedAt || "");
+      const tooFresh =
+        Number.isFinite(startedMs) && Date.now() - startedMs < 20 * 1000;
+      if (tooFresh) {
+        stillInQueue += 1;
+        continue;
+      }
       jobs[jid] = {
         ...jobs[jid],
         status: "done",

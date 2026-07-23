@@ -1,6 +1,9 @@
 /**
  * Fake Reviews Queue — Redis/Bull
  * Parallel workers generate AI reviews in chunks for /admin/fake-reviews.
+ *
+ * Names are PRE-ASSIGNED at enqueue time (unique first + last across the whole batch).
+ * Workers force those names onto every saved review — AI cannot create duplicates.
  */
 
 const Bull = require("bull");
@@ -9,6 +12,12 @@ require("dotenv").config();
 const User = require("../models/users");
 const Review = require("../models/reviews");
 const { fetchJSONFromOpenAI } = require("../additional/openaiHelpers");
+const {
+  buildFakeReviewsPrompt,
+  applyAssignedNames,
+  allocateUniqueReviewerNames,
+  normalizePersonName,
+} = require("../sections/aiblogreviews");
 const {
   markChunkStarted,
   markChunkDone,
@@ -46,61 +55,40 @@ function extractReviewsArray(raw) {
   if (Array.isArray(raw?.items)) return raw.items;
   if (raw && typeof raw === "object") {
     const vals = Object.values(raw);
-    if (vals.length && vals.every((v) => v && typeof v === "object" && (v.reviewText || v.fullName))) {
+    if (
+      vals.length &&
+      vals.every((v) => v && typeof v === "object" && (v.reviewText || v.fullName))
+    ) {
       return vals;
     }
   }
   return [];
 }
 
-function slugEmailLocal(name) {
-  return String(name || "reviewer")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ".")
-    .replace(/^\.+|\.+$/g, "")
-    .slice(0, 40) || "reviewer";
-}
-
-function normalizeReviewRow(r, fallbackName, index) {
-  const fullName =
-    String(r?.fullName || r?.name || fallbackName || `Reader ${index + 1}`)
-      .replace(/\s+/g, " ")
-      .trim() || `Reader ${index + 1}`;
-  let email = String(r?.email || "").trim().toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    email = `${slugEmailLocal(fullName)}.${Date.now().toString(36)}${index}@example.com`;
-  }
+function normalizeReviewContent(r, index) {
   let rating = Number(r?.rating);
   if (!Number.isFinite(rating) || rating < 1 || rating > 5) rating = 4 + (index % 2);
   rating = Math.round(rating);
   const reviewText = String(r?.reviewText || r?.text || r?.comment || "").trim();
   const image = r?.image ? String(r.image).trim() : "";
-  return { fullName, email, rating, reviewText, image };
+  return {
+    fullName: normalizePersonName(r?.fullName || r?.name || ""),
+    email: String(r?.email || "").trim().toLowerCase(),
+    rating,
+    reviewText,
+    image,
+  };
 }
 
-function buildPrompt({ title, namesArr, needed }) {
-  return `Generate exactly ${needed} natural-looking blog reviews for the article titled "${title}".
-
-RULES (strict):
-- Reviews must feel relevant to the blog topic: "${title}".
-- Prefer these names when possible: ${namesArr.join(", ")}.
-- If more names are needed, invent realistic human names (no placeholders).
-- Return ONLY a JSON array of ${needed} objects. No markdown fences, no prose.
-- Each object schema: { "fullName": string, "email": string, "rating": 1-5, "reviewText": string, "image": null }
-- fullName must be unique within this array.
-- email must be realistic lowercase (e.g. jane.doe@example.com).
-- rating must be an integer 1–5.
-- reviewText must be 1–3 human sentences that show the reviewer read "${title}".
-- image: null (always).`;
-}
-
-async function saveOneReview({ userId, blogId, row }) {
+async function saveOneReview({ blogId, row }) {
   if (!row.reviewText || row.reviewText.length < 8) {
     throw new Error("Empty review text from AI");
   }
+  if (!row.fullName) throw new Error("Missing assigned reviewer name");
 
   let user = await User.findOne({ email: row.email });
   if (!user) {
+    // Prefer matching by exact fullName+type reviewer if email missing/collision risk
     user = new User({
       fullName: row.fullName,
       email: row.email,
@@ -111,13 +99,19 @@ async function saveOneReview({ userId, blogId, row }) {
     try {
       await user.save();
     } catch (err) {
-      // Race: another worker created same email
       if (err?.code === 11000) {
         user = await User.findOne({ email: row.email });
         if (!user) throw err;
       } else {
         throw err;
       }
+    }
+  } else if (row.fullName && user.fullName !== row.fullName) {
+    user.fullName = row.fullName;
+    try {
+      await user.save();
+    } catch {
+      /* non-fatal */
     }
   }
 
@@ -144,71 +138,138 @@ fakeReviewsQueue.process(WORKERS, async (job) => {
     projectId,
     title,
     exampleNames,
+    assignedNames,
     chunkSize,
     chunkIndex,
+    totalChunks,
   } = job.data || {};
 
   const jobId = String(job.id);
   const needed = Math.max(1, Number(chunkSize) || CHUNK);
-  const namesArr = Array.isArray(exampleNames) && exampleNames.length
-    ? exampleNames.map((n) => String(n).trim()).filter(Boolean)
-    : ["Alex", "Jordan", "Sam", "Taylor", "Casey"];
+  const chunkIdx = Number(chunkIndex) || 0;
+  const chunksTotal = Math.max(1, Number(totalChunks) || 1);
+
+  const referenceNames =
+    Array.isArray(exampleNames) && exampleNames.length
+      ? exampleNames.map((n) => String(n).trim()).filter(Boolean)
+      : [];
+
+  // Assigned names from enqueue (disjoint across parallel jobs)
+  let names = Array.isArray(assignedNames)
+    ? assignedNames.map((n) => String(n || "").trim()).filter(Boolean)
+    : [];
+
+  // Safety: if an old job has no assignedNames, allocate locally (still unique within chunk)
+  if (names.length < needed) {
+    const extra = allocateUniqueReviewerNames(needed - names.length, {
+      referenceNames: [...referenceNames, ...names],
+      salt: chunkIdx * 1000 + Date.now() % 1000,
+    });
+    names = names.concat(extra).slice(0, needed);
+  } else if (names.length > needed) {
+    names = names.slice(0, needed);
+  }
 
   await markChunkStarted(blogId, { jobId, chunkSize: needed });
-  log(jobId, `▶ chunk#${chunkIndex || 0} need=${needed} blog=${blogId} title="${title}"`);
+  log(
+    jobId,
+    `▶ chunk#${chunkIdx}/${chunksTotal} need=${needed} blog=${blogId} names=[${names.join(" | ")}]`
+  );
 
   try {
     await job.progress(10);
-    const prompt = buildPrompt({ title: String(title || "Blog"), namesArr, needed });
+    const prompt = buildFakeReviewsPrompt({
+      title: String(title || "Blog"),
+      assignedNames: names,
+      referenceNames,
+      needed: names.length,
+      chunkIndex: chunkIdx,
+      totalChunks: chunksTotal,
+    });
+
     const raw = await fetchJSONFromOpenAI(prompt, "getreviewsfake", {
       userId,
       projectId,
       pageId: `blogreviews_${blogId}`,
       promptFrom: "fakeReviewsQueue",
-      promptFor: `fake_reviews::${title}::chunk${chunkIndex || 0}`,
+      promptFor: `fake_reviews::${title}::chunk${chunkIdx}`,
       model: MODEL,
     });
 
     await job.progress(55);
-    let rows = extractReviewsArray(raw)
-      .map((r, i) => normalizeReviewRow(r, namesArr[i % namesArr.length], i))
-      .filter((r) => r.reviewText);
+    let aiRows = extractReviewsArray(raw).map((r, i) => normalizeReviewContent(r, i));
 
-    if (!rows.length) {
-      throw new Error("OpenAI returned no usable reviews");
+    // Pad with empty content objects if AI returned fewer — names still assigned
+    while (aiRows.length < names.length) {
+      aiRows.push({
+        fullName: "",
+        email: "",
+        rating: 4,
+        reviewText: "",
+        image: "",
+      });
     }
-    if (rows.length > needed) rows = rows.slice(0, needed);
 
-    // If short, pad with a second attempt for the deficit only
-    if (rows.length < needed) {
-      log(jobId, `partial ${rows.length}/${needed} — retrying deficit`);
-      const deficit = needed - rows.length;
+    // CRITICAL: overwrite whatever names AI invented with pre-assigned unique names
+    let rows = applyAssignedNames(aiRows, names);
+
+    // If some reviewText empty, one retry for text only (names stay fixed)
+    const missingText = rows.filter((r) => !r.reviewText || r.reviewText.length < 8).length;
+    if (missingText > 0) {
+      log(jobId, `retrying ${missingText} empty review texts (names locked)`);
       const raw2 = await fetchJSONFromOpenAI(
-        buildPrompt({ title: String(title || "Blog"), namesArr, needed: deficit }),
+        buildFakeReviewsPrompt({
+          title: String(title || "Blog"),
+          assignedNames: names,
+          referenceNames,
+          needed: names.length,
+          chunkIndex: chunkIdx,
+          totalChunks: chunksTotal,
+        }),
         "getreviewsfake",
         {
           userId,
           projectId,
           pageId: `blogreviews_${blogId}_retry`,
           promptFrom: "fakeReviewsQueue",
-          promptFor: `fake_reviews::${title}::retry${chunkIndex || 0}`,
+          promptFor: `fake_reviews::${title}::retry${chunkIdx}`,
           model: MODEL,
         }
       );
-      const extra = extractReviewsArray(raw2)
-        .map((r, i) => normalizeReviewRow(r, namesArr[(rows.length + i) % namesArr.length], rows.length + i))
-        .filter((r) => r.reviewText);
-      rows = rows.concat(extra).slice(0, needed);
+      const retryRows = applyAssignedNames(
+        extractReviewsArray(raw2).map((r, i) => normalizeReviewContent(r, i)),
+        names
+      );
+      rows = rows.map((row, i) => {
+        if (row.reviewText && row.reviewText.length >= 8) return row;
+        const alt = retryRows[i];
+        if (alt?.reviewText && alt.reviewText.length >= 8) {
+          return { ...row, reviewText: alt.reviewText, rating: alt.rating || row.rating };
+        }
+        // Last-resort generic text so the unique name still gets saved
+        return {
+          ...row,
+          reviewText: `Really useful read on “${String(title || "this topic").trim()}” — clear, practical, and worth bookmarking.`,
+          rating: row.rating || 5,
+        };
+      });
+    }
+
+    // Final lock: names must stay exactly as assigned
+    rows = applyAssignedNames(rows, names).filter((r) => r.reviewText && r.reviewText.length >= 8);
+
+    if (!rows.length) {
+      throw new Error("OpenAI returned no usable review text");
     }
 
     await job.progress(75);
     const saved = [];
-    const names = [];
+    const savedNames = [];
     for (let i = 0; i < rows.length; i++) {
       try {
-        const doc = await saveOneReview({ userId, blogId, row: rows[i] });
+        const doc = await saveOneReview({ blogId, row: rows[i] });
         saved.push(doc);
-        names.push(rows[i].fullName);
+        savedNames.push(rows[i].fullName);
         log(jobId, `saved review ${i + 1}/${rows.length} — ${rows[i].fullName}`);
       } catch (saveErr) {
         console.warn(`[fakeReviewsQueue:${jobId}] save skip:`, saveErr?.message || saveErr);
@@ -219,12 +280,11 @@ fakeReviewsQueue.process(WORKERS, async (job) => {
       throw new Error("Failed to save any reviews from this chunk");
     }
 
-    // Count shortfall as failed for this chunk so totals close
     const shortfall = Math.max(0, needed - saved.length);
     await markChunkDone(blogId, {
       jobId,
       saved: saved.length,
-      names,
+      names: savedNames,
     });
     if (shortfall > 0) {
       await markChunkFailed(blogId, {
@@ -236,11 +296,10 @@ fakeReviewsQueue.process(WORKERS, async (job) => {
     }
 
     await job.progress(100);
-    log(jobId, `✔ done saved=${saved.length} shortfall=${shortfall}`);
-    return { ok: true, saved: saved.length, shortfall };
+    log(jobId, `✔ done saved=${saved.length} names=[${savedNames.join(" | ")}]`);
+    return { ok: true, saved: saved.length, shortfall, names: savedNames };
   } catch (err) {
     console.error(`[fakeReviewsQueue:${jobId}] ✖`, err?.message || err);
-    // Final attempt only counted in "failed" event below
     throw err;
   }
 });

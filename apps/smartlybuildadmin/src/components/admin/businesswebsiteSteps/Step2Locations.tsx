@@ -1,20 +1,31 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MapPin, Plus, X } from "lucide-react";
+import {
+  GooglePlacesAutocomplete,
+  type GooglePlaceSelection,
+} from "@/components/admin/GooglePlacesAutocomplete";
 
-type LocationItem = {
+export type LocationItem = {
   id: string;
   address: string;
   createPage: boolean;
+  lat?: number | null;
+  lng?: number | null;
+  googlePlaceId?: string | null;
+  formattedAddress?: string | null;
+  bounds?: GooglePlaceSelection["bounds"];
+  country?: string | null;
+  state?: string | null;
+  city?: string | null;
 };
 
 type Step2LocationsProps = {
   currentLocationInput: string;
   setCurrentLocationInput: (value: string) => void;
-  handleAddLocation: () => void;
+  handleAddLocation: (place?: GooglePlaceSelection | null) => void;
   locations: LocationItem[];
   setLocations: (value: LocationItem[]) => void;
   handleToggleCreatePage: (locationId: string) => void;
@@ -35,32 +46,24 @@ export function Step2Locations({
       <CardHeader>
         <CardTitle>Step 2: Business Locations</CardTitle>
         <CardDescription>
-          Add locations for your business. You can add multiple locations.
+          Search Google Maps and select each location so we save the exact pin (lat/lng) for your area pages.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="location-input">Add Location *</Label>
           <div className="flex gap-2">
-            <div className="relative flex-1">
-              <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <Input
-                id="location-input"
-                placeholder="Enter location name (e.g., New York, NY or California, USA)"
-                value={currentLocationInput}
-                onChange={(e) => setCurrentLocationInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleAddLocation();
-                  }
-                }}
-                className="w-full pl-10"
-              />
-            </div>
+            <GooglePlacesAutocomplete
+              id="location-input"
+              value={currentLocationInput}
+              onChange={setCurrentLocationInput}
+              onPlaceSelect={(place) => handleAddLocation(place)}
+              onEnterWithoutSelection={() => handleAddLocation(null)}
+              placeholder="Search Google Maps (e.g. Austin, TX)"
+            />
             <Button
               type="button"
-              onClick={handleAddLocation}
+              onClick={() => handleAddLocation(null)}
               className="bg-blue-600 hover:bg-blue-700"
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -68,7 +71,7 @@ export function Step2Locations({
             </Button>
           </div>
           <p className="text-xs text-gray-500">
-            Enter location name and press Enter or click Add to add it to the list
+            Prefer picking a Google suggestion — coordinates are saved automatically for the map pin.
           </p>
         </div>
 
@@ -125,6 +128,9 @@ export function Step2Locations({
                         }`}
                       >
                         {location.createPage ? "Page will be created" : "No page"}
+                        {location.lat != null && location.lng != null
+                          ? ` · pin ${Number(location.lat).toFixed(4)}, ${Number(location.lng).toFixed(4)}`
+                          : " · map pin pending geocode"}
                       </span>
                     </label>
                   </div>
@@ -145,4 +151,3 @@ export function Step2Locations({
     </Card>
   );
 }
-

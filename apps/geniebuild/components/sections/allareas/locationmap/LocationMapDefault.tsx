@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
@@ -15,9 +15,85 @@ interface Props {
   themeColors?: any;
 }
 
+type MapMarker = {
+  id?: string;
+  name?: string;
+  lat: number;
+  lng: number;
+  formattedAddress?: string;
+};
+
+function normalizeMarkers(content: any): MapMarker[] {
+  const raw = Array.isArray(content?.markers) ? content.markers : [];
+  const fromArray = raw
+    .map((m: any, i: number) => {
+      const lat = Number(m?.lat ?? m?.latitude);
+      const lng = Number(m?.lng ?? m?.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return {
+        id: String(m?.id || m?.locationId || `m-${i}`),
+        name: String(m?.name || m?.title || m?.areaName || `Area ${i + 1}`).trim(),
+        lat,
+        lng,
+        formattedAddress: String(m?.formattedAddress || '').trim(),
+      } as MapMarker;
+    })
+    .filter(Boolean) as MapMarker[];
+
+  if (fromArray.length) return fromArray;
+
+  const lat = Number(content?.lat ?? content?.latitude);
+  const lng = Number(content?.lng ?? content?.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return [
+      {
+        id: 'single',
+        name: String(content?.formattedAddress || content?.title || 'Location').trim(),
+        lat,
+        lng,
+        formattedAddress: String(content?.formattedAddress || '').trim(),
+      },
+    ];
+  }
+  return [];
+}
+
+function ensureLeafletAssets(): Promise<any> {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  const w = window as any;
+  if (w.L) return Promise.resolve(w.L);
+
+  const cssId = 'leaflet-css-cdn';
+  if (!document.getElementById(cssId)) {
+    const link = document.createElement('link');
+    link.id = cssId;
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+  }
+
+  return new Promise((resolve, reject) => {
+    const existing = document.getElementById('leaflet-js-cdn') as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener('load', () => resolve((window as any).L));
+      existing.addEventListener('error', reject);
+      if ((window as any).L) resolve((window as any).L);
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'leaflet-js-cdn';
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.async = true;
+    script.onload = () => resolve((window as any).L);
+    script.onerror = reject;
+    document.body.appendChild(script);
+  });
+}
+
 /**
- * All Areas map (`allareas/locationmap`). Google Maps embed when lat/lng
- * or mapEmbedUrl is set; otherwise a themed placeholder.
+ * Location map (`locationmap`).
+ * - 1 pin → Google Maps embed
+ * - 2+ pins → interactive multi-marker map (Leaflet) highlighting all areas
  */
 export const LocationMapDefault: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
@@ -26,6 +102,8 @@ export const LocationMapDefault: React.FC<Props> = ({
   const { content, styles } = section;
   const s = styles as any;
   const c = content as any;
+  const mapHostRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<any>(null);
 
   const lc = tc?.light || {};
   const fb = lc.featureBox || {};
@@ -57,14 +135,77 @@ export const LocationMapDefault: React.FC<Props> = ({
     ...(isCssValue(padB) ? { paddingBottom: padB } : {}),
   };
 
-  // Resolve a map embed URL: explicit mapEmbedUrl > lat/lng > none.
-  const lat = c.lat ?? c.latitude;
-  const lng = c.lng ?? c.longitude;
+  const markers = useMemo(() => normalizeMarkers(c), [c]);
+  const multi = markers.length > 1;
+
+  const lat = c.lat ?? c.latitude ?? markers[0]?.lat;
+  const lng = c.lng ?? c.longitude ?? markers[0]?.lng;
   const hasLatLng = (lat !== undefined && lat !== null && lat !== '') && (lng !== undefined && lng !== null && lng !== '');
   const embedUrl: string | null =
-    (typeof c.mapEmbedUrl === 'string' && c.mapEmbedUrl.trim()) ? c.mapEmbedUrl.trim()
-    : hasLatLng ? `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}&z=13&output=embed`
-    : null;
+    !multi && (typeof c.mapEmbedUrl === 'string' && c.mapEmbedUrl.trim())
+      ? c.mapEmbedUrl.trim()
+      : !multi && hasLatLng
+        ? `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}&z=13&output=embed`
+        : null;
+
+  useEffect(() => {
+    if (!multi || !mapHostRef.current) return;
+    let cancelled = false;
+
+    ensureLeafletAssets()
+      .then((L) => {
+        if (cancelled || !L || !mapHostRef.current) return;
+        if (mapRef.current) {
+          try { mapRef.current.remove(); } catch { /* ignore */ }
+          mapRef.current = null;
+        }
+
+        const map = L.map(mapHostRef.current, {
+          scrollWheelZoom: false,
+          attributionControl: true,
+        });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap',
+        }).addTo(map);
+
+        const icon = L.divIcon({
+          className: '',
+          html: `<span style="display:block;width:16px;height:16px;border-radius:9999px;background:${accent};border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35)"></span>`,
+          iconSize: [16, 16],
+          iconAnchor: [8, 8],
+        });
+
+        const group: any[] = [];
+        markers.forEach((m) => {
+          const marker = L.marker([m.lat, m.lng], { icon })
+            .addTo(map)
+            .bindPopup(`<strong>${m.name || 'Area'}</strong>${m.formattedAddress ? `<br/><span style="font-size:12px;opacity:.8">${m.formattedAddress}</span>` : ''}`);
+          group.push(marker);
+        });
+
+        if (group.length) {
+          const bounds = L.featureGroup(group).getBounds();
+          map.fitBounds(bounds.pad(0.18));
+        } else {
+          map.setView([20, 0], 2);
+        }
+
+        mapRef.current = map;
+        setTimeout(() => map.invalidateSize(), 80);
+      })
+      .catch(() => {
+        /* map assets failed — placeholder remains */
+      });
+
+    return () => {
+      cancelled = true;
+      if (mapRef.current) {
+        try { mapRef.current.remove(); } catch { /* ignore */ }
+        mapRef.current = null;
+      }
+    };
+  }, [multi, markers, accent]);
 
   const themeColors = { ...tc, titleColor, textColor, accentColor: accent, secondaryHeadingColor: accent };
   const passThrough = {
@@ -90,7 +231,7 @@ export const LocationMapDefault: React.FC<Props> = ({
       (readOnly ? String(content.title || '').trim() : '') ||
       cc.text ||
       content.title ||
-      'Our Service Area'
+      (multi ? 'Areas We Serve' : 'Our Service Area')
     ).toString().replace(/<[^>]+>/g, '').trim();
     const words = sourceText.split(/\s+/).filter(Boolean);
     let textBefore = '';
@@ -104,6 +245,8 @@ export const LocationMapDefault: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
+  const hasMap = multi ? markers.length > 0 : Boolean(embedUrl);
+
   return (
     <div className="w-full text-center" style={{ backgroundColor: bg }}>
       <div className={innerClass} style={innerStyle}>
@@ -112,6 +255,11 @@ export const LocationMapDefault: React.FC<Props> = ({
           transition={{ duration: 0.6 }} className="text-center mb-8 flex flex-col items-center gap-3">
           <ElementsSection section={{ ...section, elements: [badgeEl] }} {...passThrough} />
           <ElementsSection section={{ ...section, elements: [titleEl] }} {...passThrough} />
+          {multi && markers.length > 0 ? (
+            <p className="text-sm max-w-2xl" style={{ color: textColor }}>
+              {String(c.subtitle || `${markers.length} service areas highlighted on the map`).trim()}
+            </p>
+          ) : null}
         </motion.div>
 
         <motion.div initial={{ opacity: 0, scale: 0.98 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }}
@@ -119,7 +267,9 @@ export const LocationMapDefault: React.FC<Props> = ({
           className="rounded-2xl overflow-hidden"
           style={{ border: `1px solid ${cardBorder}`, boxShadow: `0 12px 40px -20px ${accent}30` }}
         >
-          {embedUrl ? (
+          {multi && markers.length > 0 ? (
+            <div ref={mapHostRef} className="w-full" style={{ height: '420px' }} />
+          ) : embedUrl ? (
             <iframe
               title="Service area map"
               src={embedUrl}
@@ -137,11 +287,31 @@ export const LocationMapDefault: React.FC<Props> = ({
                 <i className="fas fa-map-location-dot text-2xl" aria-hidden="true" />
               </span>
               <p className="text-sm" style={{ color: textColor }}>
-                Add a location (lat/lng) to display the interactive map here.
+                {hasMap
+                  ? 'Loading map…'
+                  : 'Add locations with Google Maps so pins appear here.'}
               </p>
             </div>
           )}
         </motion.div>
+
+        {multi && markers.length > 0 ? (
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            {markers.slice(0, 24).map((m) => (
+              <span
+                key={m.id}
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full"
+                style={{ backgroundColor: `${accent}12`, color: titleColor, border: `1px solid ${accent}33` }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accent }} />
+                {m.name}
+              </span>
+            ))}
+            {markers.length > 24 ? (
+              <span className="text-xs" style={{ color: textColor }}>+{markers.length - 24} more</span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

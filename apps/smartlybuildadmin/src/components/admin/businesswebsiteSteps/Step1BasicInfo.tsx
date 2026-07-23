@@ -7,11 +7,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { FileText, ImageIcon, Loader2, Wand2 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
+type SectionImageOrigin = 1 | 2 | 4 | 5;
+
 type Step1BasicInfoProps = {
   businessName: string;
   setBusinessName: (value: string) => void;
-  sectionImageOrigin: 1 | 2;
-  setSectionImageOrigin: (value: 1 | 2) => void;
+  sectionImageOrigin: SectionImageOrigin;
+  setSectionImageOrigin: (value: SectionImageOrigin) => void;
   selectedCategory: any;
   setSelectedCategory: (value: any) => void;
   categories: Array<{ _id: string; name: string }>;
@@ -85,11 +87,14 @@ export function Step1BasicInfo(props: Step1BasicInfoProps) {
             <Label className="text-base font-semibold text-gray-900">Image engine</Label>
           </div>
           <p className="text-xs text-gray-500">
-            Used when server <code className="rounded bg-muted px-1">images_mode=1</code>. Freepik uses short keyword prompts; Nano Banana uses full AI prompts.
+            Used when server <code className="rounded bg-muted px-1">images_mode=1</code>. Freepik uses keyword/stock search; Gemini, Leonardo, and Flux use AI prompts.
           </p>
           <RadioGroup
             value={String(sectionImageOrigin)}
-            onValueChange={(v) => setSectionImageOrigin(v === "2" ? 2 : 1)}
+            onValueChange={(v) => {
+              const n = Number(v);
+              if (n === 1 || n === 2 || n === 4 || n === 5) setSectionImageOrigin(n);
+            }}
             className="grid gap-3 sm:grid-cols-2"
           >
             <label
@@ -99,17 +104,37 @@ export function Step1BasicInfo(props: Step1BasicInfoProps) {
               <RadioGroupItem value="1" id="img-engine-freepik" className="mt-0.5" />
               <div>
                 <div className="font-medium text-gray-900">Freepik</div>
-                <div className="text-sm text-gray-600">Stock search from keyword prompts (fast, rights via your Freepik plan)</div>
+                <div className="text-sm text-gray-600">Stock search from keyword prompts</div>
               </div>
             </label>
             <label
-              htmlFor="img-engine-nano"
+              htmlFor="img-engine-gemini"
               className={`flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors ${sectionImageOrigin === 2 ? "border-violet-500 bg-violet-50/50" : "border-gray-200 hover:border-gray-300"}`}
             >
-              <RadioGroupItem value="2" id="img-engine-nano" className="mt-0.5" />
+              <RadioGroupItem value="2" id="img-engine-gemini" className="mt-0.5" />
               <div>
-                <div className="font-medium text-gray-900">Nano Banana AI</div>
-                <div className="text-sm text-gray-600">Gemini-generated images from detailed AI prompts</div>
+                <div className="font-medium text-gray-900">Gemini AI</div>
+                <div className="text-sm text-gray-600">Gemini-generated images from AI prompts</div>
+              </div>
+            </label>
+            <label
+              htmlFor="img-engine-leonardo"
+              className={`flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors ${sectionImageOrigin === 4 ? "border-violet-500 bg-violet-50/50" : "border-gray-200 hover:border-gray-300"}`}
+            >
+              <RadioGroupItem value="4" id="img-engine-leonardo" className="mt-0.5" />
+              <div>
+                <div className="font-medium text-gray-900">Leonardo Lucid</div>
+                <div className="text-sm text-gray-600">Leonardo Lucid Origin AI images from detailed prompts</div>
+              </div>
+            </label>
+            <label
+              htmlFor="img-engine-flux"
+              className={`flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors ${sectionImageOrigin === 5 ? "border-violet-500 bg-violet-50/50" : "border-gray-200 hover:border-gray-300"}`}
+            >
+              <RadioGroupItem value="5" id="img-engine-flux" className="mt-0.5" />
+              <div>
+                <div className="font-medium text-gray-900">Flux 1 Schnell</div>
+                <div className="text-sm text-gray-600">Fast Flux.1 Schnell AI images from detailed prompts</div>
               </div>
             </label>
           </RadioGroup>

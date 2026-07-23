@@ -27,6 +27,7 @@ const { coerceFaqSectionPayload } = require("../sections/_shared/faqAnswerGuards
 const {
     attachGeneratedImagesToSectionData,
 } = require("../additional/sectionImageGenerationHelper");
+const { parseSectionOrigin } = require("../imageengines");
 const Users = require("../models/users")
 const UserSiteContent = require('../models/UserSiteContent');
 const userProjects = require("../models/userProjects");
@@ -2924,9 +2925,10 @@ Rules:
     }
 
     const parsedOrigin = Number(origin);
-    if (!origin || ![1, 2, 3].includes(parsedOrigin)) {
+    if (!origin || ![1, 2, 3, 4, 5].includes(parsedOrigin)) {
       return res.status(400).json({
-        message: "origin is required: 1 (freepik), 2 (gemini), 3 (mixed)"
+        message:
+          "origin is required: 1 (freepik), 2 (gemini), 3 (mixed), 4 (leonardo), 5 (flux)",
       });
     }
 
@@ -5218,8 +5220,7 @@ Example format:
 
             let finalSectionImageOrigin = 1;
             if (sectionImageOrigin !== undefined && sectionImageOrigin !== null) {
-                const o = parseInt(sectionImageOrigin, 10);
-                if (o === 2) finalSectionImageOrigin = 2;
+                finalSectionImageOrigin = parseSectionOrigin(sectionImageOrigin, 1);
             }
 
             // Save minimal project data immediately, include categories

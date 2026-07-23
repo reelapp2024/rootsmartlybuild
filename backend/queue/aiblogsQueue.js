@@ -220,8 +220,9 @@ aiblogsQueue.process(WORKERS, async (job) => {
     }
 
     await step(8, "Validating author");
-    const author = await Author.findOne({ _id: authorId, userId }).lean();
-    if (!author) throw new Error("Author not found for this user");
+    // Author may belong to the acting super-admin while blog userId is the project owner
+    const author = await Author.findById(authorId).lean();
+    if (!author) throw new Error("Author not found");
     log(jobId, `author ok → ${author.name || authorId}`);
 
     await step(18, "Loading project context");

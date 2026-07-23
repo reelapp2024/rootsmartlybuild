@@ -11,6 +11,7 @@ import { Save, Sparkles, Upload, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { httpFile } from "../../config.js";
+import { blogPostsListPath } from "@/lib/adminProjectPaths";
 
 const BASE_URL = import.meta.env.VITE_API_URL  ;
 const UPLOAD_URL = `${BASE_URL.replace(/\/$/, "")}/uploadFile`;
@@ -74,18 +75,22 @@ export default function EditBlogPost() {
   const location = useLocation();
 
   // Accept id from: /edit-post/:id OR ?id=... OR location.state.id
+  // projectId from: /projects/:projectId/dashboard/edit-post OR state/query
   const params = useParams();
   const [sp] = useSearchParams();
   const routeId = params.id;
   const queryId = sp.get("id");
   const stateId = (location.state as any)?.id;
   const blogId = routeId || queryId || stateId || "";
+  const paramProjectId = (params as any).projectId as string | undefined;
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   // Data fields
   const [loading, setLoading] = useState(true);
-  const [projectId, setProjectId] = useState<string>("");
+  const [projectId, setProjectId] = useState<string>(
+    String(paramProjectId || (location.state as any)?.projectId || sp.get("projectId") || "").trim()
+  );
 
   const [title, setTitle] = useState("");
   const [information, setInformation] = useState("");
@@ -356,7 +361,7 @@ export default function EditBlogPost() {
         headers: { Authorization: `Bearer ${token}` },
       });
       toast.success("Blog updated");
-      navigate("/admin/blog-posts", { state: { projectId } });
+      navigate(blogPostsListPath(projectId), { state: { projectId } });
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || "Update failed");
       if (e?.response?.status === 401) {

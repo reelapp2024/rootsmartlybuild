@@ -13,6 +13,7 @@ const https = require("https");
 const sharp = require("sharp");
 const { Readable } = require("stream");
 const mongoose = require('mongoose');
+const User = require("../models/users");
 
 // AI queue worker is registered via AiblogsControllerV2 / routes
 const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY;
@@ -22,6 +23,28 @@ const {
     fetchSeoContentForPage,
     trackCreditsUsage
 } = require('../additional/openaiHelpers');
+
+/**
+ * Project dashboard must list blogs by projectId (same as live site),
+ * not by the logged-in userId — super-admins open other users' projects.
+ */
+async function assertCanAccessProject(userId, projectId) {
+    if (!projectId || !mongoose.isValidObjectId(String(projectId))) {
+        return { ok: false, status: 400, message: "Valid projectId is required" };
+    }
+    const project = await UserProject.findById(projectId).select("_id userId").lean();
+    if (!project) {
+        return { ok: false, status: 404, message: "Project not found" };
+    }
+    const user = await User.findById(userId).select("isSuper").lean();
+    const isSuper = Number(user?.isSuper || 0) === 1;
+    const isOwner = String(project.userId) === String(userId);
+    if (!isSuper && !isOwner) {
+        return { ok: false, status: 403, message: "You do not have access to this project" };
+    }
+    return { ok: true, project };
+}
+
 module.exports = {
     // CREATE (owned)
     create_blog: async (req, res) => {
@@ -605,10 +628,29 @@ module.exports = {
                 scheduledTo
             } = req.query;
 
-            const filter = { userId };
+            const filter = {};
+            const pid = String(projectId || "").trim();
+
+            if (pid) {
+                // Project dashboard / scoped admin: same source of truth as live /blog?projectId=
+                const access = await assertCanAccessProject(userId, pid);
+                if (!access.ok) {
+                    return res.status(access.status).json({ message: access.message });
+                }
+                filter.projectId = new mongoose.Types.ObjectId(pid);
+            } else {
+                // Main panel: blogs across this account (owner stamp + owned projects)
+                const ownedProjectIds = await UserProject.find({ userId })
+                    .select("_id")
+                    .lean();
+                const ids = (ownedProjectIds || []).map((p) => p._id);
+                filter.$or = [
+                    { userId },
+                    ...(ids.length ? [{ projectId: { $in: ids } }] : []),
+                ];
+            }
 
             if ([0, 1, 2].includes(Number(status))) filter.status = Number(status);
-            if (projectId) filter.projectId = projectId;
             if (type) filter.type = type;
             // Legacy query param authorName — resolve via Author collection when possible
             if (authorName) {
@@ -660,7 +702,7 @@ module.exports = {
                     .skip(skip)
                     .limit(Number(limit))
                     // ⬇️ include authorId so we can map it to the author's name
-                    .select("_id title type views authorId authorName coverImage slug status createdAt updatedAt scheduleTime")
+                    .select("_id title type views authorId authorName coverImage slug status createdAt updatedAt scheduleTime projectId")
                     .lean(),
                 Blog.countDocuments(filter)
             ]);
@@ -694,6 +736,7 @@ module.exports = {
                 coverImate: d.coverImage, // legacy typo alias (admin)
                 slug: d.slug,
                 status: d.status,
+                projectId: d.projectId || null,
                 createdAt: d.createdAt,
                 updatedAt: d.updatedAt,
                 scheduleTime: d.scheduleTime ?? null
@@ -704,7 +747,8 @@ module.exports = {
                 page: Number(page),
                 limit: Number(limit),
                 total,
-                pages: Math.ceil(total / Number(limit) || 1)
+                pages: Math.ceil(total / Number(limit) || 1),
+                projectId: pid || null,
             });
         } catch (error) {
             console.error(error);

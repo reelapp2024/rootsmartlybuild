@@ -127,7 +127,7 @@ export default function ProjectsForBlogs() {
 
     const viewBlogs = (projectId: string) => {
         // Navigate to blog list page and pass projectId in state
-        navigate("/admin/blog-posts", { state: { projectId } });
+        navigate(`/admin/projects/${projectId}/dashboard/blog-posts`);
         // Or you can also support query param: navigate(`/admin/blog-posts?projectId=${projectId}`);
     };
 

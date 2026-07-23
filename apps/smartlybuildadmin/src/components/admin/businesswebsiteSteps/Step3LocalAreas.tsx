@@ -1,15 +1,66 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MapPin, Plus, X } from "lucide-react";
+import {
+  GooglePlacesAutocomplete,
+  type GooglePlaceSelection,
+} from "@/components/admin/GooglePlacesAutocomplete";
+
+type LocalArea = {
+  id: string;
+  name: string;
+  createPage: boolean;
+  lat?: number | null;
+  lng?: number | null;
+  googlePlaceId?: string | null;
+  formattedAddress?: string | null;
+  bounds?: GooglePlaceSelection["bounds"];
+};
+
+type LocationWithAreas = {
+  locationId: string;
+  locationName?: string;
+  localAreas: LocalArea[];
+  localAreaInput: string;
+  generatingAreas?: boolean;
+};
 
 type Step3LocalAreasProps = {
-  locationsWithAreas: any[];
-  setLocationsWithAreas: (value: any[] | ((prev: any[]) => any[])) => void;
+  locationsWithAreas: LocationWithAreas[];
+  setLocationsWithAreas: (value: LocationWithAreas[] | ((prev: LocationWithAreas[]) => LocationWithAreas[])) => void;
   handleToggleLocalAreaPage: (locationId: string, areaId: string) => void;
 };
+
+function addLocalArea(
+  locationsWithAreas: LocationWithAreas[],
+  locationId: string,
+  name: string,
+  place?: GooglePlaceSelection | null
+) {
+  const trimmed = name.trim();
+  if (!trimmed) return locationsWithAreas;
+  const newArea: LocalArea = {
+    id: `${Date.now()}-${Math.random()}`,
+    name: place?.name || trimmed,
+    createPage: true,
+    lat: place?.lat ?? null,
+    lng: place?.lng ?? null,
+    googlePlaceId: place?.placeId || null,
+    formattedAddress: place?.formattedAddress || null,
+    bounds: place?.bounds || null,
+  };
+  return locationsWithAreas.map((l) =>
+    l.locationId === locationId
+      ? {
+          ...l,
+          localAreas: [...l.localAreas, newArea],
+          localAreaInput: "",
+        }
+      : l
+  );
+}
 
 export function Step3LocalAreas({
   locationsWithAreas,
@@ -21,7 +72,7 @@ export function Step3LocalAreas({
       <CardHeader>
         <CardTitle>Step 3: Local Areas (Optional)</CardTitle>
         <CardDescription>
-          Add local areas for each location. This step is optional - you can skip it.
+          Add local areas with Google Maps so each area page can show an accurate map pin.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -54,64 +105,47 @@ export function Step3LocalAreas({
                 <div className="space-y-2">
                   <Label htmlFor={`local-area-${locationArea.locationId}`}>Add Local Area</Label>
                   <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                      <Input
-                        id={`local-area-${locationArea.locationId}`}
-                        placeholder="Type to search or enter local area name"
-                        value={locationArea.localAreaInput}
-                        onChange={(e) => {
-                          setLocationsWithAreas(locationsWithAreas.map((l) =>
+                    <GooglePlacesAutocomplete
+                      id={`local-area-${locationArea.locationId}`}
+                      value={locationArea.localAreaInput}
+                      onChange={(v) => {
+                        setLocationsWithAreas(
+                          locationsWithAreas.map((l) =>
                             l.locationId === locationArea.locationId
-                              ? { ...l, localAreaInput: e.target.value }
+                              ? { ...l, localAreaInput: v }
                               : l
-                          ));
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            const input = e.currentTarget.value.trim();
-                            if (input) {
-                              const newArea = {
-                                id: `${Date.now()}-${Math.random()}`,
-                                name: input,
-                                createPage: true,
-                              };
-                              setLocationsWithAreas(locationsWithAreas.map((l) =>
-                                l.locationId === locationArea.locationId
-                                  ? {
-                                      ...l,
-                                      localAreas: [...l.localAreas, newArea],
-                                      localAreaInput: "",
-                                    }
-                                  : l
-                              ));
-                            }
-                          }
-                        }}
-                        className="w-full pl-10"
-                      />
-                    </div>
+                          )
+                        );
+                      }}
+                      onPlaceSelect={(place) => {
+                        setLocationsWithAreas((prev) =>
+                          addLocalArea(prev, locationArea.locationId, place.name, place)
+                        );
+                      }}
+                      onEnterWithoutSelection={() => {
+                        setLocationsWithAreas((prev) => {
+                          const current = prev.find((l) => l.locationId === locationArea.locationId);
+                          return addLocalArea(
+                            prev,
+                            locationArea.locationId,
+                            current?.localAreaInput || "",
+                            null
+                          );
+                        });
+                      }}
+                      placeholder={`Search area near ${locationName}`}
+                    />
                     <Button
                       type="button"
                       onClick={() => {
-                        const input = locationArea.localAreaInput.trim();
-                        if (input) {
-                          const newArea = {
-                            id: `${Date.now()}-${Math.random()}`,
-                            name: input,
-                            createPage: true,
-                          };
-                          setLocationsWithAreas(locationsWithAreas.map((l) =>
-                            l.locationId === locationArea.locationId
-                              ? {
-                                  ...l,
-                                  localAreas: [...l.localAreas, newArea],
-                                  localAreaInput: "",
-                                }
-                              : l
-                          ));
-                        }
+                        setLocationsWithAreas((prev) =>
+                          addLocalArea(
+                            prev,
+                            locationArea.locationId,
+                            locationArea.localAreaInput,
+                            null
+                          )
+                        );
                       }}
                       className="bg-blue-600 hover:bg-blue-700"
                     >
@@ -120,37 +154,52 @@ export function Step3LocalAreas({
                     </Button>
                   </div>
                   <p className="text-xs text-gray-500">
-                    Enter local area name and press Enter or click Add to add it to the list
+                    Select from Google Maps for the best map pin accuracy.
                   </p>
                 </div>
 
                 {locationArea.localAreas.length > 0 && (
                   <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-white">
-                    {locationArea.localAreas.map((area: any) => (
+                    {locationArea.localAreas.map((area) => (
                       <div
                         key={area.id}
                         className="flex items-center justify-between p-2 bg-gray-50 rounded border"
                       >
-                        <div className="flex items-center space-x-2 flex-1">
+                        <div className="flex items-center space-x-2 flex-1 min-w-0">
                           <Checkbox
                             checked={area.createPage}
-                            onCheckedChange={() => handleToggleLocalAreaPage(locationArea.locationId, area.id)}
+                            onCheckedChange={() =>
+                              handleToggleLocalAreaPage(locationArea.locationId, area.id)
+                            }
                           />
-                          <span className="text-sm font-medium">{area.name}</span>
+                          <div className="min-w-0">
+                            <span className="text-sm font-medium block truncate">{area.name}</span>
+                            {area.lat != null && area.lng != null ? (
+                              <span className="text-[11px] text-green-600">
+                                Pin saved
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-amber-600">
+                                Will geocode on save
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setLocationsWithAreas(locationsWithAreas.map((l) =>
-                              l.locationId === locationArea.locationId
-                                ? {
-                                    ...l,
-                                    localAreas: l.localAreas.filter((a: any) => a.id !== area.id),
-                                  }
-                                : l
-                            ));
+                            setLocationsWithAreas(
+                              locationsWithAreas.map((l) =>
+                                l.locationId === locationArea.locationId
+                                  ? {
+                                      ...l,
+                                      localAreas: l.localAreas.filter((a) => a.id !== area.id),
+                                    }
+                                  : l
+                              )
+                            );
                           }}
                         >
                           <X className="h-4 w-4 text-red-500" />
@@ -167,4 +216,3 @@ export function Step3LocalAreas({
     </Card>
   );
 }
-

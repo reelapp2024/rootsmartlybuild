@@ -260,8 +260,8 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
 
   // Basic Info
   const [businessName, setBusinessName] = useState("");
-  /** 1 = Freepik stock, 2 = Gemini (nano) AI — stored as UserProject.sectionImageOrigin */
-  const [sectionImageOrigin, setSectionImageOrigin] = useState<1 | 2>(1);
+  /** 1 Freepik · 2 Gemini · 4 Leonardo Lucid · 5 Flux 1 Schnell */
+  const [sectionImageOrigin, setSectionImageOrigin] = useState<1 | 2 | 4 | 5>(1);
   const [serviceType, setServiceType] = useState("");
 
   // Keywords
@@ -327,6 +327,14 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
     id: string;
     address: string;
     createPage: boolean;
+    lat?: number | null;
+    lng?: number | null;
+    googlePlaceId?: string | null;
+    formattedAddress?: string | null;
+    bounds?: any;
+    country?: string | null;
+    state?: string | null;
+    city?: string | null;
   }
   const [locations, setLocations] = useState<Location[]>([]);
   const [currentLocationInput, setCurrentLocationInput] = useState("");
@@ -355,6 +363,11 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
     id: string;
     name: string;
     createPage: boolean;
+    lat?: number | null;
+    lng?: number | null;
+    googlePlaceId?: string | null;
+    formattedAddress?: string | null;
+    bounds?: any;
   }
   interface LocationWithAreas {
     locationId: string;
@@ -713,20 +726,29 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
     }
   };
 
-  // Add location to list (allows manual entry like categories)
-  const handleAddLocation = () => {
-    const locationName = currentLocationInput.trim();
+  // Add location to list (Google Places preferred — lat/lng saved)
+  const handleAddLocation = (place?: {
+    name?: string;
+    formattedAddress?: string;
+    placeId?: string;
+    lat?: number | null;
+    lng?: number | null;
+    bounds?: any;
+    country?: string | null;
+    state?: string | null;
+    city?: string | null;
+  } | null) => {
+    const locationName = String(place?.name || place?.formattedAddress || currentLocationInput || "").trim();
     if (!locationName) {
       toast({
         title: "Validation Error",
-        description: "Please enter a location name",
+        description: "Please search and select a Google location, or type a name",
         variant: "destructive",
       });
       return;
     }
 
-    // Check if location already exists
-    if (locations.some(loc => loc.address === locationName)) {
+    if (locations.some(loc => loc.address.toLowerCase() === locationName.toLowerCase())) {
       toast({
         title: "Duplicate Location",
         description: "This location is already added",
@@ -735,11 +757,18 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
       return;
     }
 
-    // Create location - only save the name, not other Google data
     const newLocation: Location = {
       id: Date.now().toString(),
-      address: locationName, // Only save the location name
-      createPage: true, // Default to creating page
+      address: locationName,
+      createPage: true,
+      lat: place?.lat ?? null,
+      lng: place?.lng ?? null,
+      googlePlaceId: place?.placeId || null,
+      formattedAddress: place?.formattedAddress || locationName,
+      bounds: place?.bounds || null,
+      country: place?.country || null,
+      state: place?.state || null,
+      city: place?.city || null,
     };
 
     setLocations([...locations, newLocation]);
@@ -1084,7 +1113,9 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
         setBusinessName(data.projectName || "");
         setProjectKeywordsText(data.projectKeywordsText || "");
         setFocusKeyword(data.focusKeyword || "");
-        if (data.sectionImageOrigin === 2) setSectionImageOrigin(2);
+        if ([1, 2, 4, 5].includes(Number(data.sectionImageOrigin))) {
+          setSectionImageOrigin(Number(data.sectionImageOrigin) as 1 | 2 | 4 | 5);
+        }
 
         const categoryName = data.categories?.[0] || data.serviceType || "";
         if (categoryName) {
@@ -1994,6 +2025,14 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
               id: loc.id,
               areaName: loc.address,
               createPage: loc.createPage,
+              lat: loc.lat ?? null,
+              lng: loc.lng ?? null,
+              googlePlaceId: loc.googlePlaceId || null,
+              formattedAddress: loc.formattedAddress || loc.address,
+              bounds: loc.bounds || null,
+              country: loc.country || null,
+              state: loc.state || null,
+              city: loc.city || null,
             })),
           },
           {
@@ -2042,6 +2081,11 @@ export function BusinessWebsiteCreate({ variant = "business" }: BusinessWebsiteC
         parentId: locationWithAreas.locationId, // required for type 1
         type: 1,
         createPage: localArea.createPage ?? true,
+        lat: localArea.lat ?? null,
+        lng: localArea.lng ?? null,
+        googlePlaceId: localArea.googlePlaceId || null,
+        formattedAddress: localArea.formattedAddress || null,
+        bounds: localArea.bounds || null,
       });
     }
   }
