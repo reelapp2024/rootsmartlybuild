@@ -1782,6 +1782,14 @@ Rules:
     !Array.isArray(resultToSave)
   ) {
     resultToSave.image_count = sectionModule.imageCount;
+    const {
+      resolveImageSpec,
+      stampImageSpecOnData,
+    } = require("../imageengines");
+    resultToSave = stampImageSpecOnData(
+      resultToSave,
+      resolveImageSpec(sectionModule, resultToSave, normalizedSectionId || sectionModule.id)
+    );
   }
 
   // Process section guardrail: auto-fix generic static values if model returns them.

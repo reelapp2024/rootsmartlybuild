@@ -31,6 +31,8 @@ function docRules(docType) {
 module.exports = {
   id: "legalcontent",
   imageCount: 2,
+  /** Image output size preset — see imageengines/imageSizeSpec.js */
+  imageRole: "thumbnail",
 
   schema: {
     sections: [{ heading: "string", bodyHtml: "string" }],

@@ -6,6 +6,8 @@ const https = require("https");
 const {
   MAX_RETRIES,
   saveBufferWebOptimizedWebp,
+  resultMeta,
+  maxLongEdgeForSpec,
 } = require("./shared");
 
 const FREEPIK_HOSTS_ALLOW = new Set(["img.freepik.com", "images.freepik.com"]);
@@ -56,12 +58,14 @@ async function fetchFreepikImageBuffer(url) {
   }
 }
 
-async function freepikGetAuthorizedDownloadUrl(resourceId) {
+async function freepikGetAuthorizedDownloadUrl(resourceId, preferredSizes = null) {
   const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY;
   if (!FREEPIK_API_KEY || resourceId == null || resourceId === "") return null;
 
   const id = String(resourceId).trim();
-  const sizes = ["original", "2000px", "large", "medium"];
+  const sizes = Array.isArray(preferredSizes) && preferredSizes.length
+    ? preferredSizes
+    : ["original", "2000px", "large", "medium"];
 
   for (const image_size of sizes) {
     try {
@@ -90,10 +94,13 @@ async function freepikGetAuthorizedDownloadUrl(resourceId) {
   return null;
 }
 
-async function freepikFetchAssetBufferFromItem(item) {
+async function freepikFetchAssetBufferFromItem(item, sizeSpec = null) {
   const rid = item?.id;
   if (rid != null && rid !== "") {
-    const authorized = await freepikGetAuthorizedDownloadUrl(rid);
+    const authorized = await freepikGetAuthorizedDownloadUrl(
+      rid,
+      sizeSpec?.freepikSizes || null
+    );
     if (authorized) {
       try {
         return await fetchFreepikImageBuffer(authorized);
@@ -141,25 +148,27 @@ async function freepikSearchResources(term, limit, page, orientation) {
   return res?.data?.data || [];
 }
 
-async function freepikStockOneFromItem(item, orientation, uploadFolder) {
-  const buffer = await freepikFetchAssetBufferFromItem(item);
+async function freepikStockOneFromItem(item, orientation, uploadFolder, sizeSpec = null) {
+  const buffer = await freepikFetchAssetBufferFromItem(item, sizeSpec);
   if (!buffer || buffer.length < 500) {
     throw new Error("Empty or invalid image buffer");
   }
+  const edge = maxLongEdgeForSpec(sizeSpec, PHOTO_MAX_LONG_EDGE);
   const url = await saveBufferWebOptimizedWebp(
     buffer,
     "freepik",
     uploadFolder,
     orientation,
-    PHOTO_MAX_LONG_EDGE
+    edge,
+    sizeSpec
   );
-  return { url, source: "freepik", orientation };
+  return resultMeta(url, "freepik", orientation, sizeSpec);
 }
 
-async function tryFreepikStockOneItem(item, orientation, uploadFolder) {
+async function tryFreepikStockOneItem(item, orientation, uploadFolder, sizeSpec = null) {
   for (let retry = 0; retry <= MAX_RETRIES; retry++) {
     try {
-      return await freepikStockOneFromItem(item, orientation, uploadFolder);
+      return await freepikStockOneFromItem(item, orientation, uploadFolder, sizeSpec);
     } catch (e) {
       console.error(
         `Freepik stock download attempt ${retry + 1} failed:`,
@@ -171,9 +180,9 @@ async function tryFreepikStockOneItem(item, orientation, uploadFolder) {
 }
 
 /**
- * @returns {Promise<Array<{ url: string, source: string, orientation: number }>>}
+ * @returns {Promise<Array<{ url: string, source: string, orientation: number, width?: number, height?: number }>>}
  */
-async function generate(prompt, total, orientation, uploadFolder = null) {
+async function generate(prompt, total, orientation, uploadFolder = null, sizeSpec = null) {
   if (!process.env.FREEPIK_API_KEY) {
     console.error("FREEPIK_API_KEY not configured");
     return [];
@@ -218,7 +227,12 @@ async function generate(prompt, total, orientation, uploadFolder = null) {
         const chunk = rowItems.slice(i, i + CONCURRENCY);
         for (const item of chunk) {
           if (results.length >= want) break;
-          const img = await tryFreepikStockOneItem(item, orientation, uploadFolder);
+          const img = await tryFreepikStockOneItem(
+            item,
+            orientation,
+            uploadFolder,
+            sizeSpec
+          );
           if (img) results.push(img);
         }
       }

@@ -10,6 +10,8 @@ const { gridCopyPrompt } = require("../../homepage/services/servicesSection");
 module.exports = {
   id: "serviceslistgrid",
   imageCount: 6,
+  /** Image output size preset — see imageengines/imageSizeSpec.js */
+  imageRole: "card",
 
   schema: {
     badgeText: "string",

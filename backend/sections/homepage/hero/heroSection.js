@@ -9,6 +9,8 @@ module.exports = {
   id: "hero",
   /** Primary hero + supporting slots (matches typical multicolor / project.images usage). */
   imageCount: 6,
+  /** Image output size preset — see imageengines/imageSizeSpec.js */
+  imageRole: "hero",
 
   schema: {
     title: "string",

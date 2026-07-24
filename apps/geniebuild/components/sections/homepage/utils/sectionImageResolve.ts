@@ -23,8 +23,9 @@ export function collectSectionImageUrls(
     if (!Array.isArray(arr)) return;
     for (const item of arr) {
       if (typeof item === 'string') pushUrl(urls, item);
-      else if (item && typeof item === 'object' && 'url' in item) {
-        pushUrl(urls, (item as { url?: unknown }).url);
+      else if (item && typeof item === 'object') {
+        const o = item as { url?: unknown; src?: unknown };
+        pushUrl(urls, o.url ?? o.src);
       }
     }
   };

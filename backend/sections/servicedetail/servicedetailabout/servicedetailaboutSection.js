@@ -8,6 +8,8 @@ const { IMAGE_PROMPT_JSON_RULES } = require("../../sectionImagePrompts");
 module.exports = {
   id: "servicedetailabout",
   imageCount: 2,
+  /** Image output size preset — see imageengines/imageSizeSpec.js */
+  imageRole: "feature",
 
   schema: {
     badgeText: "string",

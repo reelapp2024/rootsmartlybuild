@@ -112,7 +112,8 @@ async function generateImages(prompt, total = 1, orientation = 1, origin = 1, op
       prompt,
       total,
       orientation,
-      uploadFolder
+      uploadFolder,
+      options?.sizeSpec || null
     );
     images = pack.images || [];
 
@@ -145,12 +146,21 @@ async function generateImages(prompt, total = 1, orientation = 1, origin = 1, op
     throw error;
   }
 
+  const sizeSpec = options?.sizeSpec || null;
   return {
     requested: total,
     generated: images.length,
     orientation,
     orientationLabel: ORIENTATION_LABEL[orientation],
     origin,
+    sizeSpec: sizeSpec
+      ? {
+          role: sizeSpec.role,
+          width: sizeSpec.width,
+          height: sizeSpec.height,
+          aspect: sizeSpec.aspect,
+        }
+      : null,
     images: images.slice(0, total),
   };
 }

@@ -12,6 +12,8 @@ const {
 module.exports = {
   id: "legalhero",
   imageCount: 4,
+  /** Image output size preset — see imageengines/imageSizeSpec.js */
+  imageRole: "hero",
 
   schema: {
     badgeText: "string",

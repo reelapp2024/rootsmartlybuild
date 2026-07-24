@@ -6,6 +6,7 @@ const helper = require("../additional/addon.js");
 
 const UPLOAD_FOLDER = "public/files/generated-images";
 
+/** Default targets when no per-section sizeSpec is provided */
 const GENERATED_IMAGE_TARGETS = {
   landscape: { width: 2560, height: 1440 },
   portrait: { width: 1440, height: 2560 },
@@ -22,18 +23,58 @@ const ORIENTATION_LABEL = { 1: "landscape", 2: "portrait" };
 
 const MAX_RETRIES = 2;
 
-/** Generation size before WebP cover (multiples of 8 for Leonardo). */
+/** Fallback generation size before WebP cover (multiples of 8). */
 const ENGINE_DIMS = {
-  1: { width: 1344, height: 768 }, // landscape 16:9
-  2: { width: 768, height: 1344 }, // portrait 9:16
+  1: { width: 1344, height: 768 },
+  2: { width: 768, height: 1344 },
 };
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function dimsForOrientation(orientation) {
+function parseOrientation(val) {
+  const n = Number(val);
+  if (n === 1 || n === 2) return n;
+  if (val === "landscape") return 1;
+  if (val === "portrait") return 2;
+  return 1;
+}
+
+function dimsForOrientation(orientation, sizeSpec = null) {
+  if (
+    sizeSpec &&
+    Number(sizeSpec.engineWidth) > 0 &&
+    Number(sizeSpec.engineHeight) > 0
+  ) {
+    return {
+      width: Math.round(Number(sizeSpec.engineWidth)),
+      height: Math.round(Number(sizeSpec.engineHeight)),
+    };
+  }
   return ENGINE_DIMS[parseOrientation(orientation)] || ENGINE_DIMS[1];
+}
+
+/** Final WebP cover size from sizeSpec or orientation defaults */
+function targetDimsForSave(orientation, sizeSpec = null) {
+  if (sizeSpec && Number(sizeSpec.width) > 0 && Number(sizeSpec.height) > 0) {
+    return {
+      width: Math.round(Number(sizeSpec.width)),
+      height: Math.round(Number(sizeSpec.height)),
+    };
+  }
+  const o = parseOrientation(orientation);
+  return o === 2
+    ? GENERATED_IMAGE_TARGETS.portrait
+    : GENERATED_IMAGE_TARGETS.landscape;
+}
+
+function maxLongEdgeForSpec(sizeSpec, fallback) {
+  if (sizeSpec && Number(sizeSpec.maxLongEdge) > 0) {
+    return Math.round(Number(sizeSpec.maxLongEdge));
+  }
+  const dims = targetDimsForSave(sizeSpec?.orientation || 1, sizeSpec);
+  return Math.max(fallback || 1600, dims.width, dims.height);
 }
 
 async function downloadImageBuffer(url) {
@@ -45,14 +86,6 @@ async function downloadImageBuffer(url) {
     validateStatus: (s) => s >= 200 && s < 400,
   });
   return Buffer.from(res.data);
-}
-
-function parseOrientation(val) {
-  const n = Number(val);
-  if (n === 1 || n === 2) return n;
-  if (val === "landscape") return 1;
-  if (val === "portrait") return 2;
-  return 1;
 }
 
 function getBaseUrl() {
@@ -75,11 +108,14 @@ function publicUrlForUploadFolder(uploadFolder, savedFile) {
 }
 
 /** Fixed aspect WebP (admin / strict layouts). */
-async function saveBufferAsWebp(buffer, prefix, orientation, uploadFolder = null) {
-  const dims =
-    orientation === 1
-      ? GENERATED_IMAGE_TARGETS.landscape
-      : GENERATED_IMAGE_TARGETS.portrait;
+async function saveBufferAsWebp(
+  buffer,
+  prefix,
+  orientation,
+  uploadFolder = null,
+  sizeSpec = null
+) {
+  const dims = targetDimsForSave(orientation, sizeSpec);
 
   const webpBuffer = await sharp(buffer, { failOnError: false })
     .rotate()
@@ -102,29 +138,33 @@ async function saveBufferAsWebp(buffer, prefix, orientation, uploadFolder = null
   return publicUrlForUploadFolder(uploadFolder, savedFile);
 }
 
-/** EXIF rotate, optional downscale, then 16:9 / 9:16 cover + WebP. */
+/**
+ * EXIF rotate, optional downscale, then cover-crop to section target + WebP.
+ * @param {object|null} sizeSpec - from resolveImageSpec (width/height/maxLongEdge)
+ */
 async function saveBufferWebOptimizedWebp(
   buffer,
   prefix,
   uploadFolder,
   orientation,
-  maxLongEdge
+  maxLongEdge,
+  sizeSpec = null
 ) {
-  const o = parseOrientation(orientation);
-  const dims =
-    o === 1
-      ? GENERATED_IMAGE_TARGETS.landscape
-      : GENERATED_IMAGE_TARGETS.portrait;
+  const dims = targetDimsForSave(orientation, sizeSpec);
+  const edge = Math.max(
+    Number(maxLongEdge) || 0,
+    maxLongEdgeForSpec(sizeSpec, Math.max(dims.width, dims.height))
+  );
 
   const meta = await sharp(buffer, { failOnError: false }).rotate().metadata();
   const w = meta.width || 0;
   const h = meta.height || 0;
 
   let chain = sharp(buffer, { failOnError: false }).rotate();
-  if (w > maxLongEdge || h > maxLongEdge) {
+  if (edge > 0 && (w > edge || h > edge)) {
     chain = chain.resize({
-      width: maxLongEdge,
-      height: maxLongEdge,
+      width: edge,
+      height: edge,
       fit: "inside",
       withoutEnlargement: true,
       kernel: sharp.kernel.lanczos3,
@@ -150,12 +190,32 @@ async function saveBufferWebOptimizedWebp(
   return publicUrlForUploadFolder(uploadFolder, savedFile);
 }
 
+function resultMeta(url, source, orientation, sizeSpec = null) {
+  const dims = targetDimsForSave(orientation, sizeSpec);
+  return {
+    url,
+    source,
+    orientation: parseOrientation(orientation),
+    width: dims.width,
+    height: dims.height,
+    role: sizeSpec?.role || null,
+    resolution: `${dims.width}x${dims.height}`,
+  };
+}
+
 module.exports = {
   UPLOAD_FOLDER,
   GENERATED_IMAGE_TARGETS,
   ORIENTATION_LABEL,
   MAX_RETRIES,
+  ENGINE_DIMS,
+  sleep,
   parseOrientation,
+  dimsForOrientation,
+  targetDimsForSave,
+  maxLongEdgeForSpec,
+  downloadImageBuffer,
   saveBufferAsWebp,
   saveBufferWebOptimizedWebp,
+  resultMeta,
 };

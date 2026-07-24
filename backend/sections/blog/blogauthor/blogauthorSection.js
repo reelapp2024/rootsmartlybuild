@@ -9,6 +9,8 @@ module.exports = {
   id: "blogauthor",
   source: "blog_author",
   imageCount: 1,
+  /** Image output size preset — see imageengines/imageSizeSpec.js */
+  imageRole: "avatar",
 
   schema: {
     name: "string",

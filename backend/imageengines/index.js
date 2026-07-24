@@ -18,7 +18,16 @@ const {
   saveBufferAsWebp,
   saveBufferWebOptimizedWebp,
   ORIENTATION_LABEL,
+  dimsForOrientation,
+  GENERATED_IMAGE_TARGETS,
+  targetDimsForSave,
 } = require("./shared");
+const {
+  resolveImageSpec,
+  stampImageSpecOnData,
+  enrichAiPromptWithSize,
+  IMAGE_SIZE_PRESETS,
+} = require("./imageSizeSpec");
 
 const ORIGIN = {
   FREEPIK: 1,
@@ -32,8 +41,8 @@ const LABELS = {
   [ORIGIN.FREEPIK]: "Freepik",
   [ORIGIN.GEMINI]: "Gemini",
   [ORIGIN.MIXED]: "Mixed (Freepik + Gemini)",
-  [ORIGIN.LEONARDO]: "Leonardo Lucid",
-  [ORIGIN.FLUX]: "Flux 1 Schnell",
+  [ORIGIN.LEONARDO]: "Leonardo Lucid (CF)",
+  [ORIGIN.FLUX]: "Flux 1 Schnell (CF)",
 };
 
 /** Origins allowed on UserProject.sectionImageOrigin */
@@ -74,19 +83,19 @@ function usesAiPrompt(origin) {
 /**
  * Run a single engine by origin (not mixed).
  */
-async function runEngine(origin, prompt, total, orientation, uploadFolder) {
+async function runEngine(origin, prompt, total, orientation, uploadFolder, sizeSpec = null) {
   const o = normalizeOrigin(origin);
   if (o === ORIGIN.FREEPIK) {
-    return freepik.generate(prompt, total, orientation, uploadFolder);
+    return freepik.generate(prompt, total, orientation, uploadFolder, sizeSpec);
   }
   if (o === ORIGIN.GEMINI) {
-    return gemini.generate(prompt, total, orientation, uploadFolder);
+    return gemini.generate(prompt, total, orientation, uploadFolder, sizeSpec);
   }
   if (o === ORIGIN.LEONARDO) {
-    return leonardo.generate(prompt, total, orientation, uploadFolder);
+    return leonardo.generate(prompt, total, orientation, uploadFolder, sizeSpec);
   }
   if (o === ORIGIN.FLUX) {
-    return flux.generate(prompt, total, orientation, uploadFolder);
+    return flux.generate(prompt, total, orientation, uploadFolder, sizeSpec);
   }
   throw new Error(`Unknown image origin: ${origin}`);
 }
@@ -95,7 +104,14 @@ async function runEngine(origin, prompt, total, orientation, uploadFolder) {
  * Generate images for any origin including mixed (3).
  * @returns {Promise<{ images: Array, freepikImages?: Array, geminiImages?: Array }>}
  */
-async function generateByOrigin(origin, prompt, total, orientation, uploadFolder) {
+async function generateByOrigin(
+  origin,
+  prompt,
+  total,
+  orientation,
+  uploadFolder,
+  sizeSpec = null
+) {
   const o = normalizeOrigin(origin);
   const want = Math.max(1, Math.min(10, Number(total) || 1));
 
@@ -105,8 +121,8 @@ async function generateByOrigin(origin, prompt, total, orientation, uploadFolder
     let freepikImages = [];
     let geminiImages = [];
     [freepikImages, geminiImages] = await Promise.all([
-      freepik.generate(prompt, freepikCount, orientation, uploadFolder),
-      gemini.generate(prompt, geminiCount, orientation, uploadFolder),
+      freepik.generate(prompt, freepikCount, orientation, uploadFolder, sizeSpec),
+      gemini.generate(prompt, geminiCount, orientation, uploadFolder, sizeSpec),
     ]);
     let images = [...freepikImages, ...geminiImages];
     if (images.length < want) {
@@ -114,7 +130,8 @@ async function generateByOrigin(origin, prompt, total, orientation, uploadFolder
         prompt,
         want - images.length,
         orientation,
-        uploadFolder
+        uploadFolder,
+        sizeSpec
       );
       freepikImages = [...freepikImages, ...backfill];
       images = [...images, ...backfill];
@@ -126,7 +143,7 @@ async function generateByOrigin(origin, prompt, total, orientation, uploadFolder
     };
   }
 
-  const images = await runEngine(o, prompt, want, orientation, uploadFolder);
+  const images = await runEngine(o, prompt, want, orientation, uploadFolder, sizeSpec);
   return { images: images.slice(0, want) };
 }
 
@@ -144,4 +161,11 @@ module.exports = {
   saveBufferAsWebp,
   saveBufferWebOptimizedWebp,
   ORIENTATION_LABEL,
+  dimsForOrientation,
+  GENERATED_IMAGE_TARGETS,
+  targetDimsForSave,
+  resolveImageSpec,
+  stampImageSpecOnData,
+  enrichAiPromptWithSize,
+  IMAGE_SIZE_PRESETS,
 };

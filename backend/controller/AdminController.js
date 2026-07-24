@@ -58,6 +58,10 @@ const {
     getActiveSeoFromPage,
     pageUrlFromPage,
     findWebsitePageByPublicUrl,
+    upsertPageSeoSchema,
+    deletePageSeoSchema,
+    setPageSeoSchemaEnabled,
+    regeneratePageSeoSchemas,
 } = require("../services/pageSeoService")
 const ThemeSetting = require("../models/themeSettings")
 const ProjectDeployment = require("../models/ProjectDeployment");
@@ -158,6 +162,123 @@ async function ensurePageInDesignData(projectId, pageId) {
     } catch (error) {
         console.error('[ensurePageInDesignData] Error:', error);
         // Don't throw - this is a helper function, we don't want to break the main flow
+    }
+}
+
+/**
+ * Recover designData.pages entries wiped by legacy single-page GenieBuild saves.
+ * Rebuilds stubs from SectionContent so template pages (about/services/…) stay editable
+ * and getWebsiteDesignData can resolve them without falling back incorrectly.
+ */
+async function repairDesignPagesFromSectionContent(projectId) {
+    try {
+        const designData = await WebsiteDesignsData.findOne({ projectId });
+        if (!designData) return null;
+
+        const [websitePages, contentDocs] = await Promise.all([
+            WebsitePage.find({ projectId }).select("_id name pageType slug").lean(),
+            SectionContent.find({
+                projectId,
+                isDeleted: { $ne: true },
+            })
+                .select("pageId sectionId")
+                .lean(),
+        ]);
+
+        const sectionsByPage = new Map();
+        for (const doc of contentDocs || []) {
+            const pid = String(doc?.pageId || "").trim();
+            const sid = String(doc?.sectionId || "").toLowerCase().trim();
+            if (!pid || !sid) continue;
+            if (sid === "service_sections" || sid.startsWith("service_sections.")) continue;
+            if (!sectionsByPage.has(pid)) sectionsByPage.set(pid, new Set());
+            sectionsByPage.get(pid).add(sid);
+        }
+
+        const pageHasContent = (page) => {
+            const entries = getSectionEntriesFromPage(page);
+            return entries.some((e) => {
+                const t = String(e?.sectionType || "").toLowerCase().trim();
+                return t && t !== "header" && t !== "navbar" && t !== "footer";
+            });
+        };
+
+        // Prefer homepage header/footer for rebuilt stubs
+        const homepageMeta = (websitePages || []).find((p) => {
+            const slug = String(p?.slug || "").trim().replace(/^\/+|\/+$/g, "").toLowerCase();
+            return String(p?.pageType || "") === "default" && (slug === "" || slug === "home");
+        });
+        const homepageDesign = homepageMeta
+            ? (designData.pages || []).find(
+                (p) => String(p?.pageId?._id || p?.pageId || "") === String(homepageMeta._id)
+            )
+            : (designData.pages || [])[0];
+        const homepageSections = getSectionEntriesFromPage(homepageDesign || {}).map((e) => e.compData);
+        const headerComp = homepageSections.find((c) => {
+            const t = String(c?.sectionData?.type || "").toLowerCase();
+            return t === "header" || t === "navbar";
+        });
+        const footerComp = homepageSections.find(
+            (c) => String(c?.sectionData?.type || "").toLowerCase() === "footer"
+        );
+
+        let changed = false;
+        for (const wp of websitePages || []) {
+            const pid = String(wp._id);
+            const sectionIds = [...(sectionsByPage.get(pid) || [])].filter(
+                (s) => s !== "header" && s !== "navbar" && s !== "footer"
+            );
+            if (!sectionIds.length) continue;
+
+            const idx = (designData.pages || []).findIndex(
+                (p) => String(p?.pageId?._id || p?.pageId || "") === pid
+            );
+            if (idx >= 0 && pageHasContent(designData.pages[idx])) continue;
+
+            const middle = sectionIds.map((type) => ({
+                variant_uniqueId: "Default",
+                uniqueId: "Default",
+                componentId: null,
+                sectionData: {
+                    type,
+                    content: {},
+                    styles: {},
+                    contentRef: {
+                        scope: "page",
+                        sectionId: type,
+                        pageId: pid,
+                    },
+                },
+            }));
+            const rebuilt = ensureHeaderFooterComponents(
+                [headerComp, ...middle, footerComp].filter(Boolean)
+            );
+
+            if (idx >= 0) {
+                assignPageSections(designData.pages[idx], rebuilt);
+            } else {
+                designData.pages.push({
+                    pageId: wp._id,
+                    pageStyles: {},
+                    sectionLayout: [],
+                    sections: rebuilt,
+                });
+            }
+            changed = true;
+        }
+
+        if (changed) {
+            designData.markModified("pages");
+            await designData.save();
+            console.log("[repairDesignPagesFromSectionContent] Restored missing design pages", {
+                projectId: String(projectId),
+                totalPages: designData.pages.length,
+            });
+        }
+        return designData;
+    } catch (error) {
+        console.error("[repairDesignPagesFromSectionContent] Error:", error);
+        return null;
     }
 }
 const {
@@ -8487,12 +8608,65 @@ Example format:
             let createdNewDesignData = false;
             if (designData) {
                 console.log('[saveWebsiteDesignData] Updating existing design data');
-                // Update existing design data
+                // MERGE pages by pageId — GenieBuild often saves a single page.
+                // Never replace the whole pages[] array (that hid/orphaned other pages
+                // in getWebsitePages and broke live location/service renders).
                 designData.schemaVersion = 2;
-                designData.pageStyles = processedPageStyles;
-                designData.pages = processedPages;
+                if (processedPageStyles && typeof processedPageStyles === 'object') {
+                    const incomingKeys = Object.keys(processedPageStyles);
+                    // Only overwrite global pageStyles when the payload actually sent them
+                    // (full wizard save). Empty/partial styles from single-page GenieBuild
+                    // saves must not wipe perLocationContentByPage etc.
+                    if (incomingKeys.length > 0) {
+                        designData.pageStyles = {
+                            ...(designData.pageStyles && typeof designData.pageStyles === 'object'
+                                ? (designData.pageStyles.toObject
+                                    ? designData.pageStyles.toObject()
+                                    : designData.pageStyles)
+                                : {}),
+                            ...processedPageStyles,
+                        };
+                    }
+                }
+                const existingPages = Array.isArray(designData.pages) ? designData.pages : [];
+                const byId = new Map(
+                    existingPages
+                        .map((p) => {
+                            const id = String(p?.pageId?._id || p?.pageId || '').trim();
+                            return id ? [id, p] : null;
+                        })
+                        .filter(Boolean)
+                );
+                for (const incoming of processedPages || []) {
+                    const id = String(incoming?.pageId?._id || incoming?.pageId || '').trim();
+                    if (!id) continue;
+                    if (byId.has(id)) {
+                        const idx = existingPages.findIndex(
+                            (p) => String(p?.pageId?._id || p?.pageId || '') === id
+                        );
+                        if (idx >= 0) {
+                            existingPages[idx] = {
+                                ...(typeof existingPages[idx]?.toObject === 'function'
+                                    ? existingPages[idx].toObject()
+                                    : existingPages[idx]),
+                                ...incoming,
+                                pageId: existingPages[idx].pageId || incoming.pageId,
+                            };
+                            byId.set(id, existingPages[idx]);
+                        }
+                    } else {
+                        existingPages.push(incoming);
+                        byId.set(id, incoming);
+                    }
+                }
+                designData.pages = existingPages;
+                designData.markModified('pages');
+                designData.markModified('pageStyles');
                 await designData.save();
-                console.log('[saveWebsiteDesignData] Design data updated successfully');
+                console.log('[saveWebsiteDesignData] Design data updated successfully (merged pages)', {
+                    incoming: (processedPages || []).length,
+                    total: existingPages.length,
+                });
             } else {
                 console.log('[saveWebsiteDesignData] Creating new design data');
                 // Create new design data
@@ -9490,32 +9664,21 @@ Example format:
             }
 
             // Also fetch design data to get component counts
+            // Repair truncated designData.pages from SectionContent (legacy GenieBuild wipe).
+            await repairDesignPagesFromSectionContent(projectId);
+
             const designData = await WebsiteDesignsData.findOne({ projectId })
                 .select('pages.pageId pages.sections pages.componentIds')
                 .lean();
-            const designPageIdSet = new Set(
-                ((designData?.pages || [])
-                    .map((page) => page?.pageId?._id || page?.pageId || page?._id)
-                    .filter(Boolean)
-                    .map((id) => String(id)))
-            );
 
-            // Fetch all pages for this project directly from WebsitePage (project-specific)
+            // Fetch all pages for this project directly from WebsitePage (project-specific).
+            // WebsitePage is the source of truth — do NOT filter by WebsiteDesignsData.pages.
+            // GenieBuild single-page saves used to truncate designData.pages, which made
+            // this filter hide real pages (DB still had 20, admin list showed ~11).
             let websitePages = await WebsitePage.find({ projectId })
                 .select('name slug displayName description seoSettings pageType serviceId locationId isPublished')
                 .sort({ createdAt: -1 })
                 .lean();
-            // Show only pages that user actually selected/saved in design flow.
-            if (designPageIdSet.size) {
-                websitePages = websitePages.filter((page) => {
-                    const pageId = String(page?._id || "");
-                    const pageType = String(page?.pageType || "").toLowerCase().trim();
-                    const name = String(page?.name || "").toLowerCase().trim();
-                    const hasServiceScope = Boolean(page?.serviceId) || pageType === "service" || name.startsWith("service-");
-                    const hasLocationScope = Boolean(page?.locationId) || name.startsWith("location-");
-                    return designPageIdSet.has(pageId) || hasServiceScope || hasLocationScope;
-                });
-            }
 
             // Create a map of pageId to component count from designData
             const componentCountMap = new Map();
@@ -9551,6 +9714,12 @@ Example format:
             // Map website pages to response format
             const pages = slice.map(page => {
                 const activeSeo = getActiveSeoFromPage(page);
+                const schemas = Array.isArray(activeSeo?.schemas) ? activeSeo.schemas : [];
+                const enabledSchemas = schemas.filter((s) => s && s.enabled !== false);
+                const hasMeta = Boolean(
+                    String(activeSeo?.meta_title || "").trim() &&
+                    String(activeSeo?.meta_description || "").trim()
+                );
                 return {
                 pageId: page._id,
                 _id: page._id,
@@ -9560,7 +9729,8 @@ Example format:
                 description: page.description || '',
                 componentCount: componentCountMap.get(page._id.toString()) || 0,
                 seoSettings: page.seoSettings || [],
-                hasSeo: Boolean(activeSeo?.meta_title && activeSeo?.meta_description),
+                hasSeo: hasMeta || enabledSchemas.length > 0,
+                schemaCount: enabledSchemas.length,
                 isPublished: page.isPublished !== false,
             };
             });
@@ -10609,7 +10779,9 @@ Example format:
             if (!pageDoc) {
                 return res.status(404).json({ message: "Page not found" });
             }
-            const entry = await getSeoForWebsitePage(pageDoc);
+            // Prefer complete SEO; fall back to raw stored entry (e.g. schemas-only drafts)
+            const entry =
+                (await getSeoForWebsitePage(pageDoc)) || getActiveSeoFromPage(pageDoc);
             return res.status(200).json({
                 message: "SEO settings fetched",
                 data: entry
@@ -10660,6 +10832,12 @@ Example format:
             if (!project || !page) {
                 return res.status(404).json({ message: "Project or page not found" });
             }
+            const { shouldGenerateSeo, getSeoMode } = require("../seoprompts");
+            if (!shouldGenerateSeo()) {
+                return res.status(400).json({
+                    message: `SEO generation disabled (seo_mode=${getSeoMode()}). Set seo_mode=1 or 2 in backend .env`,
+                });
+            }
             const entry = await generatePageSeoWithAI({
                 project,
                 page,
@@ -10669,6 +10847,9 @@ Example format:
                 projectId,
                 pageId,
             });
+            if (!entry) {
+                return res.status(400).json({ message: "SEO generation skipped" });
+            }
             return res.status(200).json({
                 message: "SEO generated successfully",
                 data: {
@@ -10679,6 +10860,101 @@ Example format:
         } catch (error) {
             console.error("Error in generateWebsitePageSeo:", error);
             return res.status(500).json({ message: error.message || "Failed to generate SEO" });
+        }
+    },
+
+    upsertWebsitePageSeoSchema: async (req, res) => {
+        try {
+            const { projectId, pageId, schema } = req.body;
+            if (!projectId || !pageId || !schema) {
+                return res.status(400).json({ message: "projectId, pageId, and schema are required" });
+            }
+            const pageDoc = await WebsitePage.findOne({ _id: pageId, projectId }).lean();
+            if (!pageDoc) return res.status(404).json({ message: "Page not found" });
+            const entry = await upsertPageSeoSchema({ projectId, pageId, schema });
+            return res.status(200).json({
+                message: "Schema saved",
+                data: {
+                    ...seoEntryToLegacyApi(entry, pageDoc),
+                    seo: seoEntryToGeniebuild(entry, pageDoc),
+                },
+            });
+        } catch (error) {
+            console.error("Error in upsertWebsitePageSeoSchema:", error);
+            return res.status(500).json({ message: error.message || "Failed to save schema" });
+        }
+    },
+
+    deleteWebsitePageSeoSchema: async (req, res) => {
+        try {
+            const { projectId, pageId, schemaId } = req.body;
+            if (!projectId || !pageId || !schemaId) {
+                return res.status(400).json({ message: "projectId, pageId, and schemaId are required" });
+            }
+            const pageDoc = await WebsitePage.findOne({ _id: pageId, projectId }).lean();
+            if (!pageDoc) return res.status(404).json({ message: "Page not found" });
+            const entry = await deletePageSeoSchema({ projectId, pageId, schemaId });
+            return res.status(200).json({
+                message: "Schema deleted",
+                data: {
+                    ...seoEntryToLegacyApi(entry, pageDoc),
+                    seo: seoEntryToGeniebuild(entry, pageDoc),
+                },
+            });
+        } catch (error) {
+            console.error("Error in deleteWebsitePageSeoSchema:", error);
+            return res.status(500).json({ message: error.message || "Failed to delete schema" });
+        }
+    },
+
+    setWebsitePageSeoSchemaEnabled: async (req, res) => {
+        try {
+            const { projectId, pageId, schemaId, enabled } = req.body;
+            if (!projectId || !pageId || !schemaId || typeof enabled === "undefined") {
+                return res.status(400).json({
+                    message: "projectId, pageId, schemaId, and enabled are required",
+                });
+            }
+            const pageDoc = await WebsitePage.findOne({ _id: pageId, projectId }).lean();
+            if (!pageDoc) return res.status(404).json({ message: "Page not found" });
+            const entry = await setPageSeoSchemaEnabled({
+                projectId,
+                pageId,
+                schemaId,
+                enabled,
+            });
+            return res.status(200).json({
+                message: "Schema updated",
+                data: {
+                    ...seoEntryToLegacyApi(entry, pageDoc),
+                    seo: seoEntryToGeniebuild(entry, pageDoc),
+                },
+            });
+        } catch (error) {
+            console.error("Error in setWebsitePageSeoSchemaEnabled:", error);
+            return res.status(500).json({ message: error.message || "Failed to update schema" });
+        }
+    },
+
+    regenerateWebsitePageSeoSchemas: async (req, res) => {
+        try {
+            const { projectId, pageId } = req.body;
+            if (!projectId || !pageId) {
+                return res.status(400).json({ message: "projectId and pageId are required" });
+            }
+            const pageDoc = await WebsitePage.findOne({ _id: pageId, projectId }).lean();
+            if (!pageDoc) return res.status(404).json({ message: "Page not found" });
+            const entry = await regeneratePageSeoSchemas({ projectId, pageId });
+            return res.status(200).json({
+                message: "Schemas rebuilt",
+                data: {
+                    ...seoEntryToLegacyApi(entry, pageDoc),
+                    seo: seoEntryToGeniebuild(entry, pageDoc),
+                },
+            });
+        } catch (error) {
+            console.error("Error in regenerateWebsitePageSeoSchemas:", error);
+            return res.status(500).json({ message: error.message || "Failed to rebuild schemas" });
         }
     },
 
@@ -13622,6 +13898,18 @@ Output format (IMPORTANT):
                         !Array.isArray(resultToSave)
                     ) {
                         resultToSave.image_count = sectionModule.imageCount;
+                        const {
+                            resolveImageSpec,
+                            stampImageSpecOnData,
+                        } = require("../imageengines");
+                        resultToSave = stampImageSpecOnData(
+                            resultToSave,
+                            resolveImageSpec(
+                                sectionModule,
+                                resultToSave,
+                                sectionId || sectionModule.id
+                            )
+                        );
                     }
 
                     if (sectionId === "hero" && resultToSave && typeof resultToSave === "object") {

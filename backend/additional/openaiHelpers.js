@@ -338,17 +338,33 @@ async function fetchSeoContentForPage(
   pageName,
   serviceType,
   projectName,
-  { userId, projectId, pageId, promptFrom, promptFor }
+  { userId, projectId, pageId, promptFrom, promptFor } = {}
 ) {
-  const prompt = `Generate SEO meta tags for a webpage about "${pageName}". 
-  Include a meta title, description, and keywords relevant to the service "${serviceType}" and project "${projectName}". 
-  Format as JSON with fields: meta_title, meta_description, meta_keywords.`;
+  const { buildBasicMetaPrompt, shouldGenerateSeo, getSeoMode } = require("../seoprompts");
+  if (!shouldGenerateSeo()) {
+    console.log(`[fetchSeoContentForPage] seo_mode=${getSeoMode()} — skip`);
+    return {
+      meta_title: "",
+      meta_description: "",
+      meta_keywords: "",
+    };
+  }
 
-  return fetchJSONFromOpenAI(
-    prompt,
-    `SEOContent-${pageName}`,
-    { userId, projectId, pageId, promptFrom, promptFor }
-  );
+  const prompt = buildBasicMetaPrompt({
+    projectName: projectName || "",
+    serviceType: serviceType || "",
+    pageName: pageName || "",
+    displayName: pageName || "",
+    pageUrl: "",
+  });
+
+  return fetchJSONFromOpenAI(prompt, `SEOContent-${pageName}`, {
+    userId,
+    projectId,
+    pageId,
+    promptFrom,
+    promptFor,
+  });
 }
 
 /**

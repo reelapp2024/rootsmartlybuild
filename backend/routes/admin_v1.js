@@ -398,6 +398,10 @@ router.post('/seo', AdminController.getSeoSettings);
 router.get('/getWebsitePageSeo/:projectId/:pageId', authentication, AdminController.getWebsitePageSeo);
 router.post('/updateWebsitePageSeo', authentication, AdminController.updateWebsitePageSeo);
 router.post('/generateWebsitePageSeo', authentication, AdminController.generateWebsitePageSeo);
+router.post('/upsertWebsitePageSeoSchema', authentication, AdminController.upsertWebsitePageSeoSchema);
+router.post('/deleteWebsitePageSeoSchema', authentication, AdminController.deleteWebsitePageSeoSchema);
+router.post('/setWebsitePageSeoSchemaEnabled', authentication, AdminController.setWebsitePageSeoSchemaEnabled);
+router.post('/regenerateWebsitePageSeoSchemas', authentication, AdminController.regenerateWebsitePageSeoSchemas);
 router.post('/regenerateAllMissingSeo', authentication, AdminController.regenerateAllMissingSeo);
 
 // Route to delete SEO settings for a page

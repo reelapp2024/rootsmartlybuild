@@ -60,6 +60,7 @@ interface WebsitePage {
   displayName: string;
   description?: string;
   hasSeo?: boolean;
+  schemaCount?: number;
   isPublished?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -557,7 +558,14 @@ export function PageManagement() {
                       </TableCell>
                       <TableCell>
                         {page.hasSeo ? (
-                          <Badge variant="secondary" className="text-xs">Configured</Badge>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge variant="secondary" className="text-xs">Configured</Badge>
+                            {(page.schemaCount ?? 0) > 0 ? (
+                              <Badge variant="outline" className="text-xs">
+                                {page.schemaCount} schema{(page.schemaCount ?? 0) === 1 ? "" : "s"}
+                              </Badge>
+                            ) : null}
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">Missing</span>
                         )}

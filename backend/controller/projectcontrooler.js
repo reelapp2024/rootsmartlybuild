@@ -2992,7 +2992,7 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
           project,
           projectId,
           sectionId: "servicehero",
-          sectionModule: { imageCount: 6 },
+          sectionModule: { imageCount: 6, imageRole: "hero" },
           data: {
             serviceHeroBadge: "Professional Service",
             serviceHeroTitle: combinedTitle,
@@ -3009,7 +3009,7 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
           project,
           projectId,
           sectionId: "aboutservice",
-          sectionModule: { imageCount: 2 },
+          sectionModule: { imageCount: 2, imageRole: "feature" },
           data: {
             about_service: aboutBody,
             ai_image_prompt:

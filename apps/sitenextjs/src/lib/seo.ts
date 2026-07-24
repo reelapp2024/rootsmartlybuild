@@ -3,39 +3,30 @@ import type { Metadata } from 'next';
 
 
 export type PageSeoRecord = {
-
   meta_title?: string;
-
   meta_description?: string;
-
   meta_keywords?: string;
-
   meta_image?: string;
-
   canonical_url?: string;
-
   og_title?: string;
-
   og_description?: string;
-
   og_image?: string;
-
   og_type?: string;
-
   og_site_name?: string;
-
   twitter_card?: string;
-
   twitter_site?: string;
-
   robots?: string;
-
   favicon?: string;
-
   structured_data?: string;
-
+  /** Premium SEO: multiple JSON-LD schemas */
+  schemas?: Array<{
+    id?: string;
+    type?: string;
+    name?: string;
+    enabled?: boolean;
+    json?: Record<string, unknown>;
+  }>;
   language?: string;
-
 };
 
 
@@ -91,7 +82,7 @@ export function normalizePageSeoFromApi(payload: {
       favicon: String(c.favicon ?? '').trim(),
 
       structured_data: String(c.structuredData ?? c.structured_data ?? '').trim(),
-
+      schemas: Array.isArray(c.schemas) ? (c.schemas as PageSeoRecord['schemas']) : [],
       language: String(c.language ?? 'en').trim(),
 
     };
@@ -139,6 +130,7 @@ export function normalizePageSeoFromApi(payload: {
     favicon: String(s.favicon ?? '').trim(),
 
     structured_data: String(s.structured_data ?? '').trim(),
+    schemas: Array.isArray(s.schemas) ? (s.schemas as PageSeoRecord['schemas']) : [],
 
     language: String(s.language ?? 'en').trim(),
 
@@ -348,32 +340,35 @@ export function applySeoToDocument(seoData: PageSeoRecord | null | undefined) {
 
   if (seoData.twitter_site) addMeta({ name: 'twitter:site', content: seoData.twitter_site });
 
-
-
-  if (seoData.structured_data) {
-
+  const injectLdJson = (raw: string, key: string) => {
     try {
-
-      JSON.parse(seoData.structured_data);
-
+      JSON.parse(raw);
       const script = document.createElement('script');
-
       script.type = 'application/ld+json';
-
-      script.textContent = seoData.structured_data;
-
-      script.setAttribute('data-sitenextjs-seo', '');
-
+      script.textContent = raw;
+      script.setAttribute('data-sitenextjs-seo', key);
       head.appendChild(script);
-
     } catch {
-
       /* invalid JSON — skip */
-
     }
+  };
 
+  const schemaList = Array.isArray(seoData.schemas) ? seoData.schemas : [];
+  let injectedSchema = false;
+  schemaList.forEach((entry, i) => {
+    if (!entry || entry.enabled === false || !entry.json) return;
+    try {
+      injectLdJson(JSON.stringify(entry.json), `schema-${entry.id || i}`);
+      injectedSchema = true;
+    } catch {
+      /* skip */
+    }
+  });
+
+  // Legacy single blob fallback when schemas[] empty
+  if (!injectedSchema && seoData.structured_data) {
+    injectLdJson(seoData.structured_data, 'legacy');
   }
-
 }
 
 

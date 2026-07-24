@@ -8,6 +8,8 @@ const { IMAGE_PROMPT_JSON_RULES } = require("../../sectionImagePrompts");
 module.exports = {
   id: "servicecopy",
   imageCount: 6,
+  /** Image output size preset — see imageengines/imageSizeSpec.js */
+  imageRole: "feature",
 
   schema: {
     whyChooseUsHeading: "string",

@@ -8,6 +8,8 @@ const { IMAGE_PROMPT_JSON_RULES } = require("../../sectionImagePrompts");
 module.exports = {
   id: "blogcomments",
   imageCount: 6,
+  /** Image output size preset — see imageengines/imageSizeSpec.js */
+  imageRole: "thumbnail",
 
   schema: {
     commentSectionTitle: "string",

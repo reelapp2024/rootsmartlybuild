@@ -87,7 +87,7 @@ export function Step1BasicInfo(props: Step1BasicInfoProps) {
             <Label className="text-base font-semibold text-gray-900">Image engine</Label>
           </div>
           <p className="text-xs text-gray-500">
-            Used when server <code className="rounded bg-muted px-1">images_mode=1</code>. Freepik uses keyword/stock search; Gemini, Leonardo, and Flux use AI prompts.
+            Used when server <code className="rounded bg-muted px-1">images_mode=1</code>. Freepik uses keyword/stock search; Gemini, Leonardo, and Flux use AI prompts (Leonardo + Flux via Cloudflare Workers AI).
           </p>
           <RadioGroup
             value={String(sectionImageOrigin)}
@@ -124,7 +124,7 @@ export function Step1BasicInfo(props: Step1BasicInfoProps) {
               <RadioGroupItem value="4" id="img-engine-leonardo" className="mt-0.5" />
               <div>
                 <div className="font-medium text-gray-900">Leonardo Lucid</div>
-                <div className="text-sm text-gray-600">Leonardo Lucid Origin AI images from detailed prompts</div>
+                <div className="text-sm text-gray-600">Cloudflare @cf/leonardo/lucid-origin — photoreal AI from prompts</div>
               </div>
             </label>
             <label
@@ -134,7 +134,7 @@ export function Step1BasicInfo(props: Step1BasicInfoProps) {
               <RadioGroupItem value="5" id="img-engine-flux" className="mt-0.5" />
               <div>
                 <div className="font-medium text-gray-900">Flux 1 Schnell</div>
-                <div className="text-sm text-gray-600">Fast Flux.1 Schnell AI images from detailed prompts</div>
+                <div className="text-sm text-gray-600">Cloudflare @cf/black-forest-labs/flux-1-schnell — fast AI images</div>
               </div>
             </label>
           </RadioGroup>
