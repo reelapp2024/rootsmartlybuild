@@ -280,7 +280,7 @@ export const FAQPlumbing: React.FC<Props> = ({
   };
 
   const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-cta-btn`) || {
-    id: `${section.id}-fqp-cta-btn`, type: 'button',
+    id: `${section.id}-fqp-cta-btn`, type: 'cta-button',
     content: {
       text: faqCtaButtonText,
       link: faqCtaButtonLink,

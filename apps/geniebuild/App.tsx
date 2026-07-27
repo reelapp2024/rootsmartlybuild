@@ -1873,7 +1873,7 @@ const AppContent: React.FC = () => {
                       fallbackButtonText={siteData.globalStyles.colors.buttonTextColor || '#FFFFFF'}
                   />
               )}
-              {isElementDesignTab && (elementType === 'button' || elementType === 'call-to-action') && (
+              {isElementDesignTab && (elementType === 'button' || elementType === 'call-to-action' || elementType === 'cta-button') && (
                   <ButtonStylesBlock styles={styles} onUpdate={onUpdate} onBatchUpdate={onBatchUpdate} />
               )}
               {isElementDesignTab && (elementType === 'feature-box' || elementType === 'icon-box' || elementType === 'stat-card') && (

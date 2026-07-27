@@ -81,18 +81,18 @@ export const HeroPlumbing4: React.FC<Props> = ({
   };
 
   const btn1El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn1`) || {
-    id: `${section.id}-h4-btn1`, type: 'button',
+    id: `${section.id}-h4-btn1`, type: 'cta-button',
     content: { text: content.ctaText || 'Book a Plumber', link: content.ctaHref || '#' },
     style: { backgroundColor: btnBg, color: btnText, padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '700', fontSize: '1rem' },
   };
 
   const btn2El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn2`) || {
-    id: `${section.id}-h4-btn2`, type: 'button',
+    id: `${section.id}-h4-btn2`, type: 'cta-button',
     content: { text: content.secondaryCtaText || 'Call Now', link: content.secondaryCtaHref || 'tel:5551234567', buttonVariant: 'secondary' },
     style: { backgroundColor: 'transparent', padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '600', fontSize: '1rem' },
   };
 
-  const themeColors = { ...tc, titleColor, textColor, buttonBackgroundColor: btnBg, buttonTextColor: btnText, secondaryButtonBorder: '#FFFFFF', secondaryButtonBg: 'transparent', secondaryButtonText: '#FFFFFF' };
+  const themeColors = { ...tc, titleColor, textColor, buttonBackgroundColor: btnBg, buttonTextColor: btnText, secondaryButtonBorder: accent, secondaryButtonBg: 'transparent', secondaryButtonText: '#FFFFFF' };
 
   const padT = s.paddingTop || 'pt-24 sm:pt-32 lg:pt-40';
   const padB = s.paddingBottom || 'pb-24 sm:pb-32 lg:pb-40';

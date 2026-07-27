@@ -77,13 +77,13 @@ export const HeroImageLeft: React.FC<Props> = ({
   };
 
   const btn1El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn1`) || {
-    id: `${section.id}-h4-btn1`, type: 'button',
+    id: `${section.id}-h4-btn1`, type: 'cta-button',
     content: { text: content.ctaText || 'Book a Plumber', link: content.ctaHref || '#' },
     style: { backgroundColor: btnBg, color: btnText, padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '700', fontSize: '1rem' },
   };
 
   const btn2El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn2`) || {
-    id: `${section.id}-h4-btn2`, type: 'button',
+    id: `${section.id}-h4-btn2`, type: 'cta-button',
     content: { text: content.secondaryCtaText || 'Call Now', link: content.secondaryCtaHref || 'tel:5551234567', buttonVariant: 'secondary' },
     style: { backgroundColor: 'transparent', padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '600', fontSize: '1rem' },
   };
@@ -111,7 +111,7 @@ export const HeroImageLeft: React.FC<Props> = ({
     } as any,
   } as WebsiteElement);
 
-  const themeColors = { ...tc, titleColor, textColor, buttonBackgroundColor: btnBg, buttonTextColor: btnText, secondaryButtonBorder: '#FFFFFF', secondaryButtonBg: 'transparent', secondaryButtonText: '#FFFFFF' };
+  const themeColors = { ...tc, titleColor, textColor, buttonBackgroundColor: btnBg, buttonTextColor: btnText, secondaryButtonBorder: accent, secondaryButtonBg: 'transparent', secondaryButtonText: '#FFFFFF' };
 
   const passThrough = {
     onTextEdit, onElementUpdate: onElementUpdate || (() => {}), onElementSelect,

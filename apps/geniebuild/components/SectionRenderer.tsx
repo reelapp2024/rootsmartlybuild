@@ -476,9 +476,9 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
 
   // 1. Resolve Colors - Fallback to global theme (Respecting Light/Dark mode requests)
   const ALWAYS_LIGHT_VARIANTS = new Set([
-    'FeaturesPlumbing', 'ServicesPlumbing2', 'ProcessPlumbing',
+    'FeaturesPlumbing', 'FeaturesBento', 'ServicesPlumbing2', 'ServicesPriceList', 'ServicesCardsNext', 'ProcessPlumbing',
     'TestimonialsPlumbing', 'WhyChoosePlumbing',
-    'AboutPlumbing', 'AreasPlumbing', 'GuaranteePlumbing', 'FAQPlumbing',
+    'AboutPlumbing', 'AboutBento', 'AreasPlumbing', 'GuaranteePlumbing', 'FAQPlumbing',
     'HeaderPlumbing',
     // About / Service page light sections — keep them theme-consistent (light)
     'MissionVisionDefault', 'CoreValuesDefault', 'USPDefault',

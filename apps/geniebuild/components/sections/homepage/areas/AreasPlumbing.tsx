@@ -129,13 +129,13 @@ export const AreasPlumbing: React.FC<Props> = ({
   };
 
   const btnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-ap-btn`) || {
-    id: `${section.id}-ap-btn`, type: 'button',
+    id: `${section.id}-ap-btn`, type: 'cta-button',
     content: { text: content.ctaText || 'Check Your Area', link: content.ctaHref || '#' },
     style: { padding: '0.875rem 1.75rem', borderRadius: '0.5rem', fontWeight: '700', fontSize: '0.95rem' },
   };
 
   const phoneEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-ap-phone`) || {
-    id: `${section.id}-ap-phone`, type: 'button',
+    id: `${section.id}-ap-phone`, type: 'cta-button',
     content: { text: (content as any).phoneText || '', link: (content as any).phoneHref || '', icon: 'fa-phone', buttonVariant: 'secondary' },
     style: { padding: '0.875rem 1.5rem', borderRadius: '0.5rem', fontWeight: '600', fontSize: '0.9rem' },
   };

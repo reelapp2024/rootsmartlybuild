@@ -67,6 +67,39 @@ export const ButtonStylesBlock: React.FC<ButtonStylesBlockProps> = ({ styles, on
               else Object.entries(patch).forEach(([k, val]) => onUpdate(k, val));
             }}
           />
+          {/* Button DESIGN preset — modern reusable looks. All colors/fonts stay
+              dynamic (derived from the theme accent), so every preset works with
+              any theme and remains fully overridable by the color controls. */}
+          <SelectInput
+            label="Button Design"
+            value={styles.buttonDesign || 'classic'}
+            options={[
+              { label: 'Classic',            value: 'classic' },
+              { label: 'Pill',               value: 'pill' },
+              { label: 'Sharp (Square)',     value: 'sharp' },
+              { label: 'Soft Rounded',       value: 'soft' },
+              { label: 'Glow',               value: 'glow' },
+              { label: 'Neon Border',        value: 'neon' },
+              { label: 'Glass',              value: 'glass' },
+              { label: 'Gradient',           value: 'gradient' },
+              { label: 'Gradient Sheen',     value: 'gradient-sheen' },
+              { label: 'Shine Sweep',        value: 'shine' },
+              { label: '3D Push',            value: '3d' },
+              { label: 'Elevated Shadow',    value: 'elevated' },
+              { label: 'Underline Slide',    value: 'underline' },
+              { label: 'Bracket',            value: 'bracket' },
+              { label: 'Dashed Outline',     value: 'dashed' },
+              { label: 'Double Border',      value: 'double' },
+              { label: 'Icon Circle',        value: 'icon-circle' },
+              { label: 'Minimal Link',       value: 'link' },
+              { label: 'Frosted Accent',     value: 'frosted' },
+              { label: 'Retro Offset',       value: 'retro' },
+            ]}
+            onChange={(v: string) => onUpdate('buttonDesign', v)}
+          />
+          <p className="text-[10px] text-white/40 leading-relaxed -mt-1">
+            Designs use the theme accent automatically. Override colors below anytime.
+          </p>
           <ColorInput label="Background Color" value={styles.backgroundColor || ''} onChange={(v) => onUpdate('backgroundColor', v)} onReset={() => onUpdate('backgroundColor', '')} />
           <ColorInput label="Text Color" value={styles.color || ''} onChange={(v) => onUpdate('color', v)} onReset={() => onUpdate('color', '')} />
         </div>

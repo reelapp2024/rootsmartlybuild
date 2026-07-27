@@ -240,7 +240,7 @@ export const ServicesListFaqDefault: React.FC<Props> = ({
   };
 
   const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-slf-cta-btn`) || {
-    id: `${section.id}-slf-cta-btn`, type: 'button',
+    id: `${section.id}-slf-cta-btn`, type: 'cta-button',
     content: {
       text: faqCtaButtonText,
       link: faqCtaButtonLink,

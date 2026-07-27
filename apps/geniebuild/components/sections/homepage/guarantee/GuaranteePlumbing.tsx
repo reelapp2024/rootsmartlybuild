@@ -235,7 +235,7 @@ export const GuaranteePlumbing: React.FC<Props> = ({
 
   // CTA button
   const btnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-gp-btn`) || {
-    id: `${section.id}-gp-btn`, type: 'button',
+    id: `${section.id}-gp-btn`, type: 'cta-button',
     content: { text: apiCtaText, link: apiCtaHref },
     style: {
       backgroundColor: btnBg, color: btnText,

@@ -240,7 +240,7 @@ export const ContactFaqDefault: React.FC<Props> = ({
   };
 
   const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cfq-cta-btn`) || {
-    id: `${section.id}-cfq-cta-btn`, type: 'button',
+    id: `${section.id}-cfq-cta-btn`, type: 'cta-button',
     content: {
       text: faqCtaButtonText,
       link: faqCtaButtonLink,

@@ -243,7 +243,7 @@ export const AreasFaqDefault: React.FC<Props> = ({
   };
 
   const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-arfq-cta-btn`) || {
-    id: `${section.id}-arfq-cta-btn`, type: 'button',
+    id: `${section.id}-arfq-cta-btn`, type: 'cta-button',
     content: {
       text: faqCtaButtonText,
       link: faqCtaButtonLink,

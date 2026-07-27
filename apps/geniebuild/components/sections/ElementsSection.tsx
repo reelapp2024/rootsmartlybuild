@@ -1337,7 +1337,220 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             return wrappedWithLink;
         }
 
-        case 'button':
+        case 'button':      // legacy 'button' now uses the new reliable renderer
+        case 'cta-button': {
+            // New reliable CTA button element. Variant ALWAYS drives the base
+            // look (so secondary/outline/ghost can never look filled like primary),
+            // while user overrides from the sidebar (bg / text / border colors,
+            // radius, padding, size, hover) still win on top. Fully editable via
+            // the Button content form + ButtonStylesBlock (wired by element type).
+            const c: any = content || {};
+            const cbVariant: 'primary' | 'secondary' | 'outline' | 'ghost' =
+              (['primary','secondary','outline','ghost'] as const).includes((renderStyle as any).buttonVariant || c.buttonVariant)
+                ? ((renderStyle as any).buttonVariant || c.buttonVariant) : 'primary';
+            const cbAccent = theme?.buttonBackgroundColor || theme?.accentColor || '#E11D48';
+            const cbOnAccent = theme?.buttonTextColor || '#FFFFFF';
+            const cbLight = theme?.titleColor || '#FFFFFF';
+            const resolvedButtonFontFamilyCta = (safeStyle.fontFamily && safeStyle.fontFamily.trim() !== '')
+              ? safeStyle.fontFamily : theme?.buttonFontFamily;
+            // Variant base — user's explicit style keys override these below.
+            const cbBase = {
+              primary:   { bg: cbAccent,      color: cbOnAccent, border: 'transparent', bw: '0'     },
+              secondary: { bg: 'transparent', color: cbLight,    border: cbAccent,      bw: '1.5px' },
+              outline:   { bg: 'transparent', color: cbAccent,   border: cbAccent,      bw: '1.5px' },
+              ghost:     { bg: 'transparent', color: cbAccent,   border: 'transparent', bw: '0'     },
+            }[cbVariant];
+            // User overrides (from the sidebar) WIN over the variant base.
+            const uBg = safeStyle.backgroundColor && safeStyle.backgroundColor !== 'transparent' ? safeStyle.backgroundColor : undefined;
+            const uColor = safeStyle.color && safeStyle.color !== 'transparent' ? safeStyle.color : undefined;
+            const uBorder = safeStyle.borderColor && safeStyle.borderColor !== 'transparent' ? safeStyle.borderColor : undefined;
+            const cbBg = uBg ?? cbBase.bg;
+            const cbColor = uColor ?? cbBase.color;
+            const cbBorderColor = uBorder ?? cbBase.border;
+            const cbBorderW = safeStyle.borderWidth || cbBase.bw;
+            // Border style: user's borderStyle wins; else solid when a border shows.
+            let cbBorderStyle = (safeStyle.borderStyle && safeStyle.borderStyle !== 'none')
+              ? safeStyle.borderStyle
+              : (cbBorderColor !== 'transparent' && cbBorderW !== '0' ? 'solid' : 'none');
+
+            // ── Button DESIGN preset ───────────────────────────────────────
+            // Reusable modern looks. Everything below is derived from the theme
+            // accent (cbAccent) + resolved colors — NO hardcoded brand colors —
+            // and every value can still be overridden by the sidebar controls.
+            const cbDesign: string = (renderStyle as any).buttonDesign || 'classic';
+            const hex = (h: string, a: string) => `${h}${a}`; // accent + alpha suffix
+            // Per-design overrides. Fields left undefined fall through to the
+            // variant/base values already resolved above.
+            const dz: {
+              radius?: string; bg?: string; color?: string; border?: string;
+              borderW?: string; borderStyle?: string; shadow?: string;
+              extraCss?: string; padExtra?: string; fontWeight?: any; letter?: string;
+              hoverCss?: string; beforeCss?: string; textTransform?: any;
+            } = (() => {
+              const isFilled = cbVariant === 'primary';
+              switch (cbDesign) {
+                case 'pill':      return { radius: '9999px' };
+                case 'sharp':     return { radius: '0px' };
+                case 'soft':      return { radius: '0.5rem' };
+                case 'glow':      return { radius: '9999px', shadow: `0 0 24px ${hex(cbAccent,'55')}`, hoverCss: `box-shadow:0 0 40px ${hex(cbAccent,'88')} !important;` };
+                case 'neon':      return { radius: '9999px', bg: 'transparent', color: cbAccent, border: cbAccent, borderW: '1.5px', shadow: `0 0 12px ${hex(cbAccent,'66')}, inset 0 0 8px ${hex(cbAccent,'22')}`, hoverCss: `background-color:${hex(cbAccent,'14')} !important; box-shadow:0 0 20px ${hex(cbAccent,'99')} !important;` };
+                case 'glass':     return { radius: '0.75rem', bg: hex(cbAccent,'22'), color: cbLight, border: hex(cbAccent,'44'), borderW: '1px', extraCss: 'backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);', hoverCss: `background-color:${hex(cbAccent,'33')} !important;` };
+                case 'gradient': return { radius: '9999px', bg: 'transparent', color: cbOnAccent, extraCss: `background-image:linear-gradient(135deg, ${cbAccent}, ${hex(cbAccent,'AA')});`, hoverCss: 'filter:brightness(1.08);' };
+                case 'gradient-sheen': return { radius: '9999px', bg: 'transparent', color: cbOnAccent, extraCss: `background-image:linear-gradient(135deg, ${cbAccent} 0%, ${hex(cbAccent,'CC')} 50%, ${cbAccent} 100%);background-size:200% 100%;`, hoverCss: 'background-position:100% 0;' };
+                case 'shine':     return { radius: '9999px', extraCss: 'position:relative;overflow:hidden;', beforeCss: `content:'';position:absolute;top:0;left:-75%;width:50%;height:100%;background:linear-gradient(120deg, transparent, ${hex('#ffffff','66')}, transparent);transform:skewX(-20deg);transition:left .6s ease;`, hoverCss: 'left:130%;' };
+                case '3d':        return { radius: '0.75rem', shadow: `0 5px 0 ${hex(cbAccent,'99')}`, hoverCss: `transform:translateY(2px) !important;box-shadow:0 3px 0 ${hex(cbAccent,'99')} !important;` };
+                case 'elevated':  return { radius: '0.75rem', shadow: `0 12px 28px -10px ${hex(cbAccent,'88')}`, hoverCss: `transform:translateY(-3px) !important;box-shadow:0 18px 36px -12px ${hex(cbAccent,'AA')} !important;` };
+                case 'underline': return { radius: '0px', bg: 'transparent', color: isFilled ? cbAccent : (cbColor as string), border: 'transparent', borderW: '0', extraCss: `border-bottom:2px solid ${cbAccent};padding-bottom:2px;`, padExtra: '0', hoverCss: 'letter-spacing:0.03em;' };
+                case 'bracket':   return { radius: '0px', bg: 'transparent', color: cbAccent, border: cbAccent, borderW: '2px', borderStyle: 'solid', extraCss: 'border-left:none;border-right:none;position:relative;' };
+                case 'dashed':    return { radius: '9999px', bg: 'transparent', color: cbAccent, border: cbAccent, borderW: '1.5px', borderStyle: 'dashed', hoverCss: `background-color:${hex(cbAccent,'14')} !important;` };
+                case 'double':    return { radius: '9999px', bg: 'transparent', color: cbAccent, border: cbAccent, borderW: '3px', borderStyle: 'double' };
+                case 'icon-circle': return { radius: '9999px' };
+                case 'link':      return { radius: '0px', bg: 'transparent', color: cbAccent, border: 'transparent', borderW: '0', padExtra: '0', extraCss: 'text-decoration:underline;text-underline-offset:4px;', hoverCss: 'text-decoration-thickness:2px;' };
+                case 'frosted':   return { radius: '9999px', bg: hex(cbAccent,'1A'), color: cbAccent, border: hex(cbAccent,'33'), borderW: '1px', extraCss: 'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);', hoverCss: `background-color:${hex(cbAccent,'2A')} !important;` };
+                case 'retro':     return { radius: '0.5rem', shadow: `4px 4px 0 ${cbAccent}`, border: cbColor as string, borderW: '2px', borderStyle: 'solid', hoverCss: `transform:translate(2px,2px) !important;box-shadow:2px 2px 0 ${cbAccent} !important;` };
+                case 'classic':
+                default:          return {};
+              }
+            })();
+            // Apply design overrides (only where the user hasn't set their own).
+            const cbRadiusFinal = safeStyle.borderRadius || dz.radius || '9999px';
+            const cbBgFinal      = uBg ?? (dz.bg ?? cbBg);
+            const cbColorFinal   = uColor ?? (dz.color ?? cbColor);
+            const cbBorderFinal  = uBorder ?? (dz.border ?? cbBorderColor);
+            const cbBorderWFinal = safeStyle.borderWidth || dz.borderW || cbBorderW;
+            if (dz.borderStyle) cbBorderStyle = (safeStyle.borderStyle && safeStyle.borderStyle !== 'none') ? cbBorderStyle : dz.borderStyle;
+
+            // Content-tab controls: icon (+ pos/size/rotation), width, size, loading.
+            const cbIcon = c.icon && c.icon !== 'none' ? c.icon : undefined;
+            const cbIconPos = c.iconPosition === 'right' ? 'right' : 'left';
+            const cbIconSize = safeStyle.iconSize || '1em';
+            const cbIconRot = Number(safeStyle.iconRotation) || 0;
+            const cbWidthMode: 'auto' | 'full' | 'fixed' = (['auto','full','fixed'] as const).includes(c.width) ? c.width : 'auto';
+            const cbSizePreset: 'sm'|'md'|'lg'|'xl' = (['sm','md','lg','xl'] as const).includes(c.size) ? c.size : 'md';
+            const cbSizeMap: Record<string, { padding: string; fontSize: string }> = {
+              sm: { padding: '0 1rem',    fontSize: '0.8125rem' },
+              md: { padding: '0 1.5rem',  fontSize: '0.9rem' },
+              lg: { padding: '0 1.75rem', fontSize: '1rem' },
+              xl: { padding: '0 2.25rem', fontSize: '1.125rem' },
+            };
+            const cbLoading = !!c.loading;
+            const cbHref = String(c.link || '#');
+            // Open-in-new-tab (Content tab toggle) — target + secure rel.
+            const cbNewTab = c.openInNewTab === undefined ? true : !!c.openInNewTab;
+            const cbIsExternal = /^https?:\/\//i.test(cbHref);
+            const cbTarget = (readOnly && cbNewTab && cbIsExternal) ? '_blank' : undefined;
+            const cbRel = cbTarget === '_blank' ? 'noopener noreferrer' : undefined;
+            // Hover effect (Content tab): none / lift / scale / arrow / glow.
+            const cbHoverEffect: string = c.hoverEffect || 'lift';
+            // Reveal animation (Content tab): fade-up / slide-* / scale-in / pulse.
+            const cbAnimPreset: string = c.animation || 'none';
+            const cbHoverId = `gb-cta-${id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
+            // User hover overrides (sidebar Hover Colors) win over variant defaults.
+            const cbHoverBg     = safeStyle.hoverBackgroundColor || '';
+            const cbHoverColor  = safeStyle.hoverColor || '';
+            const cbHoverBorder = safeStyle.hoverBorderColor || '';
+            const cbHoverCss = (() => {
+              let css = '';
+              if (cbHoverBg)     css += `background-color:${cbHoverBg} !important;`;
+              if (cbHoverColor)  css += `color:${cbHoverColor} !important;`;
+              if (cbHoverBorder) css += `border-color:${cbHoverBorder} !important;`;
+              // Built-in hover EFFECT (lift/scale/glow/arrow) — applies alongside
+              // any color overrides.
+              if (cbHoverEffect === 'lift')  css += 'transform:translateY(-2px); box-shadow:0 8px 20px -8px rgba(0,0,0,.25);';
+              if (cbHoverEffect === 'scale') css += 'transform:scale(1.04);';
+              if (cbHoverEffect === 'glow')  css += `box-shadow:0 0 32px ${cbAccent}66;`;
+              // Fallback tint only when no color override AND no effect chosen.
+              if (!cbHoverBg && !cbHoverColor && !cbHoverBorder && (cbHoverEffect === 'none')) {
+                css += cbVariant === 'primary' ? `box-shadow:0 0 42px ${cbAccent}2E;` : `background-color:${cbAccent}14;`;
+              }
+              return css;
+            })();
+            const cbUseArrow = cbHoverEffect === 'arrow' && !cbIcon && !cbLoading;
+
+            const cbStyle: React.CSSProperties = {
+              ...safeStyle,
+              backgroundColor: cbBgFinal,
+              color: cbColorFinal,
+              borderColor: cbBorderFinal,
+              borderWidth: cbBorderWFinal,
+              borderStyle: cbBorderStyle,
+              borderRadius: cbRadiusFinal,
+              padding: dz.padExtra !== undefined ? dz.padExtra : (safeStyle.padding || cbSizeMap[cbSizePreset].padding),
+              height: (safeStyle as any).height || (dz.padExtra === '0' ? undefined : '2.9rem'),
+              fontWeight: (safeStyle.fontWeight as any) || dz.fontWeight || 600,
+              fontSize: safeStyle.fontSize || cbSizeMap[cbSizePreset].fontSize,
+              fontFamily: resolvedButtonFontFamilyCta || undefined,
+              letterSpacing: safeStyle.letterSpacing || dz.letter || undefined,
+              textTransform: (safeStyle.textTransform as any) || dz.textTransform || undefined,
+              boxShadow: safeStyle.boxShadow || dz.shadow || undefined,
+              textDecoration: 'none',
+              cursor: readOnly ? 'pointer' : 'text',
+              width: cbWidthMode === 'full' ? '100%' : cbWidthMode === 'fixed' ? (c.fixedWidth || '200px') : undefined,
+            };
+            const cbRenderIcon = (pos: 'left' | 'right') => cbIcon && cbIconPos === pos ? (
+              <i className={`fa-solid ${cbIcon}`} style={{ color: cbColorFinal, fontSize: cbIconSize, transform: cbIconRot ? `rotate(${cbIconRot}deg)` : undefined }} aria-hidden />
+            ) : null;
+            const cbAnimVar: Record<string, { initial: any; animate: any; transition?: any }> = {
+              'none':        { initial: {}, animate: {} },
+              'fade-up':     { initial: { opacity: 0, y: 16 },       animate: { opacity: 1, y: 0 } },
+              'slide-left':  { initial: { opacity: 0, x: -24 },      animate: { opacity: 1, x: 0 } },
+              'slide-right': { initial: { opacity: 0, x: 24 },       animate: { opacity: 1, x: 0 } },
+              'scale-in':    { initial: { opacity: 0, scale: 0.92 }, animate: { opacity: 1, scale: 1 } },
+              'pulse':       { initial: { scale: 1 },                animate: { scale: [1, 1.05, 1] }, transition: { duration: 1.6, repeat: Infinity, ease: 'easeInOut' } },
+            };
+            const cbAnim = cbAnimVar[cbAnimPreset] || cbAnimVar.none;
+            const cbAnchor = (
+              <a
+                id={cbHoverId}
+                href={readOnly ? cbHref : undefined}
+                target={cbTarget}
+                rel={cbRel}
+                onClick={(e) => { if (readOnly) { return; } e.preventDefault(); handleClick(e, el); }}
+                className={`inline-flex items-center justify-center gap-2 ${selectedClass}`}
+                style={cbStyle}
+              >
+                {cbLoading ? (
+                  <>
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" style={{ borderColor: cbColorFinal, borderTopColor: 'transparent' }} aria-hidden />
+                    <span>{c.loadingText || 'Loading…'}</span>
+                  </>
+                ) : (
+                  <>
+                    {cbRenderIcon('left')}
+                    <span
+                      ref={bindHtml(id, c.text || '')}
+                      contentEditable={!readOnly}
+                      {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                    />
+                    {cbRenderIcon('right')}
+                    {cbUseArrow && (
+                      <span aria-hidden className="gb-cta-arrow inline-block transition-transform duration-200" style={{ color: cbColor }}>
+                        <i className="fa-solid fa-arrow-right" style={{ fontSize: cbIconSize }} />
+                      </span>
+                    )}
+                  </>
+                )}
+              </a>
+            );
+            return (
+              <>
+                <style>{`
+                  #${cbHoverId} { transition: all .25s cubic-bezier(0.16,1,0.3,1); ${dz.extraCss || ''} }
+                  #${cbHoverId}:hover { ${cbHoverCss}${dz.hoverCss || ''} }
+                  #${cbHoverId}:focus-visible { outline:2px solid ${cbAccent}; outline-offset:3px; }
+                  ${dz.beforeCss ? `#${cbHoverId}::before { ${dz.beforeCss} } #${cbHoverId}:hover::before { ${dz.hoverCss || ''} }` : ''}
+                  ${cbUseArrow ? `#${cbHoverId}:hover .gb-cta-arrow { transform: translateX(4px); }` : ''}
+                `}</style>
+                {cbAnimPreset !== 'none' ? (
+                  <AnimatedDiv style={{ width: 'max-content' }} initial={cbAnim.initial} whileInView={cbAnim.animate} viewport={{ once: true }} transition={cbAnim.transition}>
+                    {cbAnchor}
+                  </AnimatedDiv>
+                ) : cbAnchor}
+              </>
+            );
+        }
+
         case 'call-to-action': {
             const c: any = content || {};
             const btnVariant = (renderStyle as any).buttonVariant || c.buttonVariant || 'primary';

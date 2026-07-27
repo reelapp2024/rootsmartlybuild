@@ -93,7 +93,7 @@ export const SectionSidebarBody: React.FC<Props> = ({
   // Kept as a function so we don't duplicate the large button/badge style hydration.
   const renderElementStyleEditor = (tab: 'design' | 'advanced') => {
     if (!selectedSection || !selectedElement) return null;
-    const hydratedStyle = selectedElement.type === 'button' ? {
+    const hydratedStyle = (selectedElement.type === 'button' || selectedElement.type === 'cta-button') ? {
       ...effectiveElementStyle,
       fontWeight: effectiveElementStyle?.fontWeight || resolvedSectionStyles?.buttonFontWeight || resolvedSectionStyles?.fontWeight || 'bold',
       fontSize: effectiveElementStyle?.fontSize || resolvedSectionStyles?.buttonSize || resolvedSectionStyles?.buttonFontSize || resolvedSectionStyles?.fontSize || '1rem',

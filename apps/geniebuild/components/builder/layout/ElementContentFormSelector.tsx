@@ -383,14 +383,14 @@ export const ElementContentFormSelector: React.FC<Props> = ({
               )}
               {showContactTextFields && (
                 <TextAreaInput
-                  label={(selectedElement.type === 'button' || selectedElement.type === 'call-to-action') ? 'Button Text' : 'Text'}
+                  label={(selectedElement.type === 'button' || selectedElement.type === 'call-to-action' || selectedElement.type === 'cta-button') ? 'Button Text' : 'Text'}
                   value={selectedElement.content?.text || ''}
                   onChange={(v) => updateContent({ text: v })}
                 />
               )}
               {/* Generic link input — skipped for button-like types so the dedicated
                   "Button Link (URL)" below (with hero-title fallback) is the only one. */}
-              {showContactTextFields && selectedElement.type !== 'button' && selectedElement.type !== 'call-to-action' && (
+              {showContactTextFields && selectedElement.type !== 'button' && selectedElement.type !== 'call-to-action' && selectedElement.type !== 'cta-button' && (
                 <>
                   <TextInput
                     label="Link (optional URL)"
@@ -420,7 +420,7 @@ export const ElementContentFormSelector: React.FC<Props> = ({
               />
             );
           })()}
-          {(selectedElement.type === 'button' || selectedElement.type === 'call-to-action') && (
+          {(selectedElement.type === 'button' || selectedElement.type === 'call-to-action' || selectedElement.type === 'cta-button') && (
             <>
               {showContactTextFields && (
                 <TextInput

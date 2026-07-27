@@ -350,7 +350,7 @@ export const ContactFormDefault: React.FC<Props> = ({
                     ...section,
                     elements: [{
                       id: `${section.id}-cf-btn`,
-                      type: 'button',
+                      type: 'cta-button',
                       content: { text: btnLabel, link: '#' },
                       style: {
                         backgroundColor: btnBg,

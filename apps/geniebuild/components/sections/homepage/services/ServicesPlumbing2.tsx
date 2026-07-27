@@ -479,7 +479,7 @@ export const ServicesPlumbing2: React.FC<Props> = ({
   // Section-level CTA button (only when content.ctaText is set)
   const ctaText: string = (content as any).ctaText || '';
   const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sp2-cta`) || {
-    id: `${section.id}-sp2-cta`, type: 'button',
+    id: `${section.id}-sp2-cta`, type: 'cta-button',
     content: { text: ctaText || 'View All Services', link: (content as any).ctaHref || '#', buttonVariant: 'primary' },
     style: {
       backgroundColor: btnBg, color: btnText,

@@ -154,7 +154,7 @@ export const AboutModern: React.FC<Props> = ({
   };
 
   const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-cta`) || {
-    id: `${section.id}-about-cta`, type: 'button',
+    id: `${section.id}-about-cta`, type: 'cta-button',
     content: { text: apiCtaText, link: apiCtaHref, buttonVariant: 'primary' },
     style: { padding: '0.875rem 1.75rem', borderRadius: '0.625rem', fontWeight: '700', fontSize: '0.95rem' },
   };

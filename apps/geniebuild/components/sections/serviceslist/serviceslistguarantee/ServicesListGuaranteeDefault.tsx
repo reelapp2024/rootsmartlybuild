@@ -235,7 +235,7 @@ export const ServicesListGuaranteeDefault: React.FC<Props> = ({
 
   // CTA button
   const btnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-slgt-btn`) || {
-    id: `${section.id}-slgt-btn`, type: 'button',
+    id: `${section.id}-slgt-btn`, type: 'cta-button',
     content: { text: apiCtaText, link: apiCtaHref },
     style: {
       backgroundColor: btnBg, color: btnText,

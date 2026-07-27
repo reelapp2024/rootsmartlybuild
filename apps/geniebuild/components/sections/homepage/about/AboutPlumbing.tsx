@@ -204,7 +204,7 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
   };
 
   const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-cta`) || {
-    id: `${section.id}-about-cta`, type: 'button',
+    id: `${section.id}-about-cta`, type: 'cta-button',
     content: {
       text: apiCtaText,
       link: apiCtaHref,
