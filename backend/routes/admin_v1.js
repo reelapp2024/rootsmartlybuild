@@ -114,6 +114,9 @@ router.put("/updateBusinessAboutUs", ProjectControoler.updateBusinessAboutUs);
 
 router.get("/getAboutUs/:projectId", AdminController.getAboutUs);
 router.post("/updateProjectTheme", authentication, AdminController.updateProjectTheme);
+router.get("/additionalCss/:projectId", authentication, AdminController.getAdditionalCss);
+router.get("/blogEditorTheme/:projectId", authentication, AdminController.getBlogEditorTheme);
+router.post("/updateAdditionalCss", authentication, AdminController.updateAdditionalCss);
 
 // Website Design APIs
 router.post("/upsertWebsitePage", authentication, AdminController.upsertWebsitePage);

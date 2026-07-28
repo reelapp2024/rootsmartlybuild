@@ -338,13 +338,19 @@ export const ServicesPlumbing2: React.FC<Props> = ({
   let titleEl: WebsiteElement =
     titleFound || {
     id: `${section.id}-sp2-title`, type: 'heading',
-    content: {
-      text: content.title || 'Our Plumbing Services',
-      textBefore: 'Our Plumbing',
-      highlightedText: 'Services',
-      textAfter: '',
-      htmlTag: 'h2',
-    },
+    content: (() => {
+      const raw = content.title || 'Our Plumbing Services';
+      const words = String(raw).replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean);
+      const highlightedText = words.length ? words[words.length - 1] : raw;
+      const textBefore = words.length > 1 ? words.slice(0, -1).join(' ') : '';
+      return {
+        text: raw,
+        textBefore,
+        highlightedText,
+        textAfter: '',
+        htmlTag: 'h2',
+      };
+    })(),
     style: {
       textAlign: 'center' as any, fontWeight: '800',
       fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)',
@@ -363,37 +369,49 @@ export const ServicesPlumbing2: React.FC<Props> = ({
     style: { textAlign: 'center' as any, maxWidth: '640px', margin: '0 auto', lineHeight: '1.65' },
   };
 
-  const apiBadge = String(content.badgeText ?? '').trim();
-  if (apiBadge) {
-    badgeEl = {
-      ...badgeEl,
-      content: { ...(badgeEl.content as any), text: apiBadge },
-    };
+  // SectionContent seeds defaults only. Once an element exists in section.elements
+  // (sidebar / canvas edits), it is the source of truth — never wipe highlight parts.
+  if (!badgeFound) {
+    const apiBadge = String(content.badgeText ?? '').trim();
+    if (apiBadge) {
+      badgeEl = {
+        ...badgeEl,
+        content: { ...(badgeEl.content as any), text: apiBadge },
+      };
+    }
   }
-  const apiTitle = String(
-    content.title ?? (content as any).heading ?? (content as any).sectionTitle ?? ''
-  ).trim();
-  if (apiTitle) {
-    titleEl = {
-      ...titleEl,
-      content: {
-        ...(titleEl.content as any),
-        text: apiTitle,
-        textBefore: '',
-        highlightedText: '',
-        textAfter: '',
-        htmlTag: (titleEl.content as any)?.htmlTag || 'h2',
-      },
-    };
+  if (!titleFound) {
+    const apiTitle = String(
+      content.title ?? (content as any).heading ?? (content as any).sectionTitle ?? ''
+    ).trim();
+    if (apiTitle) {
+      titleEl = {
+        ...titleEl,
+        content: {
+          ...(titleEl.content as any),
+          text: apiTitle,
+          textBefore: '',
+          highlightedText: '',
+          textAfter: '',
+          htmlTag: (titleEl.content as any)?.htmlTag || 'h2',
+        },
+      };
+    }
   }
-  const apiDesc = String(
-    content.description ?? content.subtitle ?? (content as any).descriptionText ?? ''
-  ).trim();
-  if (apiDesc) {
-    descEl = {
-      ...descEl,
-      content: { ...(descEl.content as any), text: apiDesc, textSize: (descEl.content as any)?.textSize || 'large' },
-    };
+  if (!descFound) {
+    const apiDesc = String(
+      content.description ?? content.subtitle ?? (content as any).descriptionText ?? ''
+    ).trim();
+    if (apiDesc) {
+      descEl = {
+        ...descEl,
+        content: {
+          ...(descEl.content as any),
+          text: apiDesc,
+          textSize: (descEl.content as any)?.textSize || 'large',
+        },
+      };
+    }
   }
 
   // Per-service image-box card (image top + title + description + Learn More button)

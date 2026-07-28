@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { httpFile } from "../../config.js";
 import { resolveAdminProjectId, blogPostsListPath } from "@/lib/adminProjectPaths";
+import { useBlogEditorTheme } from "@/hooks/useBlogEditorTheme";
 
 const BASE_URL = import.meta.env.VITE_API_URL ;
 const UPLOAD_URL = `${BASE_URL.replace(/\/$/, "")}/uploadFile`;
@@ -57,6 +58,7 @@ export default function CreateBlogPost() {
     queryProjectId: new URLSearchParams(location.search).get("projectId"),
   });
   const postsListHref = blogPostsListPath(projectId);
+  const { themePreview } = useBlogEditorTheme(projectId);
 
   // Basic fields
   const [title, setTitle] = useState("");
@@ -388,7 +390,17 @@ export default function CreateBlogPost() {
           {/* Content */}
           <div className="space-y-2">
             <Label>Content</Label>
-            <RichTextEditor value={content} onChange={setContent} uploadUrl={UPLOAD_URL} height={420} />
+            <p className="text-xs text-muted-foreground">
+              Preview uses your site theme (fonts, heading & paragraph colors) — same look as the live blog.
+            </p>
+            <RichTextEditor
+              value={content}
+              onChange={setContent}
+              uploadUrl={UPLOAD_URL}
+              height={420}
+              themePreview={themePreview}
+              projectId={projectId}
+            />
           </div>
 
           {/* Meta with Generate buttons */}

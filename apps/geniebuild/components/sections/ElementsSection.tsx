@@ -8,7 +8,6 @@ import { useDefaultSizes } from '../builder/state/DefaultSizesContext';
 import {
   buildHeadingHighlightSpanStyle,
   buildHeadingEditableHtml,
-  finishHeadingWord,
   resolveHeadingFontSize,
   resolveHighlightAccentColor,
   resolveTextFontSize,
@@ -28,11 +27,14 @@ import {
 } from './homepage/utils/sectionImageResolve';
 import {
   bindEditableHtml,
-  clearLiveCommit,
   createEditableHtmlProps,
   editableFocusBlur,
   forceSyncEditableHtml,
   getEditableNode,
+  getLiveCaretOffset,
+  getPlainTextCaretOffset,
+  isInlineEditing,
+  restoreCaretAfterReactUpdate,
 } from './editableHtmlHelpers';
 import {
   stripImageBoxImageKeys,
@@ -731,25 +733,25 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
   };
 
   /**
-   * Heading live edit:
-   * - Normal keys → update sidebar only (never rewrite DOM mid-word — that broke Space)
-   * - Space → finish word: move all words into textBefore, empty highlight, caret ready
+   * Heading live edit — only the LAST word is highlighted, in realtime while typing.
+   * Rewrites the highlight <span> on every commit, but restores the caret by plain-text
+   * offset so Space / mid-line typing does not jump to end-of-line.
    */
   const applyHeadingParts = (
     id: string,
     el: WebsiteElement,
     parts: ReturnType<typeof splitHeadingToHighlightParts>,
     highlightSpanStyle: string | undefined,
-    opts: { rewriteDom: boolean }
+    opts: { rewriteDom: boolean; caretOffset?: number | null; focused?: boolean }
   ) => {
     if (id.includes('-hero-title') && onTextEdit) {
       onTextEdit('title', parts.text);
     }
 
     onElementUpdate(id, {
-      ...el,
+      type: el.type || 'heading',
       content: {
-        ...el.content,
+        ...(el.content || {}),
         text: parts.text,
         textBefore: parts.textBefore,
         highlightedText: parts.highlightedText,
@@ -757,16 +759,37 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
       },
     });
 
-    if (!opts.rewriteDom) return;
+    if (!opts.rewriteDom) {
+      if (opts.caretOffset !== null && opts.caretOffset !== undefined) {
+        restoreCaretAfterReactUpdate(id, opts.caretOffset);
+      }
+      return;
+    }
 
     const node = getEditableNode(id);
     const style =
       highlightSpanStyle ||
       node?.getAttribute('data-gb-highlight-style') ||
       '';
-    forceSyncEditableHtml(id, buildHeadingEditableHtml(parts, style), {
-      caret: parts.awaitingNextWord || !parts.highlightedText ? 'highlight' : 'end',
-    });
+    const html = buildHeadingEditableHtml(parts, style);
+
+    if (opts.focused) {
+      // Live: move highlight to last word, keep caret where the user was typing.
+      const plainAfter = `${parts.text}${parts.trailingSpace ? ' ' : ''}`;
+      const safeOffset =
+        opts.caretOffset === null || opts.caretOffset === undefined
+          ? plainAfter.length
+          : Math.max(0, Math.min(opts.caretOffset, plainAfter.length));
+      forceSyncEditableHtml(id, html, {
+        caret: 'preserve',
+        caretOffset: safeOffset,
+      });
+      // React may still paint and nudge selection — reinforce after commit.
+      restoreCaretAfterReactUpdate(id, safeOffset);
+      return;
+    }
+
+    forceSyncEditableHtml(id, html, { caret: 'none' });
   };
 
   const handleHeadingTextCommit = (
@@ -775,23 +798,17 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     rawHtml: string,
     highlightSpanStyle?: string
   ) => {
+    const node = getEditableNode(id);
+    const caretOffset =
+      getLiveCaretOffset(id) ?? (node ? getPlainTextCaretOffset(node) : null);
     const parts = splitHeadingToHighlightParts(rawHtml);
-    // Mid-word: sidebar only. Space/trailing-space: rewrite DOM.
-    applyHeadingParts(id, el, parts, highlightSpanStyle, {
-      rewriteDom: parts.awaitingNextWord,
-    });
-  };
+    const focused = isInlineEditing(id);
 
-  const handleHeadingSpace = (
-    id: string,
-    el: WebsiteElement,
-    node: HTMLElement,
-    highlightSpanStyle: string
-  ) => {
-    // Cancel any pending onInput rAF so it can't undo this Space.
-    clearLiveCommit(id);
-    const parts = finishHeadingWord(node.innerHTML);
-    applyHeadingParts(id, el, parts, highlightSpanStyle, { rewriteDom: true });
+    applyHeadingParts(id, el, parts, highlightSpanStyle, {
+      rewriteDom: true,
+      caretOffset,
+      focused,
+    });
   };
 
   const handleArrayContentUpdate = (id: string, arrayKey: string, index: number, itemKey: string, value: any) => {
@@ -1047,30 +1064,33 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             if (!headingStyle.fontFamily) delete headingStyle.fontFamily;
 
             let headingText = c.text || '';
-            const hasStructuredHeadingParts =
-                Object.prototype.hasOwnProperty.call(c, 'textBefore') ||
-                Object.prototype.hasOwnProperty.call(c, 'highlightedText') ||
-                Object.prototype.hasOwnProperty.call(c, 'textAfter');
+            const hasPartValues = !!(
+              String(c.textBefore || '').trim() ||
+              String(c.highlightedText || '').trim() ||
+              String(c.textAfter || '').trim()
+            );
             let textBefore = c.textBefore || '';
             let highlightedText = c.highlightedText || '';
             let textAfter = c.textAfter || '';
 
-            if (!hasStructuredHeadingParts) {
-                const rawText = String(c.text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-                const words = rawText.split(' ').filter(Boolean);
-                textBefore = words.length > 1 ? words.slice(0, -1).join(' ') : '';
-                highlightedText = words.length > 0 ? words[words.length - 1] : '';
-                textAfter = '';
+            // Always last-word highlight when parts are missing/empty.
+            if (!hasPartValues) {
+              const split = splitHeadingToHighlightParts(
+                String(c.text || '').replace(/<[^>]*>/g, ' ')
+              );
+              textBefore = split.textBefore;
+              highlightedText = split.highlightedText;
+              textAfter = split.textAfter;
+              if (split.text) headingText = split.text;
             }
 
             if (highlightedText || textBefore || textAfter) {
                 headingText = buildHeadingEditableHtml(
                   {
-                    text: '',
+                    text: String(headingText || ''),
                     textBefore,
                     highlightedText,
                     textAfter,
-                    awaitingNextWord: !String(highlightedText || '').trim(),
                   },
                   highlightSpanStyle
                 );
@@ -1099,19 +1119,6 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                       const target = elements.find((e) => e.id === id) || el;
                       handleHeadingTextCommit(id, target, html, highlightSpanStyle);
                     }),
-                    // Capture Space before contentEditable inserts it — one press finishes
-                    // the highlighted word and parks caret in a fresh highlight span.
-                    onKeyDown: !readOnly
-                      ? (e: React.KeyboardEvent) => {
-                          if (e.key !== ' ' && e.code !== 'Space') return;
-                          if (e.ctrlKey || e.metaKey || e.altKey) return;
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const node = e.currentTarget as HTMLElement;
-                          const target = elements.find((item) => item.id === id) || el;
-                          handleHeadingSpace(id, target, node, highlightSpanStyle);
-                        }
-                      : undefined,
                 }
             );
 

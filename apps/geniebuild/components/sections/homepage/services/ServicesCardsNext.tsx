@@ -139,16 +139,35 @@ export const ServicesCardsNext: React.FC<Props> = ({
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-sp2-title`;
     const existing = section.elements?.find(e => e.id === id);
-    const src = (existing?.content as any)?.text || content.title || 'Straightforward services, priced up front.';
+    if (existing) {
+      return {
+        ...existing,
+        type: 'heading',
+        content: {
+          ...(existing.content || {}),
+          htmlTag: (existing.content as any)?.htmlTag || 'h2',
+        },
+        style: {
+          color: titleColor,
+          fontWeight: '800',
+          fontSize: 'clamp(2rem, 4vw, 3rem)',
+          lineHeight: '1.08',
+          letterSpacing: '-0.035em',
+          textAlign: 'left' as any,
+          ...(existing.style as any),
+          highlightColor: (existing.style as any)?.highlightColor || accent,
+        },
+      };
+    }
+    const src = content.title || 'Straightforward services, priced up front.';
     const words = String(src).replace(/<[^>]+>/g, '').trim().split(/\s+/).filter(Boolean);
     const before = words.length > 2 ? words.slice(0, -2).join(' ') : '';
     const highlight = words.length > 2 ? words.slice(-2).join(' ') : src;
-    const base: WebsiteElement = existing || {
+    return {
       id, type: 'heading',
       content: { text: src, textBefore: before, highlightedText: highlight, textAfter: '', htmlTag: 'h2' },
       style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'left' as any, highlightColor: accent },
     };
-    return { ...base, content: { ...(base.content || {}), text: src, textBefore: before, highlightedText: highlight, textAfter: '', htmlTag: (base.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), highlightColor: (base.style as any)?.highlightColor || accent } };
   })();
 
   const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sp2-desc`) || {

@@ -1,5 +1,5 @@
 // components/editor/RichTextEditor.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,11 +8,38 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   Link as LinkIcon, Unlink, Undo2, Redo2, Eraser,
   Image as ImageIcon, Heading1, Heading2, Heading3,
-  Minus, Palette, ChevronLeft, ChevronRight, Replace as ReplaceIcon
+  Minus, ChevronLeft, ChevronRight, Replace as ReplaceIcon
 } from "lucide-react";
 import { toast } from "sonner";
+import { PRESET_FONTS, buildGoogleFontsCssUrl } from "@schema/core/presetFonts";
+import {
+  buildLocalBlogEditorCss,
+  normalizeProjectId as normalizeEditorProjectIdFromHook,
+} from "@/hooks/useBlogEditorTheme";
+
+const EDITOR_FONT_OPTIONS = [
+  { name: "Theme default", value: "" },
+  ...PRESET_FONTS,
+];
+const EDITOR_GOOGLE_FONTS_URL = buildGoogleFontsCssUrl(PRESET_FONTS);
 
 export type RteTab = "visual" | "html";
+
+/** Project theme for WYSIWYG — same tokens as live site blog prose. */
+export type BlogEditorThemePreview = {
+  proseCss?: string;
+  googleFontsUrl?: string;
+  titleColor?: string;
+  textColor?: string;
+  linkColor?: string;
+  accentColor?: string;
+  titleFont?: string;
+  bodyFont?: string;
+  surfaceColor?: string;
+  blogCss?: string;
+  /** Which project this payload belongs to (guards against stale theme flash). */
+  projectId?: string;
+};
 
 export type RichTextEditorProps = {
   /** Full HTML doc: <!doctype ...><html ...><head>...</head><body>...</body></html> */
@@ -22,7 +49,61 @@ export type RichTextEditorProps = {
   uploadUrl?: string;
   disabled?: boolean;
   height?: number;
+  /** When set, visual editor matches live site headings / paragraphs. */
+  themePreview?: BlogEditorThemePreview | null;
+  /** Optional — editor can fetch theme itself if parent themePreview is late. */
+  projectId?: string | null;
 };
+
+/**
+ * Editor theme CSS — same literal rules as SiteNextJS BlogContentDefault.
+ * Inline style= / data-gb-*-override still win over these theme defaults.
+ */
+function buildDefaultEditorThemeCss(t?: BlogEditorThemePreview | null): string {
+  const base = buildLocalBlogEditorCss({
+    titleColor: t?.titleColor || "#111827",
+    textColor: t?.textColor || "#374151",
+    accentColor: t?.accentColor || t?.linkColor || "#E11D48",
+    linkColor: t?.linkColor || t?.accentColor || "#E11D48",
+    titleFont: t?.titleFont,
+    bodyFont: t?.bodyFont,
+    surfaceColor: t?.surfaceColor || "#FFFFFF",
+  });
+  const extraBlogCss = String(t?.blogCss || "").trim();
+  return extraBlogCss ? `${base}\n${extraBlogCss}` : base;
+}
+
+/** Tiny chrome layered on API proseCss (selected images, etc.). */
+const EDITOR_CHROME_CSS = `
+  #root, .blog-prose { outline: none; min-height: 12rem; }
+  img { max-width: 100%; height: auto; display: block; }
+  img:focus, img.selected { outline: 2px solid #60a5fa; }
+  #root [data-gb-color-override="1"],
+  .blog-prose [data-gb-color-override="1"] { border-left-color: currentColor; }
+  /* Empty blocks must keep height so Enter creates a visible new line (Word/WP behavior) */
+  #root p, #root h1, #root h2, #root h3, #root h4, #root h5, #root h6,
+  #root li, #root blockquote,
+  .blog-prose p, .blog-prose h1, .blog-prose h2, .blog-prose h3 {
+    min-height: 1.5em;
+  }
+  #root p:empty::before,
+  #root h1:empty::before, #root h2:empty::before, #root h3:empty::before,
+  .blog-prose p:empty::before {
+    content: "\\00a0";
+    display: inline-block;
+  }
+`;
+
+function normalizeEditorProjectId(raw: unknown): string {
+  return normalizeEditorProjectIdFromHook(raw);
+}
+
+function stripConflictingHeadStyles(head: string): string {
+  return String(head || "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<link\b[^>]*rel=["']?stylesheet["']?[^>]*>/gi, "")
+    .trim();
+}
 
 const DEFAULT_UPLOAD_URL =
   (import.meta as any).env?.VITE_UPLOAD_URL ||
@@ -133,11 +214,236 @@ async function uploadImageToUrl(file: File, uploadUrl: string): Promise<string> 
 }
 
 function rgbToHex(color: string): string {
-  if (color?.startsWith("#")) return color;
-  const match = color?.match?.(/\d+/g);
-  if (!match) return "#000000";
+  const raw = String(color || "").trim();
+  if (!raw) return "#000000";
+  if (raw.startsWith("#")) {
+    if (raw.length === 4) {
+      const r = raw[1], g = raw[2], b = raw[3];
+      return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+    }
+    if (raw.length >= 7) return raw.slice(0, 7).toLowerCase();
+    return raw.toLowerCase();
+  }
+  const match = raw.match(/\d+/g);
+  if (!match || match.length < 3) return "#000000";
   const [r, g, b] = match.map(Number);
-  return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return (
+    "#" +
+    [r, g, b]
+      .map((x) => Math.max(0, Math.min(255, x | 0)).toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
+/** Accept #RGB, #RRGGBB, rgb()/rgba(), or bare hex — return #rrggbb or null. */
+function normalizeColorInput(raw: string): string | null {
+  let s = String(raw || "").trim();
+  if (!s) return null;
+  // rgb(255, 0, 0) / rgba
+  if (/^rgba?\(/i.test(s)) {
+    const hex = rgbToHex(s);
+    return /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : null;
+  }
+  if (s[0] !== "#") s = `#${s}`;
+  if (/^#[0-9a-f]{3}$/i.test(s)) {
+    return `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}`.toLowerCase();
+  }
+  if (/^#[0-9a-f]{6}$/i.test(s)) return s.toLowerCase();
+  if (/^#[0-9a-f]{8}$/i.test(s)) return s.slice(0, 7).toLowerCase();
+  return null;
+}
+
+/** Resolve block under caret (heading / paragraph / list item / quote). */
+function getBlockFromSelection(idoc: Document): HTMLElement | null {
+  const sel = idoc.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  let node: Node | null = sel.anchorNode;
+  if (node?.nodeType === Node.TEXT_NODE) node = node.parentNode;
+  const root = idoc.getElementById("root") || idoc.body;
+  while (node && node !== root && node !== idoc.body) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = (node as Element).tagName;
+      if (/^(H[1-6]|P|LI|BLOCKQUOTE|DIV|PRE)$/i.test(tag) && (node as Element).id !== "root") {
+        return node as HTMLElement;
+      }
+    }
+    node = node.parentNode;
+  }
+  return null;
+}
+
+function readFormatFromBlock(block: HTMLElement | null, idoc: Document): string {
+  if (block) {
+    const tag = block.tagName.toLowerCase();
+    if (/^h[1-6]$/.test(tag) || tag === "blockquote" || tag === "pre") return tag;
+    if (tag === "li") {
+      const list = block.closest("ul,ol");
+      if (list?.tagName === "OL") return "ol";
+      if (list?.tagName === "UL") return "ul";
+      return "li";
+    }
+    if (tag === "p" || tag === "div") return "p";
+  }
+  try {
+    const v = String(idoc.queryCommandValue("formatBlock") || "").toLowerCase();
+    if (v && v !== "false" && v !== "null") return v.replace(/[<>]/g, "");
+  } catch {
+    /* ignore */
+  }
+  return "p";
+}
+
+/** Normalize formatBlock tag names (`<h2>` / `H2` → `h2`). */
+function normalizeBlockTag(tag: string): string {
+  return String(tag || "p").toLowerCase().replace(/[<>]/g, "").trim() || "p";
+}
+
+/**
+ * Change the block under the caret in-place (h2 → h1, h1 → p, etc.).
+ * Avoids execCommand("formatBlock"), which wraps a partial selection and
+ * creates a NEW heading above/inside the current one.
+ */
+function setBlockFormatInIframe(
+  idoc: Document,
+  nextTagRaw: string,
+  blockOverride?: HTMLElement | null
+): HTMLElement | null {
+  const nextTag = normalizeBlockTag(nextTagRaw);
+  if (!/^(h[1-6]|p|blockquote|pre)$/.test(nextTag)) return null;
+
+  let block = blockOverride || getBlockFromSelection(idoc);
+  const root = idoc.getElementById("root") || idoc.body;
+
+  // No block (bare text / empty editor) — create a paragraph at the caret first
+  if (!block || block === root || block.id === "root") {
+    try {
+      idoc.execCommand("formatBlock", false, "p");
+    } catch {
+      /* ignore */
+    }
+    block = getBlockFromSelection(idoc);
+    if (!block || block === root || block.id === "root") {
+      if (!root) return null;
+      const p = idoc.createElement("p");
+      p.className = "gb-p gb-el";
+      p.innerHTML = "<br>";
+      root.appendChild(p);
+      try {
+        const sel = idoc.getSelection();
+        const range = idoc.createRange();
+        range.setStart(p, 0);
+        range.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch {
+        /* ignore */
+      }
+      block = p;
+    }
+  }
+
+  const current = block.tagName.toLowerCase();
+  // Already the requested tag — nothing to do (toggle to paragraph is handled by caller)
+  if (current === nextTag) return block;
+
+  const replacement = idoc.createElement(nextTag);
+  for (const attr of Array.from(block.attributes)) {
+    if (attr.name === "id" && attr.value === "root") continue;
+    // Don't copy stale semantic classes — re-apply below
+    if (attr.name === "class") continue;
+    replacement.setAttribute(attr.name, attr.value);
+  }
+
+  // Preserve non-gb classes, then stamp the correct gb-* class for the new tag
+  const prevClass = String(block.className || "")
+    .replace(/\bgb-h[1-6]\b/gi, "")
+    .replace(/\bgb-p\b/gi, "")
+    .replace(/\bgb-quote\b/gi, "")
+    .replace(/\bgb-el\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const gbClass =
+    /^h[1-6]$/.test(nextTag) ? `gb-${nextTag}` : nextTag === "blockquote" ? "gb-quote" : "gb-p";
+  replacement.className = [prevClass, gbClass, "gb-el"].filter(Boolean).join(" ");
+
+  while (block.firstChild) replacement.appendChild(block.firstChild);
+  // Empty heading/paragraph must keep a <br> so caret/Enter keep working
+  if (!replacement.childNodes.length) {
+    replacement.appendChild(idoc.createElement("br"));
+  }
+  block.parentNode?.replaceChild(replacement, block);
+
+  try {
+    const sel = idoc.getSelection();
+    const range = idoc.createRange();
+    range.selectNodeContents(replacement);
+    range.collapse(true);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  } catch {
+    /* ignore */
+  }
+  return replacement;
+}
+
+/** Normalize current block tag for heading toggle (div ≡ paragraph). */
+function normalizeCurrentBlockTag(block: HTMLElement | null): string {
+  if (!block) return "p";
+  const t = block.tagName.toLowerCase();
+  if (t === "div") return "p";
+  return t;
+}
+
+function readAlignFromBlock(block: HTMLElement | null, idoc: Document): "left" | "center" | "right" | "justify" {
+  try {
+    if (idoc.queryCommandState("justifyCenter")) return "center";
+    if (idoc.queryCommandState("justifyRight")) return "right";
+    if (idoc.queryCommandState("justifyFull")) return "justify";
+  } catch {
+    /* ignore */
+  }
+  if (block) {
+    const inline = (block.style?.textAlign || "").toLowerCase();
+    if (inline === "center" || inline === "right" || inline === "justify" || inline === "left") {
+      return inline;
+    }
+    try {
+      const cs = idoc.defaultView?.getComputedStyle(block)?.textAlign || "";
+      if (cs === "center") return "center";
+      if (cs === "right" || cs === "end") return "right";
+      if (cs === "justify") return "justify";
+    } catch {
+      /* ignore */
+    }
+  }
+  return "left";
+}
+
+/** Actual visible color of selection (inline override → computed theme color). */
+function readSelectionTextColor(idoc: Document, block: HTMLElement | null): string {
+  const around = getColorAroundSelection(idoc);
+  if (around) return rgbToHex(around);
+
+  const sel = idoc.getSelection();
+  let node: Node | null = sel?.anchorNode || null;
+  if (node?.nodeType === Node.TEXT_NODE) node = node.parentNode;
+  const el =
+    (node && node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : null) || block;
+  if (el) {
+    try {
+      const cs = idoc.defaultView?.getComputedStyle(el)?.color;
+      if (cs) return rgbToHex(cs);
+    } catch {
+      /* ignore */
+    }
+  }
+  try {
+    const q = String(idoc.queryCommandValue("foreColor") || "");
+    if (q) return rgbToHex(q);
+  } catch {
+    /* ignore */
+  }
+  return "#000000";
 }
 
 function uid() {
@@ -270,40 +576,309 @@ function getColorAroundSelection(idoc: Document): string {
   return "";
 }
 
-/** Paint color onto link(s) in the selection so it survives theme CSS. */
-function applyColorInIframe(idoc: Document, savedRange: Range | null, color: string): void {
-  const c = String(color || "").trim();
-  if (!c) return;
-  restoreIframeSelection(idoc, savedRange);
+/** True only when the selection's text equals the whole block (not caret). */
+function selectionCoversWholeBlock(
+  sel: Selection | null,
+  block: HTMLElement | null
+): boolean {
+  if (!sel || !block || sel.rangeCount === 0 || sel.isCollapsed) return false;
+  try {
+    const blockText = (block.textContent || "").replace(/\s+/g, " ").trim();
+    const selText = String(sel.getRangeAt(0).toString() || "").replace(/\s+/g, " ").trim();
+    if (!selText || !blockText) return false;
+    return selText === blockText;
+  } catch {
+    return false;
+  }
+}
 
-  const anchor = getAnchorFromSelection(idoc);
-  const sel = idoc.getSelection();
+function markColorOverride(el: HTMLElement, color: string) {
+  el.style.setProperty("color", color);
+  el.setAttribute("data-gb-color-override", "1");
+}
 
-  if (anchor && (!sel || sel.isCollapsed || anchor.contains(sel.anchorNode!))) {
-    anchor.style.color = c;
-    // Flatten nested color wrappers inside the link
-    anchor.querySelectorAll("font[color], span[style*='color']").forEach((el) => {
-      if (el instanceof HTMLElement) el.style.color = "";
-      if (el.tagName === "FONT") el.removeAttribute("color");
-    });
+function markFontOverride(el: HTMLElement, fontFamily: string) {
+  el.style.setProperty("font-family", fontFamily);
+  el.setAttribute("data-gb-font-override", "1");
+}
+
+function clearNestedInlineProp(root: HTMLElement, prop: "color" | "font-family") {
+  const sel =
+    prop === "color"
+      ? 'font[color], span[style*="color"], [data-gb-color-override]'
+      : 'font[face], span[style*="font-family"], [data-gb-font-override]';
+  root.querySelectorAll(sel).forEach((node) => {
+    if (!(node instanceof HTMLElement) || node === root) return;
+    if (prop === "color") {
+      node.style.removeProperty("color");
+      node.removeAttribute("data-gb-color-override");
+      if (node.tagName === "FONT") node.removeAttribute("color");
+    } else {
+      node.style.removeProperty("font-family");
+      node.removeAttribute("data-gb-font-override");
+      if (node.tagName === "FONT") node.removeAttribute("face");
+    }
+  });
+}
+
+/** Wrap exactly this range in a styled <span> (word / letter safe). */
+function wrapRangeWithInlineStyles(
+  idoc: Document,
+  range: Range,
+  styles: { color?: string; fontFamily?: string }
+): HTMLSpanElement | null {
+  const color = String(styles.color || "").trim();
+  const fontFamily = String(styles.fontFamily || "").trim();
+  if (!color && !fontFamily) return null;
+  if (range.collapsed) return null;
+
+  const span = idoc.createElement("span");
+  if (color) markColorOverride(span, color);
+  if (fontFamily) markFontOverride(span, fontFamily);
+
+  try {
+    const working = range.cloneRange();
+    try {
+      working.surroundContents(span);
+    } catch {
+      // Range splits elements — extract + reinsert is reliable
+      const contents = working.extractContents();
+      span.appendChild(contents);
+      working.insertNode(span);
+    }
+  } catch {
+    return null;
+  }
+
+  try {
+    const sel = idoc.getSelection();
+    const next = idoc.createRange();
+    next.selectNodeContents(span);
+    sel?.removeAllRanges();
+    sel?.addRange(next);
+  } catch {
+    /* ignore */
+  }
+  return span;
+}
+
+/**
+ * Apply color and/or font to:
+ *  - exact text selection (word / letter / partial line), OR
+ *  - the whole line/block when the caret has no selection
+ */
+function applyTextStyleInIframe(
+  idoc: Document,
+  savedRange: Range | null,
+  styles: { color?: string; fontFamily?: string }
+): void {
+  const color = String(styles.color || "").trim();
+  const fontFamily = String(styles.fontFamily || "").trim();
+  if (!color && !fontFamily) return;
+
+  // A non-collapsed saved range ALWAYS means "only this text" — never the whole line
+  const intentionalPartial = Boolean(savedRange && !savedRange.collapsed);
+
+  if (intentionalPartial && savedRange) {
+    restoreIframeSelection(idoc, savedRange);
+    const applied = wrapRangeWithInlineStyles(idoc, savedRange, { color, fontFamily });
+    if (applied) return;
+    // Fallback if wrap failed
+    restoreIframeSelection(idoc, savedRange);
+    try {
+      idoc.execCommand("styleWithCSS", false, "true");
+    } catch {
+      /* ignore */
+    }
+    if (color) idoc.execCommand("foreColor", false, color);
+    if (fontFamily) idoc.execCommand("fontName", false, fontFamily);
     return;
   }
 
-  idoc.execCommand("foreColor", false, c);
+  restoreIframeSelection(idoc, savedRange);
+  try {
+    idoc.execCommand("styleWithCSS", false, "true");
+  } catch {
+    /* older engines */
+  }
 
-  // If foreColor wrapped a parent around <a>, move color onto the anchors
-  restoreIframeSelection(idoc, savedRange || saveIframeSelection(idoc));
-  const anchors = Array.from(idoc.querySelectorAll("a[href]")) as HTMLAnchorElement[];
-  for (const a of anchors) {
-    const parent = a.parentElement;
-    if (!parent) continue;
-    const parentColor =
-      (parent instanceof HTMLElement && parent.style?.color) ||
-      (parent.tagName === "FONT" ? parent.getAttribute("color") : "") ||
-      "";
-    if (parentColor) {
-      a.style.color = parentColor;
+  const sel = idoc.getSelection();
+  const block = getBlockFromSelection(idoc);
+  const anchor = getAnchorFromSelection(idoc);
+
+  // Whole link only when caret is inside it, or the selection is the full link text
+  if (anchor) {
+    const linkText = (anchor.textContent || "").replace(/\s+/g, " ").trim();
+    const selText =
+      sel && !sel.isCollapsed && sel.rangeCount
+        ? String(sel.getRangeAt(0).toString() || "").replace(/\s+/g, " ").trim()
+        : "";
+    const styleWholeLink =
+      !sel ||
+      sel.isCollapsed ||
+      Boolean(selText && linkText && selText === linkText);
+    if (styleWholeLink) {
+      if (color) {
+        markColorOverride(anchor, color);
+        clearNestedInlineProp(anchor, "color");
+      }
+      if (fontFamily) {
+        markFontOverride(anchor, fontFamily);
+        clearNestedInlineProp(anchor, "font-family");
+      }
+      return;
     }
+  }
+
+  // Live selection covers the entire block text → style the block element
+  const wholeBlock =
+    block &&
+    /^(H[1-6]|P|LI|BLOCKQUOTE|DIV|PRE)$/i.test(block.tagName) &&
+    selectionCoversWholeBlock(sel, block);
+
+  if (wholeBlock && block) {
+    if (color) {
+      markColorOverride(block, color);
+      clearNestedInlineProp(block, "color");
+    }
+    if (fontFamily) {
+      markFontOverride(block, fontFamily);
+      clearNestedInlineProp(block, "font-family");
+    }
+    return;
+  }
+
+  // Caret only (no word selected) → style the whole line under the cursor
+  if (!sel || !sel.rangeCount || sel.isCollapsed) {
+    if (block && /^(H[1-6]|P|LI|BLOCKQUOTE|DIV|PRE)$/i.test(block.tagName)) {
+      if (color) {
+        markColorOverride(block, color);
+        clearNestedInlineProp(block, "color");
+      }
+      if (fontFamily) {
+        markFontOverride(block, fontFamily);
+        clearNestedInlineProp(block, "font-family");
+      }
+    }
+    return;
+  }
+
+  // Partial live selection — wrap only those characters
+  try {
+    const liveRange = sel.getRangeAt(0).cloneRange();
+    if (wrapRangeWithInlineStyles(idoc, liveRange, { color, fontFamily })) return;
+  } catch {
+    /* fall through */
+  }
+
+  if (color) idoc.execCommand("foreColor", false, color);
+  if (fontFamily) idoc.execCommand("fontName", false, fontFamily);
+
+  // Normalize FONT tags → inline style + override marks
+  restoreIframeSelection(idoc, savedRange || saveIframeSelection(idoc));
+  const sel2 = idoc.getSelection();
+  if (sel2 && sel2.rangeCount) {
+    let n: Node | null = sel2.anchorNode;
+    while (n && n !== idoc.body) {
+      if (n.nodeType === Node.ELEMENT_NODE) {
+        const el = n as HTMLElement;
+        if (el.tagName === "FONT") {
+          if (color || el.getAttribute("color")) {
+            markColorOverride(el, color || el.getAttribute("color") || "#000");
+          }
+          if (fontFamily || el.getAttribute("face")) {
+            markFontOverride(el, fontFamily || el.getAttribute("face") || "inherit");
+          }
+          break;
+        }
+        if (el.style?.color && color) {
+          el.setAttribute("data-gb-color-override", "1");
+        }
+        if (el.style?.fontFamily && fontFamily) {
+          el.setAttribute("data-gb-font-override", "1");
+          el.style.setProperty("font-family", fontFamily);
+        }
+        if (el.style?.color || el.style?.fontFamily) break;
+      }
+      n = n.parentNode;
+    }
+  }
+}
+
+function applyColorInIframe(idoc: Document, savedRange: Range | null, color: string): void {
+  applyTextStyleInIframe(idoc, savedRange, { color });
+}
+
+function applyFontInIframe(idoc: Document, savedRange: Range | null, fontFamily: string): void {
+  applyTextStyleInIframe(idoc, savedRange, { fontFamily });
+}
+
+/** Read font-family from selection / block (normalized for the toolbar). */
+function readSelectionFontFamily(idoc: Document, block: HTMLElement | null): string {
+  const sel = idoc.getSelection();
+  let node: Node | null = sel?.anchorNode || null;
+  if (node?.nodeType === Node.TEXT_NODE) node = node.parentNode;
+  while (node && node !== idoc.body) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as HTMLElement;
+      if (el.getAttribute("data-gb-font-override") === "1" && el.style?.fontFamily) {
+        return el.style.fontFamily;
+      }
+      if (el.style?.fontFamily) return el.style.fontFamily;
+      if (el.tagName === "FONT" && el.getAttribute("face")) {
+        return el.getAttribute("face") || "";
+      }
+    }
+    node = node.parentNode;
+  }
+  if (block?.style?.fontFamily) return block.style.fontFamily;
+  try {
+    const q = String(idoc.queryCommandValue("fontName") || "").trim();
+    if (q && q.toLowerCase() !== "false") return q.replace(/^['"]|['"]$/g, "");
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
+function rangeStillInDocument(idoc: Document, range: Range | null): boolean {
+  if (!range) return false;
+  try {
+    const root = idoc.getElementById("root") || idoc.body;
+    if (!root) return false;
+    return root.contains(range.commonAncestorContainer);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Expand a collapsed caret to the whole line/block under the cursor.
+ * Does NOT change an existing word/letter selection.
+ * Returns didExpand so callers can put the caret back (avoid leaving the line selected).
+ */
+function expandCollapsedSelectionToBlock(
+  idoc: Document
+): { range: Range; didExpand: boolean } | null {
+  const sel = idoc.getSelection();
+  if (!sel) return null;
+  const block = getBlockFromSelection(idoc);
+  if (!block || !/^(H[1-6]|P|LI|BLOCKQUOTE|DIV|PRE)$/i.test(block.tagName)) return null;
+  if (!sel.isCollapsed && sel.rangeCount > 0) {
+    try {
+      return { range: sel.getRangeAt(0).cloneRange(), didExpand: false };
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const range = idoc.createRange();
+    range.selectNodeContents(block);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return { range: range.cloneRange(), didExpand: true };
+  } catch {
+    return null;
   }
 }
 
@@ -477,6 +1052,8 @@ export function RichTextEditor({
   uploadUrl = DEFAULT_UPLOAD_URL,
   disabled = false,
   height = 420,
+  themePreview = null,
+  projectId = null,
 }: RichTextEditorProps) {
   // Split incoming full document
   const initialFull =
@@ -518,16 +1095,23 @@ export function RichTextEditor({
 
   // UI state
   const [textColor, setTextColor] = useState("#000000");
+  /** Draft hex while typing/pasting — synced from selection when not editing. */
+  const [colorDraft, setColorDraft] = useState("#000000");
+  const colorDraftFocusedRef = useRef(false);
+  const [textFont, setTextFont] = useState("");
+  const fontSelectFocusedRef = useRef(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   /** Saved iframe Range — clicking toolbar would otherwise clear the selection. */
   const savedSelectionRef = useRef<Range | null>(null);
+  /** Last non-collapsed word/letter selection — survives toolbar focus steal. */
+  const stickyTextSelectionRef = useRef<Range | null>(null);
   const linkInputRef = useRef<HTMLInputElement | null>(null);
 
   // Toolbar states
   const [currentFormat, setCurrentFormat] = useState("p");
-  const [currentAlign, setCurrentAlign] = useState("left");
+  const [currentAlign, setCurrentAlign] = useState<"left" | "center" | "right" | "justify">("left");
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
@@ -535,6 +1119,8 @@ export function RichTextEditor({
   const [isOrdered, setIsOrdered] = useState(false);
   const [isLink, setIsLink] = useState(false);
   const [imageNode, setImageNode] = useState<HTMLImageElement | null>(null);
+  /** Bumps when iframe document is rewritten so toolbar listeners re-bind. */
+  const [iframeEpoch, setIframeEpoch] = useState(0);
 
   // HTML tab draft buffer (controlled)
   const [htmlDraft, setHtmlDraft] = useState<string>(
@@ -559,9 +1145,220 @@ export function RichTextEditor({
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const changeOriginRef = useRef<"visual" | "html" | null>(null);
+  /** Prevent React from rewriting iframe innerHTML after editor-originated edits (kills undo). */
+  const skipNextBodyPatchRef = useRef(false);
+  /** Custom undo/redo — browser undo dies when React syncs DOM. */
+  const historyRef = useRef<string[]>([]);
+  const historyIndexRef = useRef(-1);
+  const historyTimerRef = useRef<number | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const HISTORY_LIMIT = 80;
+
+  /** Resolved theme — never leave the visual editor unstyled. */
+  const [internalTheme, setInternalTheme] = useState<BlogEditorThemePreview | null>(null);
+  const editorProjectId = normalizeEditorProjectId(projectId);
+
+  const parentThemeMatches =
+    themePreview &&
+    (!themePreview.projectId || themePreview.projectId === editorProjectId);
+
+  const resolvedTheme =
+    parentThemeMatches &&
+    (themePreview?.proseCss || themePreview?.titleColor || themePreview?.accentColor)
+      ? themePreview
+      : internalTheme &&
+          (!internalTheme.projectId || internalTheme.projectId === editorProjectId)
+        ? internalTheme
+        : null;
+
+  /** Prefer API proseCss (exact same rules as live site). Tokens only as fallback. */
+  const resolvedThemeCss = useMemo(() => {
+    const apiCss = String(resolvedTheme?.proseCss || "").trim();
+    if (apiCss) {
+      const extra = String(resolvedTheme?.blogCss || "").trim();
+      // Avoid double-injecting blogCss if already baked into proseCss from API
+      const blogExtra =
+        extra && !apiCss.includes(extra.slice(0, Math.min(40, extra.length)))
+          ? `\n${extra}`
+          : "";
+      return `${apiCss}\n${EDITOR_CHROME_CSS}${blogExtra}`;
+    }
+    return buildDefaultEditorThemeCss(resolvedTheme);
+  }, [resolvedTheme]);
+
+  /** Don't paint crimson defaults while the project theme is still loading. */
+  const themePending = Boolean(editorProjectId) && !resolvedTheme;
 
   const getIdoc = () => iframeRef.current?.contentDocument || null;
   const getRoot = () => getIdoc()?.getElementById("root") || null;
+
+  const applyThemeToIframe = useCallback(() => {
+    const idoc = getIdoc();
+    if (!idoc?.head) return false;
+    let styleEl = idoc.getElementById("gb-blog-editor-theme") as HTMLStyleElement | null;
+    if (!styleEl) {
+      styleEl = idoc.createElement("style");
+      styleEl.id = "gb-blog-editor-theme";
+      idoc.head.appendChild(styleEl);
+    }
+    styleEl.textContent = resolvedThemeCss;
+
+    const fontsUrl = EDITOR_GOOGLE_FONTS_URL;
+    if (fontsUrl) {
+      let linkEl = idoc.getElementById("gb-blog-editor-fonts") as HTMLLinkElement | null;
+      if (!linkEl) {
+        linkEl = idoc.createElement("link");
+        linkEl.id = "gb-blog-editor-fonts";
+        linkEl.rel = "stylesheet";
+        idoc.head.insertBefore(linkEl, styleEl);
+      }
+      if (linkEl.getAttribute("href") !== fontsUrl) {
+        linkEl.setAttribute("href", fontsUrl);
+      }
+    }
+
+    const root = idoc.getElementById("root");
+    if (root && !root.classList.contains("blog-prose")) root.classList.add("blog-prose");
+    return true;
+  }, [resolvedThemeCss, resolvedTheme?.googleFontsUrl]);
+
+  // Parent theme late? Fetch here too so Edit Post never stays plain.
+  useEffect(() => {
+    if (
+      parentThemeMatches &&
+      (themePreview?.proseCss || themePreview?.titleColor || themePreview?.accentColor)
+    ) {
+      return;
+    }
+    if (!editorProjectId) {
+      setInternalTheme({
+        accentColor: "#E11D48",
+        linkColor: "#E11D48",
+        titleColor: "#0F172A",
+        textColor: "#374151",
+        surfaceColor: "#FFFFFF",
+        titleFont: '"Poppins", sans-serif',
+        bodyFont: '"Inter", sans-serif',
+        proseCss: buildDefaultEditorThemeCss(null),
+        googleFontsUrl:
+          "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&family=Poppins:wght@300;400;700;900&display=swap",
+        projectId: "",
+      });
+      return;
+    }
+    let cancelled = false;
+    setInternalTheme(null);
+    (async () => {
+      try {
+        const { http } = await import("../../config.js");
+        const token = localStorage.getItem("token");
+        const res = await http.get(`/blogEditorTheme/${editorProjectId}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        if (cancelled) return;
+        const data = res.data?.data || {};
+        const titleFont = String(data.titleFont || "").trim();
+        const bodyFont = String(data.bodyFont || "").trim();
+        setInternalTheme({
+          proseCss: String(data.proseCss || ""),
+          googleFontsUrl: String(data.googleFontsUrl || ""),
+          titleColor: data.titleColor,
+          textColor: data.textColor,
+          linkColor: data.linkColor || data.accentColor,
+          accentColor: data.accentColor,
+          surfaceColor: data.surfaceColor || "#FFFFFF",
+          blogCss: data.blogCss || "",
+          titleFont: titleFont && titleFont !== "inherit" ? titleFont : '"Poppins", sans-serif',
+          bodyFont: bodyFont && bodyFont !== "inherit" ? bodyFont : '"Inter", sans-serif',
+          projectId: editorProjectId,
+        });
+      } catch {
+        if (cancelled) return;
+        setInternalTheme({
+          accentColor: "#E11D48",
+          linkColor: "#E11D48",
+          titleColor: "#0F172A",
+          textColor: "#374151",
+          surfaceColor: "#FFFFFF",
+          titleFont: '"Poppins", sans-serif',
+          bodyFont: '"Inter", sans-serif',
+          proseCss: buildDefaultEditorThemeCss(null),
+          googleFontsUrl:
+            "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&family=Poppins:wght@300;400;700;900&display=swap",
+          projectId: editorProjectId,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    editorProjectId,
+    parentThemeMatches,
+    themePreview?.proseCss,
+    themePreview?.titleColor,
+    themePreview?.accentColor,
+  ]);
+
+  // Theme CSS only — never re-run on bodyHtml (that was thrashing the iframe)
+  useEffect(() => {
+    if (activeTab !== "visual") return;
+    if (themePending) return;
+    applyThemeToIframe();
+    const t = window.setTimeout(() => applyThemeToIframe(), 50);
+    return () => window.clearTimeout(t);
+  }, [activeTab, resolvedThemeCss, applyThemeToIframe, iframeEpoch, themePending]);
+
+  const refreshHistoryFlags = useCallback(() => {
+    const idx = historyIndexRef.current;
+    const len = historyRef.current.length;
+    setCanUndo(idx > 0);
+    setCanRedo(idx >= 0 && idx < len - 1);
+  }, []);
+
+  const resetHistory = useCallback(
+    (html: string) => {
+      if (historyTimerRef.current) {
+        window.clearTimeout(historyTimerRef.current);
+        historyTimerRef.current = null;
+      }
+      historyRef.current = [String(html || "")];
+      historyIndexRef.current = 0;
+      refreshHistoryFlags();
+    },
+    [refreshHistoryFlags]
+  );
+
+  const pushHistory = useCallback(
+    (html: string) => {
+      const nextHtml = String(html || "");
+      const h = historyRef.current;
+      const idx = historyIndexRef.current;
+      if (idx >= 0 && h[idx] === nextHtml) {
+        refreshHistoryFlags();
+        return;
+      }
+      const trimmed = h.slice(0, idx + 1);
+      trimmed.push(nextHtml);
+      while (trimmed.length > HISTORY_LIMIT) trimmed.shift();
+      historyRef.current = trimmed;
+      historyIndexRef.current = trimmed.length - 1;
+      refreshHistoryFlags();
+    },
+    [refreshHistoryFlags]
+  );
+
+  const scheduleHistoryPush = useCallback(
+    (html: string) => {
+      if (historyTimerRef.current) window.clearTimeout(historyTimerRef.current);
+      historyTimerRef.current = window.setTimeout(() => {
+        historyTimerRef.current = null;
+        pushHistory(html);
+      }, 400);
+    },
+    [pushHistory]
+  );
 
   const emitFull = (body: string) => {
     const full = joinHeadBody(doctype, htmlAttrs, headHtml, body);
@@ -571,12 +1368,41 @@ export function RichTextEditor({
     }
   };
 
-  const commitFromIframe = () => {
+  const focusEditor = () => {
+    const idoc = getIdoc();
+    const root = idoc?.getElementById("root") as HTMLElement | null;
+    try {
+      root?.focus?.();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const markSkipBodyPatch = () => {
+    skipNextBodyPatchRef.current = true;
+    // Clear even when setBodyHtml is a no-op (effect would not run)
+    window.requestAnimationFrame(() => {
+      skipNextBodyPatchRef.current = false;
+    });
+  };
+
+  /**
+   * Sync React state from iframe without patching innerHTML back
+   * (patching innerHTML clears the editing history).
+   */
+  const commitFromIframe = (historyMode: "push" | "schedule" | "none" = "push") => {
     const root = getRoot();
     if (!root) return;
     const html = root.innerHTML;
+    markSkipBodyPatch();
+    changeOriginRef.current = "visual";
     setBodyHtml((prev) => (prev === html ? prev : html));
     emitFull(html);
+    if (historyMode === "push") pushHistory(html);
+    else if (historyMode === "schedule") scheduleHistoryPush(html);
+    window.setTimeout(() => {
+      if (changeOriginRef.current === "visual") changeOriginRef.current = null;
+    }, 0);
   };
 
   // Helper to get currently selected image
@@ -621,35 +1447,222 @@ export function RichTextEditor({
     return null;
   };
 
-  // Write iframe document
+  // Write iframe document — always branded (never plain system black/white)
   const writeIframeDoc = (head: string, body: string) => {
-    const typographyStyle = `
-      body:after { content:""; display:block; clear:both; }
-      h1 { font-size: 1.875rem; line-height: 2.25rem; font-weight: 700; margin: 1rem 0 .5rem; }
-      h2 { font-size: 1.5rem; line-height: 2rem; font-weight: 700; margin: .875rem 0 .5rem; }
-      h3 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; margin: .75rem 0 .5rem; }
-      ul { list-style: disc; padding-left: 1.5rem; }
-      ol { list-style: decimal; padding-left: 1.5rem; }
-      a { text-decoration: underline; cursor: pointer; }
-      img { max-width: 100%; height: auto; display: block; }
-      img:focus, img.selected { outline: 2px solid #60a5fa; }
-    `;
+    const themeCss = resolvedThemeCss;
+    const fontsUrl = EDITOR_GOOGLE_FONTS_URL;
+    const fontsLink = `<link id="gb-blog-editor-fonts" rel="stylesheet" href="${String(fontsUrl).replace(/"/g, "")}" />`;
+    // Strip old editor/system styles from saved post <head> so they can't override theme
+    const cleanHead = stripConflictingHeadStyles(head);
     const docHtml = `${doctype || "<!doctype html>"}
 <html ${htmlAttrs || 'lang="en"'}>
 <head>
 <meta charset="utf-8">
-${head || ""}
-<style>body{padding:1rem;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;}</style>
-<style>${typographyStyle}</style>
+${fontsLink}
+${cleanHead || ""}
+<style id="gb-blog-editor-theme">${themeCss}</style>
 </head>
 <body>
-  <main id="root" contenteditable="${!disabled}">${body || ""}</main>
+  <main id="root" class="blog-prose" contenteditable="${!disabled}">${body || ""}</main>
   <script>
     (function(){
       const root = document.getElementById('root');
-      const send = () => parent.postMessage({ type: 'RTE_BODY_HTML', html: root.innerHTML }, '*');
+      function stampGbClasses(el){
+        if (!el) return;
+        var map = {
+          H1:'gb-h1',H2:'gb-h2',H3:'gb-h3',H4:'gb-h4',H5:'gb-h5',H6:'gb-h6',
+          P:'gb-p',A:'gb-link',UL:'gb-ul',OL:'gb-ol',LI:'gb-li',
+          BLOCKQUOTE:'gb-quote',STRONG:'gb-strong',B:'gb-strong',EM:'gb-em',I:'gb-em',
+          IMG:'gb-img',HR:'gb-hr',DETAILS:'gb-faq',SUMMARY:'gb-faq-q',CODE:'gb-code'
+        };
+        var nodes = el.querySelectorAll('h1,h2,h3,h4,h5,h6,p,a,ul,ol,li,blockquote,strong,b,em,i,img,hr,details,summary,code');
+        for (var i = 0; i < nodes.length; i++) {
+          var node = nodes[i];
+          var cls = map[node.tagName];
+          if (!cls) continue;
+          if (!node.classList.contains(cls)) node.classList.add(cls);
+          if (!node.classList.contains('gb-el')) node.classList.add('gb-el');
+        }
+      }
+      /** Convert FAQ h3+p (and legacy div.gb-faq) into <details> accordions. */
+      function wrapFaqAccordions(el){
+        if (!el) return;
+        // Upgrade legacy static cards
+        el.querySelectorAll('div.gb-faq').forEach(function(card){
+          if (card.querySelector('details, summary')) return;
+          var h3 = card.querySelector('h3');
+          if (!h3) return;
+          var details = document.createElement('details');
+          details.className = 'gb-faq gb-el';
+          details.setAttribute('name', 'gb-blog-faq');
+          var summary = document.createElement('summary');
+          summary.className = 'gb-faq-q gb-el';
+          summary.innerHTML = h3.innerHTML;
+          var qText = (h3.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase().replace(/[?？]/g, '');
+          var ans = document.createElement('div');
+          ans.className = 'gb-faq-a gb-el';
+          Array.prototype.slice.call(card.children).forEach(function(n){
+            if (n === h3 || n.tagName === 'H3') return;
+            if (n.tagName === 'P') {
+              var pText = (n.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase().replace(/[?？]/g, '');
+              if (qText && pText === qText) return;
+            }
+            ans.appendChild(n.cloneNode(true));
+          });
+          if (!ans.textContent || !ans.textContent.trim()) return;
+          details.appendChild(summary);
+          details.appendChild(ans);
+          card.parentNode && card.parentNode.replaceChild(details, card);
+        });
+        // Clean existing details that still have h3/question inside answer
+        el.querySelectorAll('details.gb-faq').forEach(function(det){
+          var sum = det.querySelector('summary');
+          if (!sum) return;
+          var qText = (sum.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase().replace(/[?？]/g, '');
+          var ans = det.querySelector('.gb-faq-a') || null;
+          if (!ans) {
+            // Build answer box from non-summary children
+            ans = document.createElement('div');
+            ans.className = 'gb-faq-a gb-el';
+            Array.prototype.slice.call(det.childNodes).forEach(function(n){
+              if (n === sum || (n.nodeType === 1 && n.tagName === 'SUMMARY')) return;
+              ans.appendChild(n);
+            });
+            det.appendChild(ans);
+          }
+          ans.querySelectorAll('h1,h2,h3,h4,h5,h6,summary').forEach(function(h){ h.remove(); });
+          Array.prototype.slice.call(ans.querySelectorAll('p')).forEach(function(p){
+            var pText = (p.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase().replace(/[?？]/g, '');
+            if (qText && pText === qText) p.remove();
+          });
+        });
+        // Find FAQ heading then wrap following h3+p siblings
+        var headings = el.querySelectorAll('h2');
+        headings.forEach(function(h2){
+          if (!/^\\s*FAQ\\s*$/i.test((h2.textContent || '').trim())) return;
+          var node = h2.nextSibling;
+          while (node) {
+            if (node.nodeType === 1 && node.tagName === 'H2') break;
+            var next = node.nextSibling;
+            if (node.nodeType === 1 && node.tagName === 'H3') {
+              var answers = [];
+              var cursor = next;
+              while (cursor && cursor.nodeType === 1 && cursor.tagName === 'P') {
+                answers.push(cursor);
+                cursor = cursor.nextSibling;
+              }
+              if (answers.length) {
+                var details = document.createElement('details');
+                details.className = 'gb-faq gb-el';
+                details.setAttribute('name', 'gb-blog-faq');
+                var summary = document.createElement('summary');
+                summary.className = 'gb-faq-q gb-el';
+                summary.innerHTML = node.innerHTML;
+                var ans = document.createElement('div');
+                ans.className = 'gb-faq-a gb-el';
+                answers.forEach(function(p){ ans.appendChild(p); });
+                details.appendChild(summary);
+                details.appendChild(ans);
+                el.insertBefore(details, node);
+                el.removeChild(node);
+                next = cursor;
+              }
+            }
+            node = next;
+          }
+        });
+        // Match live blog: first FAQ item open by default
+        var faqs = el.querySelectorAll('details.gb-faq');
+        if (faqs.length) {
+          var anyOpen = false;
+          faqs.forEach(function(d){ if (d.open) anyOpen = true; });
+          if (!anyOpen) faqs[0].open = true;
+        }
+      }
+      stampGbClasses(root);
+      wrapFaqAccordions(root);
+      stampGbClasses(root);
+      try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (err) {}
+      try { document.execCommand('styleWithCSS', false, 'true'); } catch (err) {}
+
+      function closestBlock(node){
+        var r = document.getElementById('root');
+        while (node && node !== r) {
+          if (node.nodeType === 1) {
+            var t = node.tagName;
+            if (/^(H[1-6]|P|LI|BLOCKQUOTE|DIV|PRE)$/i.test(t) && node.id !== 'root') return node;
+          }
+          node = node.parentNode;
+        }
+        return null;
+      }
+      function placeCaretAtStart(el){
+        var sel = window.getSelection();
+        if (!sel || !el) return;
+        var range = document.createRange();
+        if (!el.childNodes.length) el.appendChild(document.createElement('br'));
+        range.setStart(el, 0);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      function ensureBreak(el){
+        if (!el) return;
+        if (!(el.textContent || '').replace(/\u00a0/g, '').trim()) {
+          el.innerHTML = '<br>';
+        }
+      }
+      /**
+       * Word / WordPress Enter:
+       * - Split current block at caret into a NEW visible block
+       * - Leaving a heading always creates a paragraph (not another heading)
+       */
+      function splitBlockAtCaret(block){
+        var sel = window.getSelection();
+        if (!sel || !sel.rangeCount || !block || !block.parentNode) return false;
+        var caret = sel.getRangeAt(0);
+        var sc = caret.startContainer;
+        var so = caret.startOffset;
+        try { caret.deleteContents(); } catch (err) {}
+
+        var after = document.createRange();
+        try {
+          after.selectNodeContents(block);
+          after.setStart(sc, Math.min(so, sc.nodeType === 3 ? (sc.nodeValue || '').length : (sc.childNodes ? sc.childNodes.length : 0)));
+        } catch (err) {
+          after.selectNodeContents(block);
+          after.collapse(false);
+        }
+        var frag;
+        try { frag = after.extractContents(); } catch (err) { frag = document.createDocumentFragment(); }
+
+        var newTag = /^H[1-6]$/i.test(block.tagName) ? 'P' : block.tagName;
+        if (/^BLOCKQUOTE$/i.test(block.tagName) && !(block.textContent || '').trim() && !(frag.textContent || '').trim()) {
+          newTag = 'P';
+        }
+        var neu = document.createElement(newTag);
+        var map = { H1:'gb-h1',H2:'gb-h2',H3:'gb-h3',H4:'gb-h4',H5:'gb-h5',H6:'gb-h6',P:'gb-p',BLOCKQUOTE:'gb-quote',DIV:'gb-p',PRE:'gb-p' };
+        var cls = map[neu.tagName] || 'gb-p';
+        neu.className = cls + ' gb-el';
+        neu.appendChild(frag);
+        ensureBreak(block);
+        ensureBreak(neu);
+        if (block.nextSibling) block.parentNode.insertBefore(neu, block.nextSibling);
+        else block.parentNode.appendChild(neu);
+        placeCaretAtStart(neu);
+        return true;
+      }
+
+      const send = () => {
+        stampGbClasses(root);
+        parent.postMessage({ type: 'RTE_BODY_HTML', html: root.innerHTML }, '*');
+      };
       root.addEventListener('input', send);
-      root.addEventListener('blur', send, true); // commit on blur
+      root.addEventListener('blur', () => {
+        wrapFaqAccordions(root);
+        stampGbClasses(root);
+        send();
+      }, true);
 
       const ping = () => parent.postMessage({ type: 'RTE_PING_EDIT' }, '*');
       ['focusin','keydown','input','paste','drop','mouseup','click'].forEach(ev => {
@@ -661,31 +1674,23 @@ ${head || ""}
         const t = e.target;
         if (t && t.tagName === 'IMG') {
           try {
-            // Clear any existing selection classes
             root.querySelectorAll('img.selected').forEach(img => img.classList.remove('selected'));
-            
-            // Add selected class to clicked image
             t.classList.add('selected');
-            
             const sel = window.getSelection();
             const r = document.createRange();
             r.selectNode(t);
             sel.removeAllRanges();
             sel.addRange(r);
-            
-            // Notify parent about image selection
             parent.postMessage({ type: 'RTE_IMAGE_SELECTED', img: t }, '*');
           } catch(err) {
             console.log('Selection error:', err);
           }
         } else {
-          // Clear image selection if clicking elsewhere
           root.querySelectorAll('img.selected').forEach(img => img.classList.remove('selected'));
           parent.postMessage({ type: 'RTE_IMAGE_DESELECTED' }, '*');
         }
       });
 
-      // Right-click replace image
       root.addEventListener('contextmenu', (e) => {
         const t = e.target;
         if (t && t.tagName === 'IMG') {
@@ -694,11 +1699,71 @@ ${head || ""}
         }
       });
       
-      // Update selection on any change
       ['selectionchange', 'keyup', 'mouseup'].forEach(ev => {
         document.addEventListener(ev, () => {
           parent.postMessage({ type: 'RTE_SELECTION_CHANGE' }, '*');
         });
+      });
+
+      // Enter + undo/redo (WordPress-style block splits)
+      root.addEventListener('keydown', (e) => {
+        const mod = e.metaKey || e.ctrlKey;
+        if (mod) {
+          const key = String(e.key || '').toLowerCase();
+          if (key === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            parent.postMessage({ type: 'RTE_UNDO' }, '*');
+            return;
+          }
+          if (key === 'y' || (key === 'z' && e.shiftKey)) {
+            e.preventDefault();
+            parent.postMessage({ type: 'RTE_REDO' }, '*');
+          }
+          return;
+        }
+
+        if (e.key !== 'Enter' || e.isComposing) return;
+
+        if (e.shiftKey) {
+          e.preventDefault();
+          try { document.execCommand('insertLineBreak'); } catch (err) {}
+          send();
+          return;
+        }
+
+        var sel = window.getSelection();
+        if (!sel || !sel.rangeCount) return;
+        var anchor = sel.anchorNode;
+        var el = anchor && anchor.nodeType === 1 ? anchor : (anchor && anchor.parentElement);
+        if (el && el.closest && el.closest('summary')) {
+          e.preventDefault();
+          return;
+        }
+
+        var block = closestBlock(anchor);
+        if (block && /^LI$/i.test(block.tagName)) return;
+
+        e.preventDefault();
+        if (!block) {
+          try { document.execCommand('formatBlock', false, 'p'); } catch (err) {}
+          block = closestBlock(window.getSelection() && window.getSelection().anchorNode);
+        }
+        if (block && splitBlockAtCaret(block)) {
+          stampGbClasses(root);
+          send();
+          return;
+        }
+        try {
+          document.execCommand('insertParagraph');
+        } catch (err) {
+          var p = document.createElement('p');
+          p.className = 'gb-p gb-el';
+          p.innerHTML = '<br>';
+          root.appendChild(p);
+          placeCaretAtStart(p);
+        }
+        stampGbClasses(root);
+        send();
       });
     })();
   </script>
@@ -711,23 +1776,140 @@ ${head || ""}
     idoc.open();
     idoc.write(docHtml);
     idoc.close();
+    // Re-assert theme after write (some browsers clear styles briefly)
+    window.setTimeout(() => applyThemeToIframe(), 0);
+    setIframeEpoch((n) => n + 1);
   };
 
-  // Rebuild iframe only when switching to visual or structure changes (NOT bodyHtml)
+  // Rebuild iframe only when switching to visual or structure/theme changes (NOT bodyHtml)
   useEffect(() => {
     if (activeTab !== "visual") return;
+    // Wait for project theme — painting defaults first is what caused intermittent wrong themes
+    if (themePending) return;
     writeIframeDoc(headHtml, bodyHtml);
-  }, [activeTab, headHtml, htmlAttrs, disabled, doctype]); // bodyHtml intentionally excluded
+    if (historyRef.current.length === 0) resetHistory(bodyHtml);
+  }, [activeTab, headHtml, htmlAttrs, disabled, doctype, resolvedThemeCss, themePending]); // bodyHtml intentionally excluded
 
   // Patch body without rewriting doc when body changes externally
   useEffect(() => {
     if (activeTab !== "visual") return;
+    if (skipNextBodyPatchRef.current) {
+      skipNextBodyPatchRef.current = false;
+      return;
+    }
     if (changeOriginRef.current === "visual") return;
     const root = getRoot();
     if (root && root.innerHTML !== bodyHtml) {
       root.innerHTML = bodyHtml;
+      resetHistory(bodyHtml);
+    } else if (historyRef.current.length === 0) {
+      resetHistory(bodyHtml);
     }
-  }, [bodyHtml, activeTab]);
+  }, [bodyHtml, activeTab, resetHistory]);
+
+  const syncToolbarFromDocument = useCallback((doc: Document) => {
+    try {
+      setIsBold(!!doc.queryCommandState("bold"));
+      setIsItalic(!!doc.queryCommandState("italic"));
+      setIsUnderline(!!doc.queryCommandState("underline"));
+      setIsBullet(!!doc.queryCommandState("insertUnorderedList"));
+      setIsOrdered(!!doc.queryCommandState("insertOrderedList"));
+    } catch {
+      /* ignore */
+    }
+
+    const block = getBlockFromSelection(doc);
+    const format = readFormatFromBlock(block, doc);
+    setCurrentFormat(format);
+    if (format === "ul") setIsBullet(true);
+    if (format === "ol") setIsOrdered(true);
+
+    setCurrentAlign(readAlignFromBlock(block, doc));
+    const nextColor = readSelectionTextColor(doc, block);
+    setTextColor(nextColor);
+    if (!colorDraftFocusedRef.current) setColorDraft(nextColor);
+    const nextFont = readSelectionFontFamily(doc, block);
+    if (!fontSelectFocusedRef.current) setTextFont(nextFont);
+
+    const anchor = getAnchorFromSelection(doc);
+    setIsLink(Boolean(anchor?.getAttribute("href")));
+
+    const sel = doc.getSelection();
+    const root = doc.getElementById("root");
+    // Only refresh sticky selection while the iframe editor actually has focus.
+    // Blur/selectionclear from clicking the color picker must NOT wipe a word selection.
+    const editorFocused =
+      typeof doc.hasFocus === "function"
+        ? doc.hasFocus()
+        : Boolean(
+            root &&
+              doc.activeElement &&
+              (doc.activeElement === root || root.contains(doc.activeElement))
+          );
+    if (sel && sel.rangeCount > 0 && root && editorFocused) {
+      try {
+        const live = sel.getRangeAt(0).cloneRange();
+        savedSelectionRef.current = live;
+        if (!live.collapsed) {
+          stickyTextSelectionRef.current = live.cloneRange();
+        } else {
+          stickyTextSelectionRef.current = null;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const imgElement = getSelectedImage();
+    if (imgElement) ensureImageTokensAndStyle(imgElement);
+    setImageNode(imgElement);
+  }, []);
+
+  const restoreHistoryAt = useCallback(
+    (index: number) => {
+      const html = historyRef.current[index];
+      if (html == null) return;
+      historyIndexRef.current = index;
+      refreshHistoryFlags();
+      const idoc = getIdoc();
+      const root = getRoot();
+      if (!root || !idoc) return;
+      focusEditor();
+      markSkipBodyPatch();
+      changeOriginRef.current = "visual";
+      if (root.innerHTML !== html) root.innerHTML = html;
+      setBodyHtml(html);
+      emitFull(html);
+      window.setTimeout(() => {
+        changeOriginRef.current = null;
+        syncToolbarFromDocument(idoc);
+      }, 0);
+    },
+    [refreshHistoryFlags, syncToolbarFromDocument]
+  );
+
+  const flushPendingHistory = useCallback(() => {
+    if (!historyTimerRef.current) return;
+    window.clearTimeout(historyTimerRef.current);
+    historyTimerRef.current = null;
+    const root = getRoot();
+    if (root) pushHistory(root.innerHTML);
+  }, [pushHistory]);
+
+  const undoEdit = useCallback(() => {
+    flushPendingHistory();
+    if (historyIndexRef.current <= 0) return;
+    restoreHistoryAt(historyIndexRef.current - 1);
+  }, [flushPendingHistory, restoreHistoryAt]);
+
+  const redoEdit = useCallback(() => {
+    if (historyTimerRef.current) {
+      window.clearTimeout(historyTimerRef.current);
+      historyTimerRef.current = null;
+    }
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    restoreHistoryAt(historyIndexRef.current + 1);
+  }, [restoreHistoryAt]);
 
   // Receive edits & pings & replace requests from iframe
   useEffect(() => {
@@ -738,16 +1920,27 @@ ${head || ""}
       }
       if (e?.data?.type === "RTE_BODY_HTML") {
         bumpLiveEditing();
-        changeOriginRef.current = "visual";
         const html = String(e.data.html || "");
+        markSkipBodyPatch();
+        changeOriginRef.current = "visual";
         setBodyHtml((prev) => (prev === html ? prev : html));
         emitFull(html);
+        scheduleHistoryPush(html);
         requestAnimationFrame(() => {
           changeOriginRef.current = null;
+          const doc = getIdoc();
+          if (doc) syncToolbarFromDocument(doc);
         });
       }
+      if (e?.data?.type === "RTE_UNDO") {
+        undoEdit();
+        return;
+      }
+      if (e?.data?.type === "RTE_REDO") {
+        redoEdit();
+        return;
+      }
       if (e?.data?.type === "RTE_REQ_REPLACE") {
-        // Right-click replace request -> open picker
         if (imageNode) {
           replaceInputRef.current?.click();
         } else {
@@ -755,7 +1948,6 @@ ${head || ""}
         }
       }
       if (e?.data?.type === "RTE_IMAGE_SELECTED") {
-        // Image was selected in iframe
         const imgElement = getSelectedImage();
         if (imgElement) {
           ensureImageTokensAndStyle(imgElement);
@@ -763,88 +1955,46 @@ ${head || ""}
         }
       }
       if (e?.data?.type === "RTE_IMAGE_DESELECTED") {
-        // Image was deselected
         setImageNode(null);
       }
       if (e?.data?.type === "RTE_SELECTION_CHANGE") {
-        // Selection changed - update image node
         const imgElement = getSelectedImage();
-        if (imgElement) {
-          ensureImageTokensAndStyle(imgElement);
-        }
+        if (imgElement) ensureImageTokensAndStyle(imgElement);
         setImageNode(imgElement);
+        const doc = getIdoc();
+        if (doc) syncToolbarFromDocument(doc);
       }
     };
     window.addEventListener("message", handleMsg);
     return () => window.removeEventListener("message", handleMsg);
-  }, [doctype, htmlAttrs, headHtml, onChange, imageNode]);
+  }, [doctype, htmlAttrs, headHtml, onChange, imageNode, syncToolbarFromDocument, undoEdit, redoEdit, scheduleHistoryPush]);
 
-  // Update toolbar states on selection change etc.
+  // Update toolbar from selection — re-bind after every iframe rewrite
   useEffect(() => {
     if (activeTab !== "visual") return;
     const idoc = getIdoc();
     if (!idoc) return;
 
-    const updateToolbar = () => {
-      const doc = idoc as Document;
-      setIsBold(doc.queryCommandState("bold"));
-      setIsItalic(doc.queryCommandState("italic"));
-      setIsUnderline(doc.queryCommandState("underline"));
-      setIsBullet(doc.queryCommandState("insertUnorderedList"));
-      setIsOrdered(doc.queryCommandState("insertOrderedList"));
-      const format = (doc.queryCommandValue("formatBlock") || "p").toLowerCase();
-      setCurrentFormat(format);
-      if (doc.queryCommandState("justifyCenter")) setCurrentAlign("center");
-      else if (doc.queryCommandState("justifyRight")) setCurrentAlign("right");
-      else if (doc.queryCommandState("justifyFull")) setCurrentAlign("justify");
-      else setCurrentAlign("left");
-      const color = doc.queryCommandValue("foreColor") as string;
-      setTextColor(rgbToHex(color));
-      const anchor = getAnchorFromSelection(doc);
-      setIsLink(Boolean(anchor?.getAttribute("href")));
-
-      // Keep last good selection while the iframe editor still has focus.
-      // When focus moves to the toolbar, we must NOT wipe this — link Apply needs it.
-      const sel = doc.getSelection();
-      const root = doc.getElementById("root");
-      const active = doc.activeElement;
-      if (
-        sel &&
-        sel.rangeCount > 0 &&
-        root &&
-        active &&
-        (active === root || root.contains(active))
-      ) {
-        try {
-          savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
-        } catch {
-          /* ignore */
-        }
-      }
-
-      // Update image selection
-      const imgElement = getSelectedImage();
-      if (imgElement) {
-        ensureImageTokensAndStyle(imgElement);
-      }
-      setImageNode(imgElement);
-    };
+    const updateToolbar = () => syncToolbarFromDocument(idoc);
 
     idoc.addEventListener("selectionchange", updateToolbar);
     idoc.addEventListener("keyup", updateToolbar);
     idoc.addEventListener("mouseup", updateToolbar);
     idoc.addEventListener("input", updateToolbar);
     idoc.addEventListener("click", updateToolbar);
-    // Initial update
+    idoc.addEventListener("focusin", updateToolbar);
     updateToolbar();
+    const t = window.setTimeout(updateToolbar, 40);
     return () => {
+      window.clearTimeout(t);
       idoc.removeEventListener("selectionchange", updateToolbar);
       idoc.removeEventListener("keyup", updateToolbar);
       idoc.removeEventListener("mouseup", updateToolbar);
       idoc.removeEventListener("input", updateToolbar);
       idoc.removeEventListener("click", updateToolbar);
+      idoc.removeEventListener("focusin", updateToolbar);
     };
-  }, [activeTab]);
+  }, [activeTab, iframeEpoch, syncToolbarFromDocument]);
 
   // ---- Image insertion helpers (show temp preview, then swap to uploaded URL) ----
   const insertTempImage = (file: File) => {
@@ -1002,28 +2152,112 @@ ${head || ""}
     e.preventDefault();
   };
 
+  /**
+   * Resolve what to style:
+   * - Prefer sticky/saved word·letter selection (toolbar often steals focus)
+   * - Only expand to the whole line when the caret is truly collapsed
+   * - If we expanded, return caretToRestore so the line is not left selected
+   */
+  const resolveStyleTarget = (idoc: Document): {
+    range: Range | null;
+    caretToRestore: Range | null;
+  } => {
+    const sticky = stickyTextSelectionRef.current;
+    const saved = savedSelectionRef.current;
+    const preferred =
+      sticky && !sticky.collapsed && rangeStillInDocument(idoc, sticky)
+        ? sticky
+        : saved && rangeStillInDocument(idoc, saved)
+          ? saved
+          : saveIframeSelection(idoc);
+
+    if (preferred && !preferred.collapsed) {
+      restoreIframeSelection(idoc, preferred);
+      savedSelectionRef.current = preferred;
+      return { range: preferred, caretToRestore: null };
+    }
+
+    restoreIframeSelection(idoc, preferred);
+    const caret =
+      preferred && preferred.collapsed
+        ? preferred.cloneRange()
+        : saveIframeSelection(idoc);
+    const expanded = expandCollapsedSelectionToBlock(idoc);
+    if (expanded?.didExpand) {
+      return { range: expanded.range, caretToRestore: caret };
+    }
+    return { range: expanded?.range || preferred, caretToRestore: null };
+  };
+
   const runDocCommand = (fn: (idoc: Document) => void) => {
     const idoc = getIdoc();
     if (!idoc) return;
+    focusEditor();
+    const { range, caretToRestore } = resolveStyleTarget(idoc);
+    if (range) restoreIframeSelection(idoc, range);
     fn(idoc);
-    commitFromIframe();
+    // Never leave a whole-line auto-selection hanging in the editor
+    if (caretToRestore) {
+      restoreIframeSelection(idoc, caretToRestore);
+      savedSelectionRef.current = caretToRestore;
+      stickyTextSelectionRef.current = null;
+    }
+    commitFromIframe("push");
+    requestAnimationFrame(() => syncToolbarFromDocument(idoc));
+  };
+
+  /**
+   * Heading / quote: convert the current block in place.
+   * - Paragraph (incl. new line after Enter) → H1/H2/H3 on first click
+   * - Same heading again → back to paragraph (toggle off)
+   * - Different heading → switch level (h2 → h1)
+   */
+  const runBlockFormat = (tag: string) => {
+    const idoc = getIdoc();
+    if (!idoc) return;
+    focusEditor();
+
+    // Prefer live caret over sticky word selection so we format THIS line
+    const live = saveIframeSelection(idoc);
+    const saved = savedSelectionRef.current;
+    const preferred =
+      live && rangeStillInDocument(idoc, live)
+        ? live
+        : saved && rangeStillInDocument(idoc, saved)
+          ? saved
+          : null;
+
+    if (preferred) {
+      try {
+        const caret = preferred.cloneRange();
+        caret.collapse(true);
+        restoreIframeSelection(idoc, caret);
+      } catch {
+        restoreIframeSelection(idoc, preferred);
+      }
+    }
+
+    const block = getBlockFromSelection(idoc);
+    const current = normalizeCurrentBlockTag(block);
+    // First click applies heading; second click on same level removes it → paragraph
+    const target = current === tag ? "p" : tag;
+    const next = setBlockFormatInIframe(idoc, target, block);
+
+    stickyTextSelectionRef.current = null;
+    savedSelectionRef.current = saveIframeSelection(idoc);
+    if (next) {
+      setCurrentFormat(normalizeCurrentBlockTag(next));
+    }
+    commitFromIframe("push");
+    requestAnimationFrame(() => syncToolbarFromDocument(idoc));
   };
 
   // Commands
   const cmd = useMemo(
     () => ({
-      h1: () =>
-        runDocCommand((idoc) => {
-          idoc.execCommand("formatBlock", false, currentFormat === "h1" ? "p" : "h1");
-        }),
-      h2: () =>
-        runDocCommand((idoc) => {
-          idoc.execCommand("formatBlock", false, currentFormat === "h2" ? "p" : "h2");
-        }),
-      h3: () =>
-        runDocCommand((idoc) => {
-          idoc.execCommand("formatBlock", false, currentFormat === "h3" ? "p" : "h3");
-        }),
+      h1: () => runBlockFormat("h1"),
+      h2: () => runBlockFormat("h2"),
+      h3: () => runBlockFormat("h3"),
       bold: () => runDocCommand((idoc) => idoc.execCommand("bold")),
       italic: () => runDocCommand((idoc) => idoc.execCommand("italic")),
       underline: () => runDocCommand((idoc) => idoc.execCommand("underline")),
@@ -1031,10 +2265,7 @@ ${head || ""}
       ordered: () => runDocCommand((idoc) => idoc.execCommand("insertOrderedList")),
       indent: () => runDocCommand((idoc) => idoc.execCommand("indent")),
       outdent: () => runDocCommand((idoc) => idoc.execCommand("outdent")),
-      quote: () =>
-        runDocCommand((idoc) => {
-          idoc.execCommand("formatBlock", false, currentFormat === "blockquote" ? "p" : "blockquote");
-        }),
+      quote: () => runBlockFormat("blockquote"),
       hr: () => runDocCommand((idoc) => idoc.execCommand("insertHorizontalRule")),
       alignLeft: () => runDocCommand((idoc) => idoc.execCommand("justifyLeft")),
       alignCenter: () => runDocCommand((idoc) => idoc.execCommand("justifyCenter")),
@@ -1043,45 +2274,122 @@ ${head || ""}
       unlink: () => {
         const idoc = getIdoc();
         if (!idoc) return;
-        // Prefer currently saved range (from link button), else snapshot now
         const range = savedSelectionRef.current || saveIframeSelection(idoc);
         unlinkInIframe(idoc, range);
         savedSelectionRef.current = null;
+        stickyTextSelectionRef.current = null;
         setIsLink(false);
         commitFromIframe();
       },
       setColor: (c: string) => {
         const idoc = getIdoc();
         if (!idoc) return;
-        const range = savedSelectionRef.current || saveIframeSelection(idoc);
-        applyColorInIframe(idoc, range, c);
+        const hex = normalizeColorInput(c) || rgbToHex(c);
+        const { range, caretToRestore } = resolveStyleTarget(idoc);
+        // Snapshot before wrap — DOM mutation can invalidate the Range object
+        const partial =
+          range && !range.collapsed ? range.cloneRange() : null;
+        applyColorInIframe(idoc, partial || range, hex);
+        if (caretToRestore) {
+          restoreIframeSelection(idoc, caretToRestore);
+          savedSelectionRef.current = caretToRestore;
+          stickyTextSelectionRef.current = null;
+        } else {
+          const live = saveIframeSelection(idoc);
+          if (live && !live.collapsed) {
+            savedSelectionRef.current = live;
+            stickyTextSelectionRef.current = live.cloneRange();
+          } else if (partial) {
+            stickyTextSelectionRef.current = partial;
+            savedSelectionRef.current = partial;
+          }
+        }
+        setTextColor(hex);
+        setColorDraft(hex);
         commitFromIframe();
+        syncToolbarFromDocument(idoc);
+      },
+      setFont: (fontFamily: string) => {
+        const idoc = getIdoc();
+        if (!idoc) return;
+        const { range, caretToRestore } = resolveStyleTarget(idoc);
+        const partial =
+          range && !range.collapsed ? range.cloneRange() : null;
+        const family = String(fontFamily || "").trim();
+        if (!family) {
+          restoreIframeSelection(idoc, partial || range);
+          const block = getBlockFromSelection(idoc);
+          const sel = idoc.getSelection();
+          if (block && selectionCoversWholeBlock(sel, block)) {
+            block.style.removeProperty("font-family");
+            block.removeAttribute("data-gb-font-override");
+            clearNestedInlineProp(block, "font-family");
+          } else if (partial) {
+            restoreIframeSelection(idoc, partial);
+            wrapRangeWithInlineStyles(idoc, partial, { fontFamily: "inherit" });
+            // Clear inherit noise from the wrapper
+            const live = saveIframeSelection(idoc);
+            let n: Node | null = live?.startContainer || null;
+            if (n?.nodeType === Node.TEXT_NODE) n = n.parentNode;
+            if (n instanceof HTMLElement) {
+              n.style.removeProperty("font-family");
+              n.removeAttribute("data-gb-font-override");
+            }
+          } else if (sel && !sel.isCollapsed) {
+            idoc.execCommand("fontName", false, "inherit");
+          }
+          if (caretToRestore) {
+            restoreIframeSelection(idoc, caretToRestore);
+            savedSelectionRef.current = caretToRestore;
+            stickyTextSelectionRef.current = null;
+          }
+          setTextFont("");
+          commitFromIframe();
+          syncToolbarFromDocument(idoc);
+          return;
+        }
+        applyFontInIframe(idoc, partial || range, family);
+        if (caretToRestore) {
+          restoreIframeSelection(idoc, caretToRestore);
+          savedSelectionRef.current = caretToRestore;
+          stickyTextSelectionRef.current = null;
+        } else {
+          const live = saveIframeSelection(idoc);
+          if (live && !live.collapsed) {
+            savedSelectionRef.current = live;
+            stickyTextSelectionRef.current = live.cloneRange();
+          } else if (partial) {
+            stickyTextSelectionRef.current = partial;
+            savedSelectionRef.current = partial;
+          }
+        }
+        setTextFont(family);
+        commitFromIframe();
+        syncToolbarFromDocument(idoc);
       },
       clear: () => {
         const idoc = getIdoc();
+        focusEditor();
         idoc?.execCommand("removeFormat");
-        commitFromIframe();
+        commitFromIframe("push");
       },
-      undo: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("undo");
-        commitFromIframe();
-      },
-      redo: () => {
-        const idoc = getIdoc();
-        idoc?.execCommand("redo");
-        commitFromIframe();
-      },
+      undo: () => undoEdit(),
+      redo: () => redoEdit(),
       /** Call from mousedown (before focus leaves iframe) so selection is kept. */
       captureLinkSelection: () => {
         const idoc = getIdoc();
         if (!idoc) return;
-        savedSelectionRef.current = saveIframeSelection(idoc);
+        const live = saveIframeSelection(idoc);
+        if (live && !live.collapsed) {
+          savedSelectionRef.current = live;
+          stickyTextSelectionRef.current = live.cloneRange();
+        } else if (live) {
+          savedSelectionRef.current = live;
+        }
       },
       openLinkBox: () => {
         const idoc = getIdoc();
         if (!idoc) return;
-        // If capture wasn't called, try once more (may already be lost)
         if (!savedSelectionRef.current) {
           savedSelectionRef.current = saveIframeSelection(idoc);
         }
@@ -1091,7 +2399,6 @@ ${head || ""}
         setLinkUrl(href || "https://");
         setIsLink(Boolean(href));
         setShowLinkInput(true);
-        // Focus URL field after paint — selection already saved
         window.setTimeout(() => linkInputRef.current?.focus(), 0);
       },
       applyLink: (rawUrl: string) => {
@@ -1103,13 +2410,14 @@ ${head || ""}
           return;
         }
         savedSelectionRef.current = null;
+        stickyTextSelectionRef.current = null;
         setShowLinkInput(false);
         setIsLink(Boolean(normalizeHref(rawUrl)));
         commitFromIframe();
         toast.success(normalizeHref(rawUrl) ? "Link applied" : "Link removed");
       },
     }),
-    [currentFormat]
+    [syncToolbarFromDocument, undoEdit, redoEdit]
   );
 
   // Image helpers (align & size) — commit after changes so state & UI update
@@ -1204,6 +2512,7 @@ ${head || ""}
     setHtmlAttrs(s.htmlAttrs);
     setHeadHtml(s.headHtml);
     setBodyHtml(s.bodyHtml);
+    resetHistory(s.bodyHtml);
     const rejoined = joinHeadBody(s.doctype, s.htmlAttrs, s.headHtml, s.bodyHtml);
     lastPushedRef.current = rejoined;
     onChange?.(rejoined);
@@ -1221,16 +2530,84 @@ ${head || ""}
     bold: isBold,
     italic: isItalic,
     underline: isUnderline,
-    bullet: isBullet,
-    ordered: isOrdered,
+    bullet: isBullet || currentFormat === "ul",
+    ordered: isOrdered || currentFormat === "ol",
     quote: currentFormat === "blockquote",
     link: isLink,
   };
   const imageSelected = !!imageNode;
 
+  const formatLabel = (() => {
+    const f = String(currentFormat || "p").toLowerCase();
+    if (f === "h1") return "Heading 1";
+    if (f === "h2") return "Heading 2";
+    if (f === "h3") return "Heading 3";
+    if (f === "h4") return "Heading 4";
+    if (f === "h5") return "Heading 5";
+    if (f === "h6") return "Heading 6";
+    if (f === "blockquote") return "Quote";
+    if (f === "ul" || is.bullet) return "Bullet list";
+    if (f === "ol" || is.ordered) return "Numbered list";
+    if (f === "pre") return "Code";
+    return "Paragraph";
+  })();
+  const alignLabel =
+    currentAlign === "center"
+      ? "Center"
+      : currentAlign === "right"
+        ? "Right"
+        : currentAlign === "justify"
+          ? "Justify"
+          : "Left";
+
   // Get current image alignment and size for UI
   const currentImageAlign = imageSelected ? parseTokens(imageNode!.className || "").align : ALIGN_DEFAULT;
   const currentImageSize = imageSelected ? parseTokens(imageNode!.className || "").size : SIZE_DEFAULT;
+
+  /**
+   * Capture selection for toolbar controls.
+   * Never overwrite a word/letter selection with a collapsed caret that appears
+   * only because the toolbar stole focus from the iframe.
+   */
+  const captureColorSelection = () => {
+    const idoc = getIdoc();
+    if (!idoc) return;
+    const live = saveIframeSelection(idoc);
+    if (live && !live.collapsed) {
+      savedSelectionRef.current = live;
+      stickyTextSelectionRef.current = live.cloneRange();
+      return;
+    }
+    const sticky = stickyTextSelectionRef.current;
+    if (sticky && !sticky.collapsed && rangeStillInDocument(idoc, sticky)) {
+      savedSelectionRef.current = sticky;
+      return;
+    }
+    const prev = savedSelectionRef.current;
+    if (prev && !prev.collapsed && rangeStillInDocument(idoc, prev)) {
+      // Keep prior word selection — live caret is just focus-steal noise
+      return;
+    }
+    if (live) savedSelectionRef.current = live;
+  };
+
+  const applyPickedColor = (raw: string, opts?: { commit?: boolean }) => {
+    const hex = normalizeColorInput(raw);
+    if (!hex) {
+      toast.error("Enter a valid color like #E11D48 or rgb(225,29,72)");
+      setColorDraft(textColor);
+      return false;
+    }
+    setTextColor(hex);
+    setColorDraft(hex);
+    // Live swatch preview only — don't paint the editor until commit.
+    // (onInput while dragging used to re-apply and often hit the whole line.)
+    if (opts?.commit === false) return true;
+    cmd.setColor(hex);
+    return true;
+  };
+
+  const colorPickerValue = /^#[0-9a-fA-F]{6}$/.test(textColor) ? textColor : "#000000";
 
   return (
     <div className="space-y-3">
@@ -1243,11 +2620,145 @@ ${head || ""}
       {/* Visual (iframe editor) */}
       {activeTab === "visual" && (
         <div className="space-y-2">
+          {/* Selection readout — current block / align / color */}
+          <div className="flex flex-wrap items-center gap-2 px-2.5 py-1.5 rounded-md border bg-muted/40 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{formatLabel}</span>
+            <span aria-hidden>·</span>
+            <span>Align: {alignLabel}</span>
+            <span aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1.5">
+              Color
+              <span
+                className="inline-block h-3.5 w-3.5 rounded-sm border border-black/20 shadow-sm shrink-0"
+                style={{ backgroundColor: textColor }}
+                title={textColor}
+              />
+              <input
+                type="text"
+                value={colorDraft}
+                spellCheck={false}
+                aria-label="Color hex code"
+                title="Type or paste a color code (#E11D48)"
+                className="h-6 w-[5.5rem] rounded border bg-background px-1.5 font-mono text-[11px] text-foreground outline-none focus:ring-1 focus:ring-ring"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  captureColorSelection();
+                }}
+                onFocus={() => {
+                  colorDraftFocusedRef.current = true;
+                  captureColorSelection();
+                }}
+                onChange={(e) => setColorDraft(e.target.value)}
+                onBlur={() => {
+                  colorDraftFocusedRef.current = false;
+                  applyPickedColor(colorDraft);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    applyPickedColor(colorDraft);
+                    (e.target as HTMLInputElement).blur();
+                  } else if (e.key === "Escape") {
+                    setColorDraft(textColor);
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData("text");
+                  const hex = normalizeColorInput(pasted);
+                  if (hex) {
+                    e.preventDefault();
+                    setColorDraft(hex);
+                    applyPickedColor(hex);
+                  }
+                }}
+              />
+            </span>
+            <span aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1.5" title="Font for current selection or line">
+              Font
+              <span
+                className="max-w-[7rem] truncate text-foreground"
+                style={textFont ? { fontFamily: textFont } : undefined}
+              >
+                {EDITOR_FONT_OPTIONS.find(
+                  (f) =>
+                    f.value &&
+                    textFont &&
+                    f.value.replace(/['"]/g, "").toLowerCase().includes(
+                      textFont.replace(/['"]/g, "").split(",")[0].trim().toLowerCase()
+                    )
+                )?.name || (textFont ? textFont.replace(/['"]/g, "").split(",")[0].trim() : "Theme")}
+              </span>
+            </span>
+            {is.link ? (
+              <>
+                <span aria-hidden>·</span>
+                <span className="text-foreground font-medium">Link</span>
+              </>
+            ) : null}
+            {imageSelected ? (
+              <>
+                <span aria-hidden>·</span>
+                <span className="text-foreground font-medium">Image selected</span>
+              </>
+            ) : null}
+            {(is.bold || is.italic || is.underline) && (
+              <>
+                <span aria-hidden>·</span>
+                <span>
+                  {[is.bold && "Bold", is.italic && "Italic", is.underline && "Underline"]
+                    .filter(Boolean)
+                    .join(", ")}
+                </span>
+              </>
+            )}
+          </div>
+
           {/* Toolbar */}
           <div className="flex flex-wrap gap-2 p-2 border rounded-md items-center">
-            <Button size="sm" variant={is.h1 ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.h1} aria-pressed={is.h1}><Heading1 className="h-4 w-4" /></Button>
-            <Button size="sm" variant={is.h2 ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.h2} aria-pressed={is.h2}><Heading2 className="h-4 w-4" /></Button>
-            <Button size="sm" variant={is.h3 ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.h3} aria-pressed={is.h3}><Heading3 className="h-4 w-4" /></Button>
+            <Button
+              size="sm"
+              variant={is.h1 ? "default" : "outline"}
+              title={is.h1 ? "Remove Heading 1 (back to paragraph)" : "Heading 1"}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const idoc = getIdoc();
+                if (idoc) savedSelectionRef.current = saveIframeSelection(idoc);
+              }}
+              onClick={cmd.h1}
+              aria-pressed={is.h1}
+            >
+              <Heading1 className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant={is.h2 ? "default" : "outline"}
+              title={is.h2 ? "Remove Heading 2 (back to paragraph)" : "Heading 2"}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const idoc = getIdoc();
+                if (idoc) savedSelectionRef.current = saveIframeSelection(idoc);
+              }}
+              onClick={cmd.h2}
+              aria-pressed={is.h2}
+            >
+              <Heading2 className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant={is.h3 ? "default" : "outline"}
+              title={is.h3 ? "Remove Heading 3 (back to paragraph)" : "Heading 3"}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const idoc = getIdoc();
+                if (idoc) savedSelectionRef.current = saveIframeSelection(idoc);
+              }}
+              onClick={cmd.h3}
+              aria-pressed={is.h3}
+            >
+              <Heading3 className="h-4 w-4" />
+            </Button>
 
             <Button size="sm" variant={is.bold ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.bold} aria-pressed={is.bold}><Bold className="h-4 w-4" /></Button>
             <Button size="sm" variant={is.italic ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.italic} aria-pressed={is.italic}><Italic className="h-4 w-4" /></Button>
@@ -1261,10 +2772,10 @@ ${head || ""}
             <Button size="sm" variant={is.quote ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.quote} aria-pressed={is.quote}><Quote className="h-4 w-4" /></Button>
             <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.hr}><Minus className="h-4 w-4" /></Button>
 
-            <Button size="sm" variant={currentAlign === "left" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignLeft}><AlignLeft className="h-4 w-4" /></Button>
-            <Button size="sm" variant={currentAlign === "center" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignCenter}><AlignCenter className="h-4 w-4" /></Button>
-            <Button size="sm" variant={currentAlign === "right" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignRight}><AlignRight className="h-4 w-4" /></Button>
-            <Button size="sm" variant={currentAlign === "justify" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignJustify}><AlignJustify className="h-4 w-4" /></Button>
+            <Button size="sm" variant={currentAlign === "left" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignLeft} aria-pressed={currentAlign === "left"} title="Align left"><AlignLeft className="h-4 w-4" /></Button>
+            <Button size="sm" variant={currentAlign === "center" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignCenter} aria-pressed={currentAlign === "center"} title="Align center"><AlignCenter className="h-4 w-4" /></Button>
+            <Button size="sm" variant={currentAlign === "right" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignRight} aria-pressed={currentAlign === "right"} title="Align right"><AlignRight className="h-4 w-4" /></Button>
+            <Button size="sm" variant={currentAlign === "justify" ? "default" : "outline"} onMouseDown={keepIframeSelection} onClick={cmd.alignJustify} aria-pressed={currentAlign === "justify"} title="Justify"><AlignJustify className="h-4 w-4" /></Button>
 
             <Button
               size="sm"
@@ -1293,30 +2804,131 @@ ${head || ""}
               <Unlink className="h-4 w-4" />
             </Button>
 
-            <label className="flex items-center gap-1 text-sm px-2 py-1 rounded border">
-              <Palette className="h-4 w-4" />
-              <input
-                type="color"
-                value={textColor}
-                onMouseDown={() => {
-                  const idoc = getIdoc();
-                  if (idoc) savedSelectionRef.current = saveIframeSelection(idoc);
+            <div
+              className="flex items-center gap-1 text-sm px-1.5 py-1 rounded border"
+              title="Font — applies to selection, or the whole line if nothing is selected"
+              onMouseDown={(e) => {
+                if ((e.target as HTMLElement).tagName !== "SELECT") e.preventDefault();
+                captureColorSelection();
+              }}
+            >
+              <span className="text-[10px] text-muted-foreground hidden sm:inline">Font</span>
+              <select
+                className="h-6 max-w-[9.5rem] rounded border-0 bg-transparent px-1 text-[11px] outline-none focus:ring-1 focus:ring-ring"
+                value={(() => {
+                  const match = EDITOR_FONT_OPTIONS.find(
+                    (f) =>
+                      f.value &&
+                      textFont &&
+                      f.value.replace(/['"]/g, "").toLowerCase().includes(
+                        textFont.replace(/['"]/g, "").split(",")[0].trim().toLowerCase()
+                      )
+                  );
+                  return match?.value || "";
+                })()}
+                aria-label="Font family"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  captureColorSelection();
+                }}
+                onFocus={() => {
+                  fontSelectFocusedRef.current = true;
+                  // Do not re-capture here — iframe selection is already gone
+                }}
+                onBlur={() => {
+                  fontSelectFocusedRef.current = false;
                 }}
                 onChange={(e) => {
-                  const idoc = getIdoc();
-                  if (idoc && savedSelectionRef.current) {
-                    restoreIframeSelection(idoc, savedSelectionRef.current);
-                  }
-                  setTextColor(e.target.value);
-                  cmd.setColor(e.target.value);
+                  cmd.setFont(e.target.value);
                 }}
-                title="Text color"
-                style={{ width: 24, height: 18, padding: 0, border: "none", background: "transparent" }}
-              />
-            </label>
+              >
+                {EDITOR_FONT_OPTIONS.map((f) => (
+                  <option key={f.name} value={f.value} style={f.value ? { fontFamily: f.value } : undefined}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.undo}><Undo2 className="h-4 w-4" /></Button>
-            <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.redo}><Redo2 className="h-4 w-4" /></Button>
+            <div
+              className="flex items-center gap-1 text-sm px-1.5 py-1 rounded border"
+              title="Text color — pick, type, or paste a hex code (overrides theme)"
+              onMouseDown={(e) => {
+                // Keep iframe selection when interacting with color controls
+                if ((e.target as HTMLElement).tagName !== "INPUT") e.preventDefault();
+                captureColorSelection();
+              }}
+            >
+              <label className="relative inline-flex h-6 w-6 cursor-pointer items-center justify-center overflow-hidden rounded-sm border border-black/25 shadow-sm shrink-0">
+                <span
+                  className="absolute inset-0"
+                  style={{ backgroundColor: textColor }}
+                  aria-hidden
+                />
+                <input
+                  type="color"
+                  value={colorPickerValue}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  aria-label="Pick color"
+                  onMouseDown={captureColorSelection}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setTextColor(v);
+                    setColorDraft(v);
+                    applyPickedColor(v);
+                  }}
+                  onInput={(e) => {
+                    const v = (e.target as HTMLInputElement).value;
+                    setTextColor(v);
+                    setColorDraft(v);
+                    applyPickedColor(v, { commit: false });
+                  }}
+                />
+              </label>
+              <input
+                type="text"
+                value={colorDraft}
+                spellCheck={false}
+                aria-label="Color hex code"
+                placeholder="#000000"
+                className="h-6 w-[5.75rem] rounded border-0 bg-transparent px-1 font-mono text-[11px] outline-none focus:ring-1 focus:ring-ring"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  captureColorSelection();
+                }}
+                onFocus={() => {
+                  colorDraftFocusedRef.current = true;
+                  captureColorSelection();
+                }}
+                onChange={(e) => setColorDraft(e.target.value)}
+                onBlur={() => {
+                  colorDraftFocusedRef.current = false;
+                  applyPickedColor(colorDraft);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    applyPickedColor(colorDraft);
+                    (e.target as HTMLInputElement).blur();
+                  } else if (e.key === "Escape") {
+                    setColorDraft(textColor);
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData("text");
+                  const hex = normalizeColorInput(pasted);
+                  if (hex) {
+                    e.preventDefault();
+                    setColorDraft(hex);
+                    applyPickedColor(hex);
+                  }
+                }}
+              />
+            </div>
+
+            <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.undo} disabled={!canUndo} title="Undo (Ctrl+Z)"><Undo2 className="h-4 w-4" /></Button>
+            <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.redo} disabled={!canRedo} title="Redo (Ctrl+Y)"><Redo2 className="h-4 w-4" /></Button>
             <Button size="sm" variant="outline" onMouseDown={keepIframeSelection} onClick={cmd.clear}><Eraser className="h-4 w-4" /></Button>
 
             <Button size="sm" variant="outline" onClick={onUploadClick} disabled={isUploading || disabled}>
@@ -1444,12 +3056,22 @@ ${head || ""}
           )}
 
           {/* Iframe */}
-          <iframe
-            ref={iframeRef}
-            className="w-full border rounded-md bg-white"
-            style={{ height: `${height}px` }}
-            title="Visual Editor"
-          />
+          <div className="relative">
+            {themePending && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md border bg-white/80 text-sm text-muted-foreground">
+                Loading project theme…
+              </div>
+            )}
+            <iframe
+              ref={iframeRef}
+              className="w-full border rounded-md bg-white"
+              style={{ height: `${height}px` }}
+              title="Visual Editor"
+              onLoad={() => {
+                if (!themePending) applyThemeToIframe();
+              }}
+            />
+          </div>
         </div>
       )}
 

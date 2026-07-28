@@ -24,6 +24,10 @@ const {
   normalizeAiPayload,
 } = require("../sections/aiblogs");
 const {
+  normalizeBlogSeoMode,
+  buildBlogSeoMeta,
+} = require("../services/blogSeoService");
+const {
   markJobStarted,
   markJobStep,
   markJobDone,
@@ -187,10 +191,12 @@ aiblogsQueue.process(WORKERS, async (job) => {
     isSchedule,
     scheduleTime,
     locations,
+    seoMode: jobSeoMode,
   } = job.data || {};
 
   const jobId = String(job.id);
   const normTitle = String(title || "").replace(/\s+/g, " ").trim();
+  const blogSeoMode = normalizeBlogSeoMode(jobSeoMode);
 
   const step = async (pct, label) => {
     try {
@@ -240,8 +246,9 @@ aiblogsQueue.process(WORKERS, async (job) => {
       projectName,
       serviceType,
       locations: locList,
+      seoMode: blogSeoMode,
     });
-    log(jobId, `prompt built (${blogType}) length=${prompt.length}`);
+    log(jobId, `prompt built (${blogType}) seoMode=${blogSeoMode} length=${prompt.length}`);
 
     const raw = await fetchJSONFromOpenAI(prompt, "AI_BLOG_CONTENT_V2", {
       userId,
@@ -274,6 +281,27 @@ aiblogsQueue.process(WORKERS, async (job) => {
         ? 0
         : 1;
 
+    if (blogSeoMode === 2) {
+      await step(78, "Building premium blog JSON-LD schemas");
+    } else if (blogSeoMode === 1) {
+      await step(78, "Applying basic SEO meta");
+    } else {
+      await step(78, "Skipping AI SEO (manual mode)");
+    }
+
+    const seoMeta = buildBlogSeoMeta({
+      mode: blogSeoMode,
+      payload,
+      title: normTitle,
+      slug: finalSlug,
+      contentHtml: payload.content_html,
+      authorName: author.name || "",
+      projectName,
+      coverImageUrl: "",
+      datePublished: new Date(),
+      dateModified: new Date(),
+    });
+
     const blogDoc = {
       userId,
       projectId,
@@ -285,11 +313,7 @@ aiblogsQueue.process(WORKERS, async (job) => {
       authorId,
       slug: finalSlug,
       coverImage: { url: "", alt: payload.cover_alt || normTitle },
-      seoMeta: {
-        metaTitle: payload.meta_title,
-        metaDescription: payload.meta_description,
-        keywords: payload.meta_keywords,
-      },
+      seoMeta,
       isSchedule: Boolean(isSchedule),
       scheduleTime: scheduleTime ? new Date(scheduleTime) : null,
     };

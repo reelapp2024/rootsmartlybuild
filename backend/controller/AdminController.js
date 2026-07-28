@@ -99,7 +99,7 @@ const {
 const {
     syncHeaderFooterSectionsForProject,
 } = require("../services/headerFooterSectionSync")
-const { resolveThemeColorsForApi } = require("../utils/themeResolverBridge");
+const { resolveThemeColorsForApi, buildBlogEditorThemePayload } = require("../utils/themeResolverBridge");
 const { getResponseFromOpenAI } = require("../openAi/openAi")
 const { trackCreditsUsage } = require("../additional/openaiHelpers");
 
@@ -8418,7 +8418,7 @@ Example format:
                             const elementIdsSource = sectionData?.elements || compData.elementIds || [];
                             const processedElements = elementIdsSource.map((elementData) => {
                                 try {
-                                    // Handle both old format (just elementId string) and new format (object with elementId, style, data)
+                                    // Handle both old format (just elementId string) and object formats
                                     if (typeof elementData === 'string') {
                                         // Old format - just elementId
                                         return {
@@ -8426,13 +8426,16 @@ Example format:
                                             style: {},
                                             data: {}
                                         };
-                                    } else if (elementData && elementData.elementId) {
-                                        // New format - object with elementId, style, data, elementType, order, parentElId
+                                    } else if (elementData && (elementData.elementId || elementData.id)) {
+                                        // Legacy: { elementId, elementType, data }
+                                        // GenieBuild: { id, type, content, style }
                                         return {
-                                            elementId: elementData.elementId,
-                                            elementType: elementData.elementType || 'text',
+                                            elementId: elementData.elementId || elementData.id,
+                                            elementType: elementData.elementType || elementData.type || 'text',
                                             style: compactOverrideObject(elementData.style || {}) || {},
-                                            data: compactOverrideObject(elementData.data || {}) || {},
+                                            data: compactOverrideObject(
+                                                elementData.data || elementData.content || {}
+                                            ) || {},
                                             order: elementData.order !== undefined ? elementData.order : 0,
                                             parentElId: elementData.parentElId || null
                                         };
@@ -8477,6 +8480,7 @@ Example format:
                                         rawSectionType === "footer";
                                     if (isSiteWideShell) {
                                         componentObj.sectionData = {
+                                            id: sectionData?.id || undefined,
                                             type: rawSectionType,
                                             styles: compactSectionStyleOverrides(sectionData?.styles || {}, {
                                                 colorPrimary,
@@ -8547,6 +8551,7 @@ Example format:
                                 }
 
                                 componentObj.sectionData = {
+                                    id: sectionData?.id || undefined,
                                     type: rawSectionType || sectionData?.type,
                                     styles: (() => {
                                         const styles =
@@ -9630,6 +9635,11 @@ Example format:
                             defaultTypography: themeSettings.defaultTypography || null,
                             defaultFont: themeSettings.defaultFont || null,
                             globalElementStyles: themeSettings.globalElementStyles || null,
+                            additionalCss: themeSettings.additionalCss || {
+                                blogCss: '',
+                                siteCss: '',
+                                applyBlogCssToSite: false,
+                            },
                         }
                         : {
                             theme: 'crimson-jet',
@@ -9639,6 +9649,11 @@ Example format:
                             defaultTypography: null,
                             defaultFont: null,
                             globalElementStyles: null,
+                            additionalCss: {
+                                blogCss: '',
+                                siteCss: '',
+                                applyBlogCssToSite: false,
+                            },
                         },
                     colors: resolveThemeColorsForApi(themeSettings),
                 }
@@ -10214,6 +10229,142 @@ Example format:
         } catch (error) {
             console.error("Error updating project theme:", error);
             return res.status(500).json({ message: "Server error while updating project theme" });
+        }
+    },
+
+    /** WordPress/Wix-style Additional CSS for blogs + optional site-wide. */
+    getAdditionalCss: async (req, res) => {
+        try {
+            const projectId = req.params?.projectId || req.query?.projectId || req.body?.projectId;
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+            const project = await UserProject.findById(projectId).select("_id userId").lean();
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            const themeSettings = await ThemeSetting.findOne({ projectId })
+                .select("theme additionalCss")
+                .lean();
+            const additionalCss = themeSettings?.additionalCss || {};
+            return res.status(200).json({
+                message: "Additional CSS fetched",
+                data: {
+                    projectId,
+                    theme: themeSettings?.theme || "crimson-jet",
+                    blogCss: String(additionalCss.blogCss || ""),
+                    siteCss: String(additionalCss.siteCss || ""),
+                    applyBlogCssToSite: Boolean(additionalCss.applyBlogCssToSite),
+                },
+            });
+        } catch (error) {
+            console.error("Error fetching additional CSS:", error);
+            return res.status(500).json({ message: "Server error while fetching additional CSS" });
+        }
+    },
+
+    /**
+     * Theme tokens + prose CSS for admin blog editor WYSIWYG
+     * (same look as live site headings / paragraphs).
+     */
+    getBlogEditorTheme: async (req, res) => {
+        try {
+            const projectId = req.params?.projectId || req.query?.projectId || req.body?.projectId;
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+            const project = await UserProject.findById(projectId).select("_id").lean();
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+            const themeSettings = await ThemeSetting.findOne({ projectId }).lean();
+            const payload = buildBlogEditorThemePayload(themeSettings || null);
+            return res.status(200).json({
+                message: "Blog editor theme fetched",
+                data: {
+                    projectId,
+                    theme: themeSettings?.theme || "crimson-jet",
+                    ...payload,
+                },
+            });
+        } catch (error) {
+            console.error("Error fetching blog editor theme:", error);
+            return res.status(500).json({ message: "Server error while fetching blog editor theme" });
+        }
+    },
+
+    updateAdditionalCss: async (req, res) => {
+        try {
+            const {
+                projectId,
+                blogCss,
+                siteCss,
+                applyBlogCssToSite,
+            } = req.body || {};
+
+            if (!projectId) {
+                return res.status(400).json({ message: "projectId is required" });
+            }
+
+            const project = await UserProject.findById(projectId);
+            if (!project) {
+                return res.status(404).json({ message: "Project not found" });
+            }
+
+            const sanitizeCss = (raw) => {
+                let s = String(raw ?? "");
+                // Block script/url javascript smuggling in CSS payloads
+                s = s.replace(/<\/?script\b[^>]*>/gi, "");
+                s = s.replace(/expression\s*\(/gi, "");
+                s = s.replace(/javascript\s*:/gi, "");
+                // Hard cap (~100KB) like typical WP custom CSS limits
+                if (s.length > 100000) s = s.slice(0, 100000);
+                return s;
+            };
+
+            const resolvedUserId =
+                req.user?.userId ||
+                project.userId ||
+                null;
+
+            let themeSettings = await ThemeSetting.findOne({ projectId });
+            if (!themeSettings) {
+                if (!resolvedUserId) {
+                    return res.status(400).json({ message: "userId is required to create theme settings" });
+                }
+                themeSettings = new ThemeSetting({
+                    projectId,
+                    userId: resolvedUserId,
+                    theme: "crimson-jet",
+                    presetId: "0",
+                    additionalCss: {
+                        blogCss: "",
+                        siteCss: "",
+                        applyBlogCssToSite: false,
+                    },
+                });
+            }
+
+            themeSettings.additionalCss = {
+                blogCss: sanitizeCss(blogCss),
+                siteCss: sanitizeCss(siteCss),
+                applyBlogCssToSite: Boolean(applyBlogCssToSite),
+            };
+            themeSettings.markModified("additionalCss");
+            await themeSettings.save();
+
+            return res.status(200).json({
+                message: "Additional CSS saved successfully",
+                data: {
+                    projectId,
+                    blogCss: themeSettings.additionalCss.blogCss,
+                    siteCss: themeSettings.additionalCss.siteCss,
+                    applyBlogCssToSite: themeSettings.additionalCss.applyBlogCssToSite,
+                },
+            });
+        } catch (error) {
+            console.error("Error updating additional CSS:", error);
+            return res.status(500).json({ message: "Server error while updating additional CSS" });
         }
     },
 

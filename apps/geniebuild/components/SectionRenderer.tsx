@@ -17,7 +17,7 @@ import {
   toDisplayImageUrl,
 } from './sections/homepage/utils/sectionImageResolve';
 import { SectionEffectsLayer } from './sections/homepage/utils/SectionEffectsLayer';
-import { resolveStyleFieldUpdate } from './builder/state/sectionUpdaters';
+import { resolveStyleFieldUpdate, composeHeadingPlainText, mergeElementContent } from './builder/state/sectionUpdaters';
 import { useAboutUsContact } from './builder/context/AboutUsContactContext';
 import { applySectionContactForDisplay } from '../lib/contactResolver';
 
@@ -283,7 +283,11 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
         );
       }
       if (patch.content !== undefined) {
-        next.content = { ...(prev.content || {}), ...(patch.content || {}) };
+        next.content = mergeElementContent(
+          prev.content,
+          patch.content,
+          prev.type || patch.type,
+        );
       }
       return next;
     };
@@ -335,28 +339,71 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
       return;
     }
 
-    // ServicesPlumbing2 service cards use ids `${section.id}-sp2-svc0` — sync edits into content.items[index]
+    // ServicesPlumbing2 / ServicesPriceList cards:
+    // `${section.id}-sp2-svc0` or `...-sp2-svc0-name|desc|img`
     const sp2CardMatch =
       String(section.type || '').toLowerCase() === 'services'
-        ? elementId.match(/-sp2-svc(\d+)$/)
+        ? elementId.match(/-sp2-svc(\d+)(?:-(name|desc|img|title|description|image))?$/)
         : null;
     if (sp2CardMatch) {
       const idx = parseInt(sp2CardMatch[1], 10);
+      const field = sp2CardMatch[2] || '';
       const items = Array.isArray(content.items) ? [...content.items] : [];
       if (items.length > idx) {
         const item = { ...items[idx] };
         const uc = (updates.content || {}) as Record<string, unknown>;
-        if (uc.imageUrl !== undefined) item.imageUrl = uc.imageUrl as string;
-        if (uc.title !== undefined) item.title = uc.title as string;
-        if (uc.text !== undefined) item.title = uc.text as string;
-        if (uc.description !== undefined) item.description = uc.description as string;
-        if (uc.subText !== undefined) item.description = uc.subText as string;
-        if (uc.link !== undefined) item.link = uc.link as string;
-        if (uc.buttonLink !== undefined) item.link = uc.buttonLink as string;
+        const isName = !field || field === 'name' || field === 'title';
+        const isDesc = field === 'desc' || field === 'description';
+        const isImg = field === 'img' || field === 'image';
+        if (isName) {
+          if (uc.imageUrl !== undefined && !field) item.imageUrl = uc.imageUrl as string;
+          const plain = composeHeadingPlainText(uc);
+          if (plain) item.title = plain;
+          else if (uc.title !== undefined) item.title = uc.title as string;
+          else if (uc.text !== undefined) item.title = uc.text as string;
+          if (uc.description !== undefined && !field) item.description = uc.description as string;
+          if (uc.subText !== undefined && !field) item.description = uc.subText as string;
+          if (uc.link !== undefined) item.link = uc.link as string;
+          if (uc.buttonLink !== undefined) item.link = uc.buttonLink as string;
+        }
+        if (isDesc) {
+          if (uc.text !== undefined) item.description = uc.text as string;
+          if (uc.subText !== undefined) item.description = uc.subText as string;
+          if (uc.description !== undefined) item.description = uc.description as string;
+        }
+        if (isImg) {
+          if (uc.imageUrl !== undefined) item.imageUrl = uc.imageUrl as string;
+        }
         items[idx] = item;
         onUpdate(section.id, { elements: newElements, content: { ...content, items } });
         return;
       }
+    }
+
+    // Services header: `-sp2-title|badge|desc`
+    const sp2HeaderMatch =
+      String(section.type || '').toLowerCase() === 'services'
+        ? elementId.match(/-sp2-(title|badge|desc)$/)
+        : null;
+    if (sp2HeaderMatch && updates.content) {
+      const key =
+        sp2HeaderMatch[1] === 'title'
+          ? 'title'
+          : sp2HeaderMatch[1] === 'badge'
+            ? 'badgeText'
+            : 'description';
+      const elAfter = newElements.find((e) => e.id === elementId);
+      const uc = (elAfter?.content || updates.content || {}) as Record<string, unknown>;
+      const plain = composeHeadingPlainText(uc);
+      const nextVal =
+        key === 'title'
+          ? plain || String(uc.text ?? '')
+          : String(uc.text ?? updates.content.text ?? '');
+      onUpdate(section.id, {
+        elements: newElements,
+        content: { ...content, [key]: nextVal },
+      });
+      return;
     }
 
     // Sync with content.items if this elementId refers to an item or its sub-parts

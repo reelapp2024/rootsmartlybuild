@@ -24,6 +24,7 @@ function buildBlogContentPrompt(ctx = {}) {
     projectName: String(ctx.projectName || "").trim(),
     serviceType: String(ctx.serviceType || "").trim(),
     locations: Array.isArray(ctx.locations) ? ctx.locations : [],
+    seoMode: Number.isFinite(Number(ctx.seoMode)) ? Number(ctx.seoMode) : 1,
   };
 
   switch (type) {

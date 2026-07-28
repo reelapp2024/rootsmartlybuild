@@ -12,6 +12,50 @@ export const colorToHex = (val: string | undefined): string | undefined => {
 };
 
 /**
+ * Plain text for a heading element — prefer structured parts from the sidebar
+ * (textBefore / highlightedText / textAfter), else fall back to `text`.
+ */
+export function composeHeadingPlainText(content: Record<string, unknown> | null | undefined): string {
+  if (!content || typeof content !== 'object') return '';
+  const hasParts =
+    Object.prototype.hasOwnProperty.call(content, 'textBefore') ||
+    Object.prototype.hasOwnProperty.call(content, 'highlightedText') ||
+    Object.prototype.hasOwnProperty.call(content, 'textAfter');
+  if (hasParts) {
+    return [content.textBefore, content.highlightedText, content.textAfter]
+      .map((p) => String(p || '').trim())
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  return String(content.text || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Merge content patches; keep heading `text` aligned with 3-part fields. */
+export function mergeElementContent(
+  prevContent: WebsiteElement['content'] | undefined,
+  patch: Partial<WebsiteElement['content']> | undefined,
+  elementType?: string,
+): WebsiteElement['content'] {
+  const merged: any = { ...(prevContent || {}), ...(patch || {}) };
+  const touchesHeadingParts =
+    patch &&
+    (Object.prototype.hasOwnProperty.call(patch, 'textBefore') ||
+      Object.prototype.hasOwnProperty.call(patch, 'highlightedText') ||
+      Object.prototype.hasOwnProperty.call(patch, 'textAfter') ||
+      Object.prototype.hasOwnProperty.call(patch, 'text'));
+  if (elementType === 'heading' || touchesHeadingParts) {
+    const plain = composeHeadingPlainText(merged);
+    if (plain) merged.text = plain;
+  }
+  return merged;
+}
+
+/**
  * Merge or replace a style object on an element update.
  * Empty object `{}` means "clean all styles" (full replace), not a no-op merge.
  */
@@ -105,7 +149,7 @@ export const applyUpdateElement = (
         ...prev,
         ...updates,
         content: updates.content !== undefined
-          ? { ...(prev.content || {}), ...(updates.content || {}) }
+          ? mergeElementContent(prev.content, updates.content, prev.type || updates.type)
           : prev.content,
         style: normalizeStyle(nextStyle || {}) as WebsiteElement['style'],
         tabletStyle: nextTabletStyle,
@@ -113,29 +157,38 @@ export const applyUpdateElement = (
         settings: { ...(prev.settings || {}), ...(updates.settings || {}) },
       };
       updatedSection = { ...s, elements: newElements };
-    } else if (selectedVirtualElement && selectedVirtualElement.id === elementId) {
+    } else if (
+      (selectedVirtualElement && selectedVirtualElement.id === elementId) ||
+      updates.content !== undefined ||
+      updates.type !== undefined
+    ) {
+      // Materialize virtual / first-time sidebar edits into section.elements so the
+      // canvas can find them on the next render.
+      const seed = selectedVirtualElement?.id === elementId ? selectedVirtualElement : null;
       const nextStyle = resolveStyleFieldUpdate(
-        selectedVirtualElement.style as Record<string, any> | undefined,
+        seed?.style as Record<string, any> | undefined,
         updates.style as Record<string, any> | undefined,
         'style' in updates,
       );
       const nextTabletStyle = resolveStyleFieldUpdate(
-        selectedVirtualElement.tabletStyle as Record<string, any> | undefined,
+        seed?.tabletStyle as Record<string, any> | undefined,
         updates.tabletStyle as Record<string, any> | undefined,
         'tabletStyle' in updates,
       );
       const nextMobileStyle = resolveStyleFieldUpdate(
-        selectedVirtualElement.mobileStyle as Record<string, any> | undefined,
+        seed?.mobileStyle as Record<string, any> | undefined,
         updates.mobileStyle as Record<string, any> | undefined,
         'mobileStyle' in updates,
       );
-      const newElement = {
-        ...selectedVirtualElement,
+      const newElement: WebsiteElement = {
+        ...(seed || {}),
         ...updates,
+        id: elementId,
+        type: (updates.type || seed?.type || 'heading') as WebsiteElement['type'],
         content: updates.content !== undefined
-          ? { ...(selectedVirtualElement.content || {}), ...(updates.content || {}) }
-          : selectedVirtualElement.content,
-        style: normalizeStyle(nextStyle || {}) as WebsiteElement['style'],
+          ? mergeElementContent(seed?.content, updates.content, updates.type || seed?.type)
+          : (seed?.content || {}),
+        style: normalizeStyle(nextStyle || (seed?.style as any) || {}) as WebsiteElement['style'],
         tabletStyle: nextTabletStyle,
         mobileStyle: nextMobileStyle,
       };
@@ -202,6 +255,81 @@ export const applyUpdateElement = (
       updatedSection = { ...updatedSection, content: { ...updatedSection.content, items: newItems } };
     }
 
+    // ServicesPriceList / ServicesPlumbing2: `${section.id}-sp2-svc0-name|desc|img` (+ bare card id)
+    const sp2SvcMatch =
+      String(updatedSection.type || '').toLowerCase() === 'services'
+        ? String(elementId).match(/-sp2-svc(\d+)(?:-(name|desc|img|title|description|image))?$/)
+        : null;
+    if (sp2SvcMatch) {
+      const idx = parseInt(sp2SvcMatch[1], 10);
+      const field = sp2SvcMatch[2] || '';
+      const items = Array.isArray(updatedSection.content?.items)
+        ? [...updatedSection.content.items]
+        : [];
+      if (items.length > idx) {
+        const item = { ...items[idx] };
+        const elAfter = updatedSection.elements?.find((e) => e.id === elementId);
+        const uc = (elAfter?.content || updates.content || {}) as Record<string, unknown>;
+        const plain = composeHeadingPlainText(uc);
+        const isName = !field || field === 'name' || field === 'title';
+        const isDesc = field === 'desc' || field === 'description';
+        const isImg = field === 'img' || field === 'image';
+        if (isName) {
+          if (plain) item.title = plain;
+          else if (uc.title !== undefined) item.title = uc.title as string;
+          else if (uc.text !== undefined) item.title = uc.text as string;
+        }
+        if (isDesc) {
+          if (uc.text !== undefined) item.description = uc.text as string;
+          if (uc.subText !== undefined) item.description = uc.subText as string;
+          if (uc.description !== undefined) item.description = uc.description as string;
+        }
+        if (isImg || (!field && uc.imageUrl !== undefined)) {
+          if (uc.imageUrl !== undefined) item.imageUrl = uc.imageUrl as string;
+        }
+        if (!field) {
+          if (uc.imageUrl !== undefined) item.imageUrl = uc.imageUrl as string;
+          if (uc.link !== undefined) item.link = uc.link as string;
+          if (uc.buttonLink !== undefined) item.link = uc.buttonLink as string;
+        }
+        items[idx] = item;
+        updatedSection = {
+          ...updatedSection,
+          content: { ...updatedSection.content, items },
+        };
+      }
+    }
+
+    // Services header virtuals: `${section.id}-sp2-title|badge|desc`
+    const sp2HeaderMatch =
+      String(updatedSection.type || '').toLowerCase() === 'services'
+        ? String(elementId).match(/-sp2-(title|badge|desc)$/)
+        : null;
+    if (sp2HeaderMatch) {
+      const elAfter = updatedSection.elements?.find((e) => e.id === elementId);
+      const uc = (elAfter?.content || updates.content || {}) as Record<string, unknown>;
+      const plain = composeHeadingPlainText(uc);
+      const key =
+        sp2HeaderMatch[1] === 'title'
+          ? 'title'
+          : sp2HeaderMatch[1] === 'badge'
+            ? 'badgeText'
+            : 'description';
+      const nextVal =
+        key === 'title'
+          ? plain || (uc.text as string) || ''
+          : String(uc.text ?? '');
+      if (nextVal || updates.content) {
+        updatedSection = {
+          ...updatedSection,
+          content: {
+            ...updatedSection.content,
+            [key]: nextVal,
+          },
+        };
+      }
+    }
+
     // Sync virtual title/subtitle/description/button/image back to section content/styles
     const isTitle = elementId === `${updatedSection.id}-title` || elementId === `${updatedSection.id}-hero-title`;
     const isSubtitle = elementId === `${updatedSection.id}-subtitle` || elementId === `${updatedSection.id}-hero-subtitle`;
@@ -212,14 +340,19 @@ export const applyUpdateElement = (
     if (isTitle || isSubtitle || isDescription || isButton || isImage) {
       const prefix = isTitle ? 'title' : (isSubtitle ? 'subtitle' : (isDescription ? 'description' : (isButton ? 'cta' : 'image')));
       const sectionUpdates: any = { content: { ...updatedSection.content }, styles: { ...updatedSection.styles } };
+      const elAfter = updatedSection.elements?.find((e) => e.id === elementId);
+      const uc = (elAfter?.content || updates.content || {}) as any;
 
       if (isButton) {
-        if (updates.content?.text !== undefined) sectionUpdates.content.ctaText = updates.content.text;
-        if ((updates.content as any)?.link !== undefined) sectionUpdates.content.ctaHref = (updates.content as any).link;
+        if (uc.text !== undefined) sectionUpdates.content.ctaText = uc.text;
+        if (uc.link !== undefined) sectionUpdates.content.ctaHref = uc.link;
       } else if (isImage) {
-        if ((updates.content as any)?.imageUrl !== undefined) sectionUpdates.content.imageUrl = (updates.content as any).imageUrl;
-      } else if (updates.content?.text !== undefined) {
-        sectionUpdates.content[prefix] = updates.content.text;
+        if (uc.imageUrl !== undefined) sectionUpdates.content.imageUrl = uc.imageUrl;
+      } else {
+        const plain = composeHeadingPlainText(uc);
+        if (plain || uc.text !== undefined) {
+          sectionUpdates.content[prefix] = plain || uc.text;
+        }
       }
 
       if (updates.style) {

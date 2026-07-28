@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { enhanceBlogHtmlClient, splitBlogFaqFromHtml } from '../../../../utils/blogHtmlEnhance';
 
 interface Props {
   section: Section;
@@ -79,7 +80,6 @@ function promoteLinkColors(html: string): string {
       const a = node as HTMLAnchorElement;
       if (a.style?.color) return;
 
-      // Prefer nested colored node inside the link
       const nested = a.querySelector('font[color], [style*="color"]') as Element | null;
       const nestedColor = readExplicitColor(nested);
       if (nestedColor) {
@@ -87,7 +87,6 @@ function promoteLinkColors(html: string): string {
         return;
       }
 
-      // Then colored parent wrappers (common foreColor result)
       let p: Element | null = a.parentElement;
       while (p && p !== wrap) {
         const parentColor = readExplicitColor(p);
@@ -115,9 +114,8 @@ function resolveBodySource(content: any): string {
 }
 
 /**
- * BlogContentDefault — the article body. Light section (tc.light).
- * HTML posts render once as prose (with working links). Plain-text posts keep
- * an editable lead + remaining paragraphs.
+ * BlogContentDefault — article body themed like WordPress/Wix:
+ * site design tokens → .blog-prose / .gb-* classes; editor inline colors still win.
  */
 export const BlogContentDefault: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
@@ -147,13 +145,13 @@ export const BlogContentDefault: React.FC<Props> = ({
     lc.textColor ||
     tc?.textColor ||
     '#374151';
-  // Same cascade as ElementsSection: section → theme linkColor → accent
+  // Brand link color = site accent (amber/crimson), not generic blue
   const linkColor =
     s.linkColor ||
+    accent ||
     lc.linkColor ||
     tc?.linkColor ||
-    (tc?.light as any)?.linkColor ||
-    accent;
+    '#E11D48';
 
   const savedBg = s.backgroundColor;
   const isThemeSurface = (() => {
@@ -191,17 +189,69 @@ export const BlogContentDefault: React.FC<Props> = ({
     selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
   } as const;
 
+  const titleFont =
+    String((tc as any)?.titleFontFamily || (tc as any)?.titleFont || '').trim() || 'inherit';
+  const bodyFont =
+    String((tc as any)?.descriptionFontFamily || (tc as any)?.bodyFont || '').trim() || 'inherit';
+
   const articleHtml = useMemo(() => {
     const source = resolveBodySource(c) || DEFAULT_BODY;
-    return extractBlogBodyHtml(source);
+    const extracted = extractBlogBodyHtml(source);
+    return enhanceBlogHtmlClient(extracted);
   }, [c?.content, c?.body, c?.html, c?.text]);
 
-  const isHtml = /<[a-z][\s\S]*>/i.test(articleHtml);
+  /** FAQ uses the same accordion element as website / admin FAQ sections. */
+  const { htmlWithoutFaq, faqHeading, items: faqItems } = useMemo(
+    () => splitBlogFaqFromHtml(articleHtml),
+    [articleHtml]
+  );
+
+  const bodyHtml = faqItems.length ? htmlWithoutFaq : articleHtml;
+  const isHtml = /<[a-z][\s\S]*>/i.test(bodyHtml);
   const paragraphs = isHtml
     ? []
-    : articleHtml.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+    : bodyHtml.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
 
-  // Plain-text only: first paragraph as editable lead (HTML must not duplicate this).
+  const faqAccordionEl: WebsiteElement | null = faqItems.length
+    ? {
+        id: `${section.id}-blog-faq-accordion`,
+        type: 'accordion',
+        content: {
+          items: faqItems.map((it, i) => ({
+            title: it.title,
+            content: it.content,
+            openByDefault: i === 0,
+          })),
+          exclusive: true,
+        } as any,
+        style: {
+          backgroundColor: bg,
+          borderColor: `${accent}33`,
+          borderWidth: '1px',
+          borderStyle: 'solid',
+          borderRadius: '0.875rem',
+          padding: '1.25rem 1.5rem',
+          itemGap: '0.75rem',
+          iconType: 'plus',
+          iconPosition: 'right',
+          iconShape: 'circle',
+          iconSize: '0.875rem',
+          iconColor: accent,
+          iconBackgroundColor: `${accent}15`,
+          titleColor,
+          questionFontSize: '1.0625rem',
+          questionFontWeight: '700',
+          color: textColor,
+          answerFontSize: '0.9375rem',
+          answerLineHeight: '1.65',
+          activeBackgroundColor: bg,
+          activeBorderColor: `${accent}33`,
+          hoverBackgroundColor: '',
+          dividerColor: `${accent}22`,
+        } as any,
+      }
+    : null;
+
   const leadEl: WebsiteElement = section.elements?.find((e) => e.id === `${section.id}-bc-lead`) || {
     id: `${section.id}-bc-lead`,
     type: 'text',
@@ -210,6 +260,20 @@ export const BlogContentDefault: React.FC<Props> = ({
   };
 
   const proseScopeId = `blog-prose-${String(section.id || 'body').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
+  /** Force theme tokens on the article node so blogs never render as plain B&W HTML. */
+  const proseCssVars = {
+    ['--blog-title-color' as any]: titleColor,
+    ['--blog-text-color' as any]: textColor,
+    ['--blog-link-color' as any]: linkColor,
+    ['--blog-accent-color' as any]: accent,
+    ['--blog-muted-color' as any]: (tc as any)?.mutedColor || (tc as any)?.light?.textColorMuted || '#6B7280',
+    ['--blog-surface-color' as any]: bg,
+    ['--blog-title-font' as any]: titleFont,
+    ['--blog-body-font' as any]: bodyFont,
+    color: textColor,
+    fontFamily: bodyFont,
+  } as React.CSSProperties;
 
   return (
     <div className="w-full" style={{ backgroundColor: bg }}>
@@ -223,64 +287,209 @@ export const BlogContentDefault: React.FC<Props> = ({
         >
           {isHtml ? (
             <>
-              {/*
-                Default link color is theme/section-customizable (linkColor).
-                Inline style="color:…" on <a> always wins (editor per-link color).
-                Colored parents (font/span from foreColor) pass through via inherit.
-              */}
               <style>{`
-                #${proseScopeId} a {
+                #${proseScopeId} {
+                  color: ${textColor};
+                  font-family: ${bodyFont};
+                  font-size: var(--text-size-base, 1rem);
+                  line-height: 1.8;
+                }
+                #${proseScopeId} a,
+                #${proseScopeId} .gb-link {
                   color: ${linkColor};
                   text-decoration: underline;
                   text-underline-offset: 3px;
                   font-weight: 600;
                   cursor: pointer;
                 }
-                #${proseScopeId} a:hover {
-                  opacity: 0.85;
-                }
-                /* Respect colors from the HTML editor when applied around the link */
+                #${proseScopeId} a:hover,
+                #${proseScopeId} .gb-link:hover { opacity: 0.85; }
                 #${proseScopeId} font[color] a,
                 #${proseScopeId} [style*="color:"] > a,
-                #${proseScopeId} [style*="color :"] > a {
-                  color: inherit;
+                #${proseScopeId} [style*="color :"] > a,
+                #${proseScopeId} [data-gb-color-override="1"] > a { color: inherit; }
+                /* Theme defaults lose to manual inline colors/fonts from the admin editor */
+                #${proseScopeId} h1[style*="color"],
+                #${proseScopeId} h2[style*="color"],
+                #${proseScopeId} h3[style*="color"],
+                #${proseScopeId} h4[style*="color"],
+                #${proseScopeId} p[style*="color"],
+                #${proseScopeId} [data-gb-color-override="1"],
+                #${proseScopeId} [style*="font-family"],
+                #${proseScopeId} [data-gb-font-override="1"] {
+                  /* inline style on the element wins over rules above */
                 }
-                /* Nested colored nodes inside a link keep their own color */
-                #${proseScopeId} a font[color],
-                #${proseScopeId} a [style*="color:"],
-                #${proseScopeId} a [style*="color :"] {
-                  text-decoration: inherit;
+                #${proseScopeId} [data-gb-color-override="1"] {
+                  border-left-color: currentColor;
                 }
-                #${proseScopeId} img {
+                #${proseScopeId} img,
+                #${proseScopeId} .gb-img {
                   max-width: 100%;
                   height: auto;
                   border-radius: 0.75rem;
                 }
-                #${proseScopeId} h1, #${proseScopeId} h2, #${proseScopeId} h3,
-                #${proseScopeId} h4, #${proseScopeId} h5, #${proseScopeId} h6 {
+                #${proseScopeId} h1, #${proseScopeId} h2,
+                #${proseScopeId} .gb-h1, #${proseScopeId} .gb-h2 {
                   color: ${titleColor};
+                  font-family: ${titleFont};
                   font-weight: 700;
                   line-height: 1.3;
-                  margin: 1.5em 0 0.6em;
+                  margin: 1.65em 0 0.65em;
+                  border-left: 4px solid ${accent};
+                  padding-left: 0.85rem;
                 }
-                #${proseScopeId} p { margin: 0 0 1em; }
-                #${proseScopeId} ul, #${proseScopeId} ol {
+                #${proseScopeId} h1, #${proseScopeId} .gb-h1 { font-size: var(--heading-h1-size, 2.25rem); }
+                #${proseScopeId} h2, #${proseScopeId} .gb-h2 { font-size: var(--heading-h2-size, 1.75rem); }
+                #${proseScopeId} h3, #${proseScopeId} .gb-h3 {
+                  color: ${accent};
+                  font-family: ${titleFont};
+                  font-weight: 700;
+                  line-height: 1.35;
+                  margin: 1.25em 0 0.5em;
+                  font-size: var(--heading-h3-size, 1.375rem);
+                }
+                #${proseScopeId} h4, #${proseScopeId} h5, #${proseScopeId} h6,
+                #${proseScopeId} .gb-h4, #${proseScopeId} .gb-h5, #${proseScopeId} .gb-h6 {
+                  color: ${titleColor};
+                  font-family: ${titleFont};
+                  font-weight: 700;
+                  margin: 1.25em 0 0.5em;
+                }
+                #${proseScopeId} p,
+                #${proseScopeId} .gb-p {
+                  margin: 0 0 1em;
+                  color: ${textColor};
+                  font-family: ${bodyFont};
+                }
+                #${proseScopeId} ul, #${proseScopeId} ol,
+                #${proseScopeId} .gb-ul, #${proseScopeId} .gb-ol {
                   margin: 0 0 1em;
                   padding-left: 1.35rem;
+                  color: ${textColor};
                 }
-                #${proseScopeId} blockquote {
+                #${proseScopeId} li::marker { color: ${accent}; }
+                #${proseScopeId} blockquote,
+                #${proseScopeId} .gb-quote {
                   margin: 1.25em 0;
-                  padding: 0.75em 1em;
-                  border-left: 3px solid ${linkColor};
-                  opacity: 0.95;
+                  padding: 0.85em 1.1em;
+                  border-left: 4px solid ${accent};
+                  background: color-mix(in srgb, ${accent} 8%, ${bg});
+                  color: ${textColor};
+                  font-style: italic;
+                  border-radius: 0 0.65rem 0.65rem 0;
                 }
+                #${proseScopeId} strong,
+                #${proseScopeId} .gb-strong {
+                  color: ${titleColor};
+                  font-weight: 700;
+                }
+                #${proseScopeId} .gb-faq,
+                #${proseScopeId} details.gb-faq {
+                  display: block;
+                  margin: 0 0 0.75rem;
+                  padding: 0;
+                  border: 1px solid color-mix(in srgb, ${accent} 20%, transparent);
+                  border-radius: 0.875rem;
+                  background: ${bg};
+                  box-shadow: none;
+                  overflow: hidden;
+                }
+                #${proseScopeId} details.gb-faq:last-child { margin-bottom: 0; }
+                #${proseScopeId} details.gb-faq > summary,
+                #${proseScopeId} summary.gb-faq-q {
+                  cursor: pointer;
+                  list-style: none;
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                  gap: 0.75rem;
+                  padding: 1.25rem 1.5rem;
+                  margin: 0;
+                  color: ${titleColor};
+                  font-family: ${titleFont};
+                  font-weight: 700;
+                  font-size: 1.0625rem;
+                  line-height: 1.4;
+                  text-align: left;
+                  user-select: none;
+                  background: transparent;
+                  border: none;
+                }
+                #${proseScopeId} details.gb-faq > summary::-webkit-details-marker,
+                #${proseScopeId} summary::-webkit-details-marker { display: none; }
+                #${proseScopeId} details.gb-faq > summary::after {
+                  content: "+";
+                  box-sizing: border-box;
+                  width: 2rem;
+                  height: 2rem;
+                  border-radius: 9999px;
+                  background: color-mix(in srgb, ${accent} 8%, transparent);
+                  color: ${accent};
+                  display: inline-flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-size: 0.875rem;
+                  font-weight: 700;
+                  line-height: 1;
+                  flex-shrink: 0;
+                  transform: none;
+                }
+                #${proseScopeId} details.gb-faq[open] > summary {
+                  background: transparent;
+                  border-bottom: none;
+                }
+                #${proseScopeId} details.gb-faq[open] > summary::after {
+                  content: "\\2212";
+                  transform: none;
+                }
+                #${proseScopeId} details.gb-faq > .gb-faq-a,
+                #${proseScopeId} .gb-faq-a {
+                  padding: 1.25rem 1.5rem;
+                  border-top: 1px solid color-mix(in srgb, ${accent} 13%, transparent);
+                  color: ${textColor};
+                  font-family: ${bodyFont};
+                  font-size: 0.9375rem;
+                  line-height: 1.65;
+                }
+                #${proseScopeId} .gb-faq .gb-faq-q,
+                #${proseScopeId} .gb-faq h3 {
+                  margin-top: 0;
+                  color: ${titleColor};
+                  font-size: 1.0625rem;
+                }
+                #${proseScopeId} .gb-faq p,
+                #${proseScopeId} .gb-faq-a p { margin-bottom: 0.65em; }
+                #${proseScopeId} .gb-faq-a p:last-child { margin-bottom: 0; }
               `}</style>
               <div
                 id={proseScopeId}
                 className="blog-prose leading-relaxed"
-                style={{ color: textColor, fontSize: '1.05rem', lineHeight: 1.8 }}
-                dangerouslySetInnerHTML={{ __html: articleHtml }}
+                style={proseCssVars}
+                dangerouslySetInnerHTML={{ __html: bodyHtml }}
               />
+              {faqAccordionEl ? (
+                <div className="mt-10 sm:mt-12 space-y-5">
+                  <h2
+                    className="gb-h2 gb-el"
+                    style={{
+                      color: titleColor,
+                      fontFamily: titleFont,
+                      fontWeight: 700,
+                      fontSize: 'var(--heading-h2-size, 1.75rem)',
+                      lineHeight: 1.3,
+                      margin: '0 0 0.25rem',
+                      borderLeft: `4px solid ${accent}`,
+                      paddingLeft: '0.85rem',
+                    }}
+                  >
+                    {faqHeading || 'FAQ'}
+                  </h2>
+                  <ElementsSection
+                    section={{ ...section, elements: [faqAccordionEl] }}
+                    {...passThrough}
+                  />
+                </div>
+              ) : null}
             </>
           ) : (
             <>
@@ -288,7 +497,11 @@ export const BlogContentDefault: React.FC<Props> = ({
                 <ElementsSection section={{ ...section, elements: [leadEl] }} {...passThrough} />
               ) : null}
               {paragraphs.slice(1).map((p, i) => (
-                <p key={i} style={{ color: textColor, fontSize: '1.05rem', lineHeight: 1.8 }}>
+                <p
+                  key={i}
+                  className="gb-p gb-el"
+                  style={{ color: textColor, fontSize: '1.05rem', lineHeight: 1.8, fontFamily: bodyFont }}
+                >
                   {p}
                 </p>
               ))}
@@ -299,5 +512,3 @@ export const BlogContentDefault: React.FC<Props> = ({
     </div>
   );
 };
-
-export default BlogContentDefault;

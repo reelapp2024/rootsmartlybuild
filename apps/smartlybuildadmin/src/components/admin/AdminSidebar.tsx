@@ -9,6 +9,7 @@ import {
   ListTodo,
   UserCog,
   Palette,
+  Code2,
   Plug,
   Link,
   ExternalLink,
@@ -295,6 +296,7 @@ export function AdminSidebar({ activeSection, setActiveSection, onCollapseChange
         { id: "project-locations", label: "Locations", icon: MapPin, route: `/admin/projects/${projectId}/dashboard/locations` },
         { id: "project-contact", label: "Contact Information", icon: Contact, route: `/admin/projects/${projectId}/dashboard/contact` },
         { id: "project-design", label: "Design", icon: Palette, route: `/admin/projects/${projectId}/dashboard/design` },
+        { id: "project-additional-css", label: "Additional CSS", icon: Code2, route: `/admin/projects/${projectId}/dashboard/additional-css` },
         { 
           id: "project-forms", 
           label: "Forms", 

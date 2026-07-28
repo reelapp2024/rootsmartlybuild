@@ -21,6 +21,26 @@ const blogSchema = new mongoose.Schema(
       metaTitle: { type: String, trim: true },
       metaDescription: { type: String, trim: true },
       keywords: [{ type: String, trim: true }],
+      /** Topic tags (often mirrored from keywords for basic/premium SEO). */
+      tags: [{ type: String, trim: true }],
+      /** 0=manual · 1=basic · 2=premium (JSON-LD). */
+      seoMode: { type: Number, enum: [0, 1, 2], default: 1 },
+      ogTitle: { type: String, trim: true },
+      ogDescription: { type: String, trim: true },
+      ogType: { type: String, trim: true, default: "article" },
+      /** Premium JSON-LD rows (same shape as WebsitePage.seoSettings[].schemas). */
+      schemas: [
+        {
+          id: { type: String },
+          type: { type: String },
+          name: { type: String },
+          enabled: { type: Boolean, default: true },
+          source: { type: String, default: "system" },
+          json: { type: mongoose.Schema.Types.Mixed, default: {} },
+          updatedAt: { type: Date },
+        },
+      ],
+      structured_data: { type: String, default: "" },
     },
 
     likesCount: { type: Number, default: 0 },

@@ -217,6 +217,175 @@ function buildAggregateRatingSchema({ projectName, ratingValue, reviewCount, rev
   });
 }
 
+/** Strip tags for FAQ / schema text. */
+function stripHtml(html) {
+  return clean(String(html || "").replace(/<[^>]+>/g, " "));
+}
+
+/**
+ * Pull FAQ Q&A pairs from blog HTML.
+ * Supports accordion (`details/summary`) and legacy (`h3` + `p` under FAQ heading).
+ */
+function extractFaqFromBlogHtml(html) {
+  const s = String(html || "");
+  const items = [];
+
+  const detailsRe =
+    /<details\b[^>]*>\s*<summary\b[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/gi;
+  let dm;
+  while ((dm = detailsRe.exec(s)) !== null) {
+    const q = stripHtml(dm[1]);
+    const a = stripHtml(dm[2]);
+    if (q && a) items.push({ question: q, answer: a });
+  }
+  if (items.length) return items;
+
+  const faqMatch = s.match(/<h2[^>]*>\s*FAQ\s*<\/h2>([\s\S]*?)(?=<h2\b|$)/i);
+  if (!faqMatch) return [];
+  const block = faqMatch[1];
+  const re = /<h3[^>]*>([\s\S]*?)<\/h3>\s*<p[^>]*>([\s\S]*?)<\/p>/gi;
+  let m;
+  while ((m = re.exec(block)) !== null) {
+    const q = stripHtml(m[1]);
+    const a = stripHtml(m[2]);
+    if (q && a) items.push({ question: q, answer: a });
+  }
+  return items;
+}
+
+function buildBlogPostingSchema({
+  title,
+  description,
+  url,
+  image,
+  datePublished,
+  dateModified,
+  authorName,
+  publisherName,
+  keywords = [],
+}) {
+  const json = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: clean(title) || "Article",
+    description: clean(description) || undefined,
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": clean(url) || undefined,
+    },
+    url: clean(url) || undefined,
+  };
+  if (image) {
+    json.image = Array.isArray(image) ? image.filter(Boolean) : [clean(image)];
+  }
+  if (datePublished) json.datePublished = datePublished;
+  if (dateModified) json.dateModified = dateModified || datePublished;
+  if (authorName) {
+    json.author = { "@type": "Person", name: clean(authorName) };
+  }
+  if (publisherName) {
+    json.publisher = {
+      "@type": "Organization",
+      name: clean(publisherName),
+    };
+  }
+  const kw = (Array.isArray(keywords) ? keywords : [])
+    .map((k) => clean(k))
+    .filter(Boolean);
+  if (kw.length) json.keywords = kw.join(", ");
+
+  return makeSchemaEntry({
+    type: "BlogPosting",
+    name: "Blog Posting",
+    json,
+  });
+}
+
+function buildBlogBreadcrumbSchema({ projectName, blogTitle, blogUrl }) {
+  return makeSchemaEntry({
+    type: "BreadcrumbList",
+    name: "Blog Breadcrumbs",
+    json: {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: clean(projectName) || "Home",
+          item: "/",
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "Blog",
+          item: "/blog",
+        },
+        {
+          "@type": "ListItem",
+          position: 3,
+          name: clean(blogTitle) || "Article",
+          item: clean(blogUrl) || "/blog",
+        },
+      ],
+    },
+  });
+}
+
+/**
+ * Premium JSON-LD pack for a blog article (seo mode 2).
+ */
+function buildBlogPremiumSchemas({
+  title,
+  slug,
+  description,
+  keywords = [],
+  contentHtml = "",
+  authorName = "",
+  projectName = "",
+  coverImageUrl = "",
+  datePublished = null,
+  dateModified = null,
+} = {}) {
+  const blogUrl = `/blog/${clean(slug).replace(/^\/+/, "") || "post"}`;
+  const published =
+    datePublished instanceof Date
+      ? datePublished.toISOString()
+      : datePublished
+        ? String(datePublished)
+        : new Date().toISOString();
+  const modified =
+    dateModified instanceof Date
+      ? dateModified.toISOString()
+      : dateModified
+        ? String(dateModified)
+        : published;
+
+  const schemas = [
+    buildBlogPostingSchema({
+      title,
+      description,
+      url: blogUrl,
+      image: coverImageUrl || undefined,
+      datePublished: published,
+      dateModified: modified,
+      authorName,
+      publisherName: projectName,
+      keywords,
+    }),
+    buildBlogBreadcrumbSchema({
+      projectName,
+      blogTitle: title,
+      blogUrl,
+    }),
+  ];
+
+  const faqSchema = buildFaqPageSchema(extractFaqFromBlogHtml(contentHtml));
+  if (faqSchema) schemas.push(faqSchema);
+
+  return schemas.filter(Boolean);
+}
+
 /**
  * Build premium schema pack for a page.
  */
@@ -364,6 +533,10 @@ module.exports = {
   buildServiceSchema,
   buildFaqPageSchema,
   buildAggregateRatingSchema,
+  buildBlogPostingSchema,
+  buildBlogBreadcrumbSchema,
+  buildBlogPremiumSchemas,
+  extractFaqFromBlogHtml,
   buildPremiumSchemas,
   schemasToStructuredDataString,
 };

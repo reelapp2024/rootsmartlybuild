@@ -12,6 +12,7 @@ const UserProject = require("../models/userProjects");
 const User = require("../models/users");
 const aiblogsQueue = require("../queue/aiblogsQueue");
 const { normalizeBlogType } = require("../sections/aiblogs");
+const { normalizeBlogSeoMode } = require("../services/blogSeoService");
 const {
   startBatch,
   getLiveProgress,
@@ -73,6 +74,7 @@ module.exports = {
         title,
         titlesWithSchedule,
         locations,
+        seoMode,
       } = req.body || {};
 
       if (!projectId || !mongoose.isValidObjectId(String(projectId))) {
@@ -107,6 +109,7 @@ module.exports = {
       }
 
       const blogType = normalizeBlogType(type);
+      const blogSeoMode = normalizeBlogSeoMode(seoMode);
       const locList = normalizeLocations(locations);
       const workers = getDefaultParallelWorkers();
 
@@ -144,7 +147,7 @@ module.exports = {
       const blogOwnerUserId = String(project.userId || userId);
 
       console.log(
-        `[AiblogsControllerV2] queueing ${scheduleItems.length} blog(s) type=${blogType} workers=${workers} project=${projectId} owner=${blogOwnerUserId} actor=${userId}`
+        `[AiblogsControllerV2] queueing ${scheduleItems.length} blog(s) type=${blogType} seoMode=${blogSeoMode} workers=${workers} project=${projectId} owner=${blogOwnerUserId} actor=${userId}`
       );
       console.log(
         `[AiblogsControllerV2] titles:`,
@@ -179,6 +182,7 @@ module.exports = {
           scheduleTime: isSchedule ? scheduledAt.toISOString() : null,
           scheduleKey: item.scheduleKey || null,
           locations: locList,
+          seoMode: blogSeoMode,
           version: 2,
         });
         jobs.push(job);
@@ -203,6 +207,7 @@ module.exports = {
         count: jobs.length,
         jobIds,
         type: blogType,
+        seoMode: blogSeoMode,
         locations: locList,
         parallelWorkers: workers,
         progress,

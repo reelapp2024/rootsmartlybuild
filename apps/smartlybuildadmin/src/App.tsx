@@ -33,6 +33,7 @@ import Services from "./pages/admin/Services";
 import Locations from "./pages/admin/Locations";
 import ContactInformation from "./pages/admin/ContactInformation";
 import Design from "./pages/admin/Design";
+import AdditionalCss from "./pages/admin/AdditionalCss";
 import WebsiteGenerator from "./pages/admin/WebsiteGenerator";
 import Authors from "./pages/admin/Authors";
 import Reviews from "./pages/admin/Reviews";
@@ -88,6 +89,7 @@ const App = () => (
           <Route path="/admin/projects/:projectId/dashboard/locations" element={<AdminLayout><Locations /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/contact" element={<AdminLayout><ContactInformation /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/design" element={<AdminLayout><Design /></AdminLayout>} />
+          <Route path="/admin/projects/:projectId/dashboard/additional-css" element={<AdminLayout><AdditionalCss /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/automations/follow-up" element={<AdminLayout><ProjectDashboard /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/settings/lead-engine" element={<AdminLayout><ProjectDashboard /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/project-settings" element={<AdminLayout><ProjectSettings /></AdminLayout>} />

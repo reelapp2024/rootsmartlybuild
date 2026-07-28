@@ -27,7 +27,20 @@ function formatLocations(locations) {
   };
 }
 
-function commonOutputSchema() {
+function commonOutputSchema(seoMode = 1) {
+  const mode = parseInt(seoMode, 10);
+  if (mode === 0) {
+    return `
+Return STRICT JSON ONLY with this exact shape:
+{
+  "information": "string — 1–2 sentence excerpt (120–180 characters) for blog cards",
+  "content_html": "string — article BODY HTML only",
+  "cover_alt": "string — short alt text for a cover image"
+}
+Do NOT include meta_title, meta_description, or meta_keywords (SEO will be filled manually later).
+`.trim();
+  }
+
   return `
 Return STRICT JSON ONLY with this exact shape:
 {
@@ -80,16 +93,18 @@ HARD RULES FOR content_html
 6. ${hasLocations ? `Naturally mention these location(s) where relevant: ${locationsLine}. Do not spam every paragraph.` : "Do not invent specific city names."}
 7. Tone: helpful, clear, professional. Second-person ("you") is fine.
 8. Do NOT invent fake reviews, star ratings, author bios, or comment widgets in HTML.
-9. Do NOT output CSS or layout chrome. GenieBuild variants handle design.
+9. Do NOT output CSS or layout chrome. The platform stamps gb-* element classes and applies the site theme (like WordPress/Wix).
 
 ${commonStructureRules()}
 `.trim();
 }
 
 /**
- * Strip anything that would break the RichTextEditor / GenieBuild blog body.
+ * Strip anything that would break the RichTextEditor / GenieBuild blog body,
+ * then stamp GenieBuild-aligned gb-* classes for theme CSS.
  */
 function sanitizeArticleHtml(html) {
+  const { prepareBlogContentHtml } = require("../../services/blogHtmlEnhance");
   let s = String(html || "").trim();
   if (!s) return "";
 
@@ -108,13 +123,14 @@ function sanitizeArticleHtml(html) {
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<link\b[^>]*>/gi, "")
     .replace(/<meta\b[^>]*>/gi, "")
+    // Strip foreign class/id/style from AI (theme owns design). Manual editor
+    // saves go through prepareBlogContentHtml which keeps intentional style=.
     .replace(/\s(class|id|style|onclick|onerror|onload)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
     .trim();
 
-  // Unwrap empty leftover wrappers
   s = s.replace(/<p>\s*<\/p>/gi, "").trim();
-  return s;
+  return prepareBlogContentHtml(s);
 }
 
 function normalizeAiPayload(raw, title) {

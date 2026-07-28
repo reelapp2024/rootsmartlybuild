@@ -5,7 +5,7 @@ const {
 } = require("./shared");
 
 function buildWhatPrompt(ctx = {}) {
-  const { title, projectName, serviceType, locations = [] } = ctx;
+  const { title, projectName, serviceType, locations = [], seoMode = 1 } = ctx;
   const loc = formatLocations(locations);
   const base = commonHtmlRules({
     title,
@@ -32,7 +32,7 @@ REQUIRED <h2> SECTION ORDER (exact titles, no numbers/letters in headings):
 9. <h2>FAQ</h2> — exactly 5 items as <h3>question?</h3><p>answer</p> (no numbers, no A/B/C, no Q:/A:)
 10. <h2>Bottom Line</h2>
 
-${commonOutputSchema()}
+${commonOutputSchema(seoMode)}
 `.trim();
 }
 

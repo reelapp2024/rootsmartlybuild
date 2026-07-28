@@ -82,7 +82,10 @@ export default function AiBlogsWizard() {
   // Step 4: titles (editable)
   const [titles, setTitles] = useState<string[]>([]);
 
-  // Step 5: authors dropdown (+ submit)
+  // Step 5: SEO mode (0 manual · 1 basic · 2 premium)
+  const [blogSeoMode, setBlogSeoMode] = useState<0 | 1 | 2>(2);
+
+  // Step 6: authors dropdown (+ submit)
   const [authors, setAuthors] = useState<AuthorItem[]>([]);
   const [authorId, setAuthorId] = useState<string>("");
   const [authorMode, setAuthorMode] = useState<"existing" | "new">("existing");
@@ -93,19 +96,38 @@ export default function AiBlogsWizard() {
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  const totalSteps = 5;
+  const totalSteps = 6;
   const stepTitle = useMemo(() => {
     switch (step) {
       case 1: return "Choose Blog Type";
       case 2: return "Choose Locations (optional)";
       case 3: return "How Many Titles?";
       case 4: return "Review & Edit Titles";
-      case 5: return "Generate Blogs";
+      case 5: return "SEO Mode";
+      case 6: return "Generate Blogs";
       default: return "AI Blog Generator";
     }
   }, [step]);
 
-  // ----- load authors for step 5 -----
+  const SEO_MODE_OPTIONS = [
+    {
+      id: 0 as const,
+      label: "Manual SEO",
+      note: "Content only — fill meta title, description & keywords yourself later",
+    },
+    {
+      id: 1 as const,
+      label: "Basic SEO",
+      note: "AI generates meta title, description, keywords & tags",
+    },
+    {
+      id: 2 as const,
+      label: "Premium SEO",
+      note: "Basic meta + Open Graph + JSON-LD (BlogPosting, FAQ, Breadcrumbs)",
+    },
+  ];
+
+  // ----- load authors for step 6 -----
   useEffect(() => {
     (async () => {
       try {
@@ -187,15 +209,15 @@ export default function AiBlogsWizard() {
   }, [step, locationBased, projectId, token]);
 
 
-  // Reset success state whenever you move away from Step 5
+  // Reset success state whenever you move away from Step 6
   useEffect(() => {
-    if (step !== 5 && done) setDone(false);
+    if (step !== 6 && done) setDone(false);
   }, [step]);
 
   // Reset success state if the user changes anything that affects output
   useEffect(() => {
     if (done) setDone(false);
-  }, [titles, blogType, locationBased, authorId]);
+  }, [titles, blogType, locationBased, authorId, blogSeoMode]);
 
 
   // ----- Tree helpers -----
@@ -551,6 +573,7 @@ export default function AiBlogsWizard() {
         type: blogType,
         authorId: finalAuthorId,
         locations: locationBased ? locationNames : [],
+        seoMode: blogSeoMode,
       };
 
       if (publishMode === "instant") {
@@ -880,12 +903,54 @@ export default function AiBlogsWizard() {
         );
       case 5:
         return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">How should SEO be handled?</h3>
+            <p className="text-sm text-muted-foreground">
+              Same scale as site <code className="text-xs">seo_mode</code>: 0 manual, 1 basic meta, 2 premium with JSON-LD.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {SEO_MODE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setBlogSeoMode(opt.id)}
+                  className={`text-left border rounded-lg p-4 transition ${
+                    blogSeoMode === opt.id
+                      ? "border-primary ring-2 ring-primary/30 bg-primary/5"
+                      : "border-border hover:border-primary/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-semibold">{opt.label}</span>
+                    <Badge variant={blogSeoMode === opt.id ? "default" : "outline"}>{opt.id}</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{opt.note}</p>
+                </button>
+              ))}
+            </div>
+            {blogSeoMode === 0 && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                Articles will be created without meta fields. Edit each post later to add SEO manually.
+              </p>
+            )}
+            {blogSeoMode === 2 && (
+              <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+                Premium packs BlogPosting + BreadcrumbList + FAQPage JSON-LD from the article (injected on the live blog URL).
+              </p>
+            )}
+          </div>
+        );
+      case 6:
+        return (
           <div className="space-y-6">
             {!done ? (
               <>
                 <h3 className="text-lg font-medium">Ready to generate blogs</h3>
                 <p className="text-sm text-gray-600">
-                  We’ll create posts from these titles. You can schedule posting afterwards.
+                  We’ll create posts from these titles. SEO mode:{" "}
+                  <Badge variant="outline">
+                    {SEO_MODE_OPTIONS.find((o) => o.id === blogSeoMode)?.label || blogSeoMode}
+                  </Badge>
                 </p>
 
                 <div className="grid sm:grid-cols-2 gap-3">
@@ -1064,7 +1129,8 @@ export default function AiBlogsWizard() {
             {step === 2 && "Optionally make titles location-based and pick the areas from your project."}
             {step === 3 && "Choose a number of titles (auto) or enter them manually."}
             {step === 4 && "Edit, add or regenerate any title before generating."}
-            {step === 5 && "Generate the blogs. Scheduling coming soon."}
+            {step === 5 && "Choose SEO handling: manual, basic meta, or premium JSON-LD."}
+            {step === 6 && "Pick author, publish mode, then queue generation."}
           </CardDescription>
         </CardHeader>
 

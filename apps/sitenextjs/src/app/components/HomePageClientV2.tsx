@@ -230,7 +230,19 @@ export default function HomePageClientV2({
                   detail.information ||
                   detail.content?.information ||
                   '',
-                keywords: detail.seo?.keywords,
+                keywords: Array.isArray(detail.seo?.keywords)
+                  ? detail.seo.keywords.join(', ')
+                  : detail.seo?.keywords,
+                ogTitle: detail.seo?.ogTitle || detail.seo?.metaTitle || detail.title,
+                ogDescription:
+                  detail.seo?.ogDescription ||
+                  detail.seo?.metaDescription ||
+                  detail.information ||
+                  '',
+                ogType: detail.seo?.ogType || 'article',
+                schemas: Array.isArray(detail.seo?.schemas) ? detail.seo.schemas : [],
+                structured_data: detail.seo?.structured_data || '',
+                structuredData: detail.seo?.structured_data || '',
               },
             })
           );

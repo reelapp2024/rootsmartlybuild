@@ -29,7 +29,7 @@ import {
   FontSizeInput,
   ButtonGroup,
 } from './components/builder/inputs';
-import { colorToHex, applyUpdateSection, applyUpdateElement } from './components/builder/state/sectionUpdaters';
+import { colorToHex, applyUpdateSection, applyUpdateElement, mergeElementContent } from './components/builder/state/sectionUpdaters';
 import { applyThemeToSiteData } from './components/builder/state/applyThemeReducer';
 import { applyRestoreSectionElements, applyResetSectionStyles } from './components/builder/state/sectionResetReducers';
 import { getActiveGlobalTheme as _getActiveGlobalTheme, computeThemeOverlayDefaults } from './components/builder/state/themeHelpers';
@@ -273,6 +273,11 @@ const AppContent: React.FC = () => {
     descriptionFontFamily: DEFAULT_TYPOGRAPHY.p.fontFamily,
     buttonFontFamily: DEFAULT_TYPOGRAPHY.button.fontFamily,
   });
+  const [additionalCss, setAdditionalCss] = useState<{
+    blogCss: string;
+    siteCss: string;
+    applyBlogCssToSite: boolean;
+  }>({ blogCss: '', siteCss: '', applyBlogCssToSite: false });
   const [savingTheme, setSavingTheme] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   /** Toggleable in Global Settings — draws a subtle dashed outline around
@@ -416,6 +421,11 @@ const AppContent: React.FC = () => {
             apiThemeSettings;
           setDefaultSizes(buildDefaultSizesFromApi(savedSizes));
           setDefaultTypography(buildDefaultTypographyFromApi(savedTypography, apiThemeSettings));
+          setAdditionalCss({
+            blogCss: String(apiThemeSettings.additionalCss?.blogCss || ''),
+            siteCss: String(apiThemeSettings.additionalCss?.siteCss || ''),
+            applyBlogCssToSite: Boolean(apiThemeSettings.additionalCss?.applyBlogCssToSite),
+          });
           applySiteTypographyToDocument(apiThemeSettings, DEFAULT_TYPOGRAPHY);
           if (customColors && theme === 'custom') {
             setSiteData((prev) => applyCustomColorsToSiteData(prev, customColors));
@@ -711,7 +721,7 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     const { colors } = siteData.globalStyles;
-    const themeSettings = { defaultTypography, defaultSizes };
+    const themeSettings = { defaultTypography, defaultSizes, additionalCss };
 
     applySiteTypographyToDocument(themeSettings, DEFAULT_TYPOGRAPHY);
     ensureSiteGoogleFontsLoaded('geniebuild-fonts');
@@ -760,7 +770,7 @@ const AppContent: React.FC = () => {
     }
 
     return cleanup;
-  }, [siteData.globalStyles.colors, defaultSizes, defaultTypography]);
+  }, [siteData.globalStyles.colors, defaultSizes, defaultTypography, additionalCss]);
 
   // Inject per-element tablet/mobile style overrides as media-queried CSS.
   // Targets `[data-element-id="..."]` — section components that set this
@@ -865,7 +875,7 @@ const AppContent: React.FC = () => {
         ...updates,
         content:
           updates.content !== undefined
-            ? { ...(prev.content || {}), ...(updates.content || {}) }
+            ? mergeElementContent(prev.content, updates.content, prev.type || updates.type)
             : prev.content,
         style:
           updates.style !== undefined
@@ -1268,6 +1278,13 @@ const AppContent: React.FC = () => {
     const body =
       pageRes && pageRes.ok ? await pageRes.json().catch(() => ({})) : {};
     const apiThemeForPage = body?.data?.themeSettings || null;
+    if (apiThemeForPage?.additionalCss) {
+      setAdditionalCss({
+        blogCss: String(apiThemeForPage.additionalCss.blogCss || ''),
+        siteCss: String(apiThemeForPage.additionalCss.siteCss || ''),
+        applyBlogCssToSite: Boolean(apiThemeForPage.additionalCss.applyBlogCssToSite),
+      });
+    }
     const flatSections: Section[] =
       loadSections && Array.isArray(body?.data?.sections)
         ? hydrateSectionsForDisplay(body.data.sections, {

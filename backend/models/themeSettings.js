@@ -267,7 +267,18 @@ const themeSettingsSchema = new mongoose.Schema({
       fontFamily: { type: String },
       fontWeight: { type: String }
     }
-  }
+  },
+  /**
+   * Freeform Additional CSS (WordPress/Wix-style).
+   * - blogCss: targets blog article prose (.blog-prose / .gb-*)
+   * - siteCss: applies to the whole live site
+   * - applyBlogCssToSite: also inject blogCss site-wide (shared utility classes)
+   */
+  additionalCss: {
+    blogCss: { type: String, default: "" },
+    siteCss: { type: String, default: "" },
+    applyBlogCssToSite: { type: Boolean, default: false },
+  },
 }, {
   timestamps: true // Automatically adds createdAt and updatedAt fields
 });

@@ -20,7 +20,12 @@ function resolveThemeColorsForApi(themeSettings) {
   return getResolver().toApiColorsPayload(themeSettings || null);
 }
 
+function buildBlogEditorThemePayload(themeSettings) {
+  return getResolver().buildBlogEditorThemePayload(themeSettings || null);
+}
+
 module.exports = {
   resolveThemeColorsForApi,
+  buildBlogEditorThemePayload,
   getThemeResolver: getResolver,
 };

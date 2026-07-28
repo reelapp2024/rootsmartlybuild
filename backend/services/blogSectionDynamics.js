@@ -626,6 +626,15 @@ async function buildPublishedBlogDetailPayload(projectId, opts = {}) {
       metaTitle: String(seo.metaTitle || blog.title || "").trim(),
       metaDescription: String(seo.metaDescription || blog.information || "").trim(),
       keywords: Array.isArray(seo.keywords) ? seo.keywords : [],
+      tags: Array.isArray(seo.tags) ? seo.tags : [],
+      seoMode: Number.isFinite(Number(seo.seoMode)) ? Number(seo.seoMode) : undefined,
+      ogTitle: String(seo.ogTitle || seo.metaTitle || blog.title || "").trim(),
+      ogDescription: String(
+        seo.ogDescription || seo.metaDescription || blog.information || ""
+      ).trim(),
+      ogType: String(seo.ogType || "article").trim(),
+      schemas: Array.isArray(seo.schemas) ? seo.schemas : [],
+      structured_data: String(seo.structured_data || "").trim(),
     },
   };
 }

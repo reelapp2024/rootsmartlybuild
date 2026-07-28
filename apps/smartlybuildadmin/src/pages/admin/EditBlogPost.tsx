@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { httpFile } from "../../config.js";
 import { blogPostsListPath } from "@/lib/adminProjectPaths";
+import { useBlogEditorTheme, normalizeProjectId } from "@/hooks/useBlogEditorTheme";
 
 const BASE_URL = import.meta.env.VITE_API_URL  ;
 const UPLOAD_URL = `${BASE_URL.replace(/\/$/, "")}/uploadFile`;
@@ -86,12 +87,15 @@ export default function EditBlogPost() {
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
+  // Prefer URL/state project id — never clobber with a bad blog.projectId (theme mismatch bug)
+  const routeProjectId = normalizeProjectId(
+    paramProjectId || (location.state as any)?.projectId || sp.get("projectId") || ""
+  );
+  const [projectId, setProjectId] = useState<string>(routeProjectId);
+  const { themePreview, loading: themeLoading } = useBlogEditorTheme(projectId || routeProjectId);
+
   // Data fields
   const [loading, setLoading] = useState(true);
-  const [projectId, setProjectId] = useState<string>(
-    String(paramProjectId || (location.state as any)?.projectId || sp.get("projectId") || "").trim()
-  );
-
   const [title, setTitle] = useState("");
   const [information, setInformation] = useState("");
   const [content, setContent] = useState("<p>Start writing…</p>");
@@ -130,6 +134,11 @@ export default function EditBlogPost() {
     [token]
   );
 
+  // Keep projectId in sync if route changes (navigating between projects)
+  useEffect(() => {
+    if (routeProjectId) setProjectId(routeProjectId);
+  }, [routeProjectId]);
+
   // Load authors
   useEffect(() => {
     (async () => {
@@ -166,7 +175,13 @@ export default function EditBlogPost() {
         const json = res.data;
         const b = json?.data || {};
 
-        setProjectId(b.projectId || "");
+        // Keep route projectId unless blog has a valid id (never wipe with empty / object)
+        const blogPid = normalizeProjectId(b.projectId);
+        if (blogPid) {
+          setProjectId((prev) => prev || blogPid);
+        } else if (routeProjectId) {
+          setProjectId(routeProjectId);
+        }
         setTitle(b.title || "");
         setInformation(b.information || "");
         setContent(b.content || "<p></p>");
@@ -522,7 +537,18 @@ export default function EditBlogPost() {
           {/* Content */}
           <div className="space-y-2">
             <Label>Content</Label>
-            <RichTextEditor value={content} onChange={setContent} uploadUrl={UPLOAD_URL} height={420} />
+            <p className="text-xs text-muted-foreground">
+              Preview uses your site theme (fonts, heading & paragraph colors) — same look as the live blog.
+              {themeLoading ? " Loading theme…" : themePreview ? " Theme loaded." : ""}
+            </p>
+            <RichTextEditor
+              value={content}
+              onChange={setContent}
+              uploadUrl={UPLOAD_URL}
+              height={420}
+              themePreview={themePreview}
+              projectId={projectId || routeProjectId}
+            />
           </div>
 
           {/* Meta + Generate */}

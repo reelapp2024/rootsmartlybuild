@@ -175,7 +175,13 @@ export const ServicesPriceList: React.FC<Props> = ({
   const titleFound = section.elements?.find((e) => e.id === `${section.id}-sp2-title`);
   let titleEl: WebsiteElement = titleFound || {
     id: `${section.id}-sp2-title`, type: 'heading',
-    content: { text: content.title || 'Our Plumbing Services', textBefore: 'Our Plumbing', highlightedText: 'Services', textAfter: '', htmlTag: 'h2' },
+    content: (() => {
+      const raw = content.title || 'Our Plumbing Services';
+      const words = String(raw).replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean);
+      const highlightedText = words.length ? words[words.length - 1] : raw;
+      const textBefore = words.length > 1 ? words.slice(0, -1).join(' ') : '';
+      return { text: raw, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' };
+    })(),
     style: { textAlign: 'left' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15' },
   };
 
@@ -186,12 +192,41 @@ export const ServicesPriceList: React.FC<Props> = ({
     style: { textAlign: 'left' as any, maxWidth: '620px', lineHeight: '1.65' },
   };
 
-  const apiBadge = String(content.badgeText ?? '').trim();
-  if (apiBadge) badgeEl = { ...badgeEl, content: { ...(badgeEl.content as any), text: apiBadge } };
-  const apiTitle = String(content.title ?? (content as any).heading ?? (content as any).sectionTitle ?? '').trim();
-  if (apiTitle) titleEl = { ...titleEl, content: { ...(titleEl.content as any), text: apiTitle, textBefore: '', highlightedText: '', textAfter: '', htmlTag: (titleEl.content as any)?.htmlTag || 'h2' } };
-  const apiDesc = String(content.description ?? content.subtitle ?? (content as any).descriptionText ?? '').trim();
-  if (apiDesc) descEl = { ...descEl, content: { ...(descEl.content as any), text: apiDesc, textSize: (descEl.content as any)?.textSize || 'large' } };
+  // SectionContent seeds defaults only. Once an element exists in section.elements
+  // (sidebar / canvas edits), it is the source of truth — never wipe highlight parts.
+  if (!badgeFound) {
+    const apiBadge = String(content.badgeText ?? '').trim();
+    if (apiBadge) badgeEl = { ...badgeEl, content: { ...(badgeEl.content as any), text: apiBadge } };
+  }
+  if (!titleFound) {
+    const apiTitle = String(content.title ?? (content as any).heading ?? (content as any).sectionTitle ?? '').trim();
+    if (apiTitle) {
+      titleEl = {
+        ...titleEl,
+        content: {
+          ...(titleEl.content as any),
+          text: apiTitle,
+          textBefore: '',
+          highlightedText: '',
+          textAfter: '',
+          htmlTag: (titleEl.content as any)?.htmlTag || 'h2',
+        },
+      };
+    }
+  }
+  if (!descFound) {
+    const apiDesc = String(content.description ?? content.subtitle ?? (content as any).descriptionText ?? '').trim();
+    if (apiDesc) {
+      descEl = {
+        ...descEl,
+        content: {
+          ...(descEl.content as any),
+          text: apiDesc,
+          textSize: (descEl.content as any)?.textSize || 'large',
+        },
+      };
+    }
+  }
 
   // ── per-service editable sub-elements ──
   const hideAllIcons = !!(content as any).hideIcons;
@@ -205,24 +240,55 @@ export const ServicesPriceList: React.FC<Props> = ({
   const getNameEl = (i: number, def: { icon: string; title: string }): WebsiteElement => {
     const id = `${section.id}-sp2-svc${i}-name`;
     const existing = section.elements?.find((e) => e.id === id);
-    const base: WebsiteElement = existing || {
+    if (existing) {
+      return {
+        ...existing,
+        type: 'heading',
+        content: {
+          ...(existing.content || {}),
+          htmlTag: (existing.content as any)?.htmlTag || 'h3',
+        },
+        style: {
+          fontWeight: '700',
+          fontSize: '1.25rem',
+          lineHeight: '1.25',
+          textAlign: 'left' as any,
+          ...(existing.style || {}),
+        },
+      };
+    }
+    return {
       id, type: 'heading',
       content: { text: def.title, htmlTag: 'h3' },
       style: { fontWeight: '700', fontSize: '1.25rem', lineHeight: '1.25', textAlign: 'left' as any },
     };
-    return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || def.title, htmlTag: (base.content as any)?.htmlTag || 'h3' } };
   };
 
   const getDescEl = (i: number, def: { title: string; desc: string }): WebsiteElement => {
     const id = `${section.id}-sp2-svc${i}-desc`;
     const existing = section.elements?.find((e) => e.id === id);
     const resolved = readOnly || itemsAreMaterialized ? compactServiceCardBlurb(def.title, def.desc) : def.desc;
-    const base: WebsiteElement = existing || {
+    if (existing) {
+      return {
+        ...existing,
+        type: 'text',
+        content: {
+          ...(existing.content || {}),
+          textSize: (existing.content as any)?.textSize || 'base',
+        },
+        style: {
+          textAlign: 'left' as any,
+          lineHeight: '1.6',
+          color: textColor,
+          ...(existing.style || {}),
+        },
+      };
+    }
+    return {
       id, type: 'text',
       content: { text: resolved, textSize: 'base' },
       style: { textAlign: 'left' as any, lineHeight: '1.6', color: textColor },
     };
-    return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || resolved } };
   };
 
   const ctaText: string = (content as any).ctaText || '';

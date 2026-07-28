@@ -172,8 +172,8 @@ export type HeadingHighlightParts = {
   textBefore: string;
   highlightedText: string;
   textAfter: string;
-  /** True right after Space — completed words moved to textBefore, highlight is empty for the next word. */
-  awaitingNextWord: boolean;
+  /** True when the editable ends with a space — keep it after the highlight span. */
+  trailingSpace?: boolean;
 };
 
 const ZWSP = '\u200b';
@@ -188,7 +188,7 @@ export function plainTextFromHtml(rawHtml: string, opts?: { trim?: boolean }): s
   } else {
     text = raw.replace(/<[^>]*>/g, ' ');
   }
-  // Drop caret placeholders; collapse internal whitespace but optionally keep a trailing space.
+  // Drop caret placeholders; normalize whitespace.
   text = text.replace(new RegExp(ZWSP, 'g'), '').replace(/\u00a0/g, ' ');
   const endsWithSpace = /\s$/.test(text);
   text = text.replace(/\s+/g, ' ');
@@ -202,46 +202,48 @@ export function plainTextFromHtml(rawHtml: string, opts?: { trim?: boolean }): s
 }
 
 /**
- * Canonical split for live heading editing:
- * - Mid-word: last word → highlighted, earlier words → textBefore
- * - After Space: all completed words → textBefore, highlighted empty (ready for next word)
+ * Canonical split for heading editing — always highlight the last word.
+ * "hello welcome to my site" → before: "hello welcome to my", highlight: "site"
  */
 export function splitHeadingToHighlightParts(plainOrHtml: string): HeadingHighlightParts {
   const withTrail = plainTextFromHtml(plainOrHtml, { trim: false });
-  const awaitingNextWord = /\s$/.test(withTrail);
+  const trailingSpace = /\s$/.test(withTrail);
   const plainText = withTrail.trim();
-  const words = plainText.split(' ').filter(Boolean);
+  const words = plainText.split(/\s+/).filter(Boolean);
 
-  if (awaitingNextWord) {
+  if (words.length === 0) {
     return {
-      text: plainText,
-      textBefore: words.join(' '),
+      text: '',
+      textBefore: '',
       highlightedText: '',
       textAfter: '',
-      awaitingNextWord: true,
+      trailingSpace,
+    };
+  }
+  if (words.length === 1) {
+    return {
+      text: words[0],
+      textBefore: '',
+      highlightedText: words[0],
+      textAfter: '',
+      trailingSpace,
     };
   }
 
+  const highlightedText = words[words.length - 1];
+  const textBefore = words.slice(0, -1).join(' ');
   return {
-    text: words.join(' '),
-    textBefore: words.length > 1 ? words.slice(0, -1).join(' ') : '',
-    highlightedText: words.length > 0 ? words[words.length - 1] : '',
+    text: `${textBefore} ${highlightedText}`,
+    textBefore,
+    highlightedText,
     textAfter: '',
-    awaitingNextWord: false,
+    trailingSpace,
   };
 }
 
-/** Finish the current word (Space): everything → textBefore, empty highlight for the next word. */
+/** @deprecated Use splitHeadingToHighlightParts — last word is always highlighted. */
 export function finishHeadingWord(plainOrHtml: string): HeadingHighlightParts {
-  const plainText = plainTextFromHtml(plainOrHtml, { trim: true });
-  const words = plainText.split(' ').filter(Boolean);
-  return {
-    text: words.join(' '),
-    textBefore: words.join(' '),
-    highlightedText: '',
-    textAfter: '',
-    awaitingNextWord: true,
-  };
+  return splitHeadingToHighlightParts(plainOrHtml);
 }
 
 function escapeHeadingHtml(text: string): string {
@@ -252,7 +254,10 @@ function escapeHeadingHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** Build contentEditable HTML that matches the sidebar highlight fields. */
+/**
+ * Build contentEditable HTML that matches the sidebar highlight fields.
+ * Only the last word lives inside the highlight <span>.
+ */
 export function buildHeadingEditableHtml(
   parts: HeadingHighlightParts,
   highlightSpanStyle: string
@@ -262,9 +267,10 @@ export function buildHeadingEditableHtml(
   const hi = escapeHeadingHtml(hiRaw);
   const after = escapeHeadingHtml(parts.textAfter).trim();
   const styleAttr = String(highlightSpanStyle || '').replace(/"/g, '&quot;');
-  // Always keep a highlight <span> so Space can park the caret inside it for the next word.
   const spanInner = hi || ZWSP;
-  return `${before ? `${before} ` : ''}<span style="${styleAttr}">${spanInner}</span>${after ? ` ${after}` : ''}`;
+  const lead = before ? `${before} ` : '';
+  const trail = after ? ` ${after}` : parts.trailingSpace ? ' ' : '';
+  return `${lead}<span style="${styleAttr}">${spanInner}</span>${trail}`;
 }
 
 export function parseFontSizeToRem(value: string): number {

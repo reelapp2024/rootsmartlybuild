@@ -179,12 +179,15 @@ module.exports = {
             const { normalizeCoverImageForSave } = require("../services/blogSectionDynamics");
             const normalizedCover = normalizeCoverImageForSave(coverImage, req.body);
 
+            const { prepareBlogContentHtml } = require("../services/blogHtmlEnhance");
+            const enhancedContent = prepareBlogContentHtml(content);
+
             const blog = new Blog({
                 userId,
                 projectId,
                 title: String(title).trim(),
                 information,
-                content,
+                content: enhancedContent || content,
                 status: finalStatus,
                 type: String(type).trim(),
                 coverImage: normalizedCover || undefined,
@@ -322,6 +325,10 @@ module.exports = {
             // Basic normalizations (only if present)
             if (payload.title) payload.title = String(payload.title).trim();
             if (payload.type) payload.type = String(payload.type).trim();
+            if (payload.content !== undefined) {
+                const { prepareBlogContentHtml } = require("../services/blogHtmlEnhance");
+                payload.content = prepareBlogContentHtml(payload.content) || payload.content;
+            }
 
             if (payload.status !== undefined) {
                 payload.status = [0, 1, 2].includes(Number(payload.status))
@@ -376,8 +383,58 @@ module.exports = {
                     ...currentSeo,
                     metaTitle: payload.meta_title ?? currentSeo.metaTitle,
                     metaDescription: payload.meta_description ?? currentSeo.metaDescription,
-                    keywords: kw
+                    keywords: kw,
+                    tags: Array.isArray(currentSeo.tags) && currentSeo.tags.length
+                      ? currentSeo.tags
+                      : kw.slice(0, 8),
                 };
+
+                // Keep premium JSON-LD in sync when meta changes
+                if (Number(payload.seoMeta.seoMode ?? currentSeo.seoMode) === 2) {
+                  try {
+                    const { buildBlogSeoMeta } = require("../services/blogSeoService");
+                    const Author = require("../models/authors");
+                    const UserProject = require("../models/userProjects");
+                    const authorDoc = payload.authorId
+                      ? await Author.findById(payload.authorId).select("name").lean()
+                      : existing.authorId
+                        ? await Author.findById(existing.authorId).select("name").lean()
+                        : null;
+                    const projectDoc = await UserProject.findById(
+                      existing.projectId || payload.projectId
+                    )
+                      .select("projectName")
+                      .lean();
+                    const rebuilt = buildBlogSeoMeta({
+                      mode: 2,
+                      payload: {
+                        meta_title: payload.seoMeta.metaTitle,
+                        meta_description: payload.seoMeta.metaDescription,
+                        meta_keywords: kw,
+                        information: payload.information ?? existing.information,
+                        content_html: payload.content ?? existing.content,
+                      },
+                      title: payload.title ?? existing.title,
+                      slug: payload.slug ?? existing.slug,
+                      contentHtml: payload.content ?? existing.content,
+                      authorName: authorDoc?.name || "",
+                      projectName: projectDoc?.projectName || "",
+                      coverImageUrl:
+                        (payload.coverImage && payload.coverImage.url) ||
+                        (existing.coverImage && existing.coverImage.url) ||
+                        "",
+                      datePublished: existing.createdAt || new Date(),
+                      dateModified: new Date(),
+                    });
+                    payload.seoMeta = {
+                      ...payload.seoMeta,
+                      ...rebuilt,
+                      seoMode: 2,
+                    };
+                  } catch (seoErr) {
+                    console.warn("[update_blog] premium schema rebuild skipped:", seoErr?.message);
+                  }
+                }
 
                 delete payload.meta_title;
                 delete payload.meta_description;
