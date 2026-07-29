@@ -2,6 +2,10 @@ import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { motion } from 'motion/react';
+import {
+  preferSavedElement,
+  resolveEditableHeadingElement,
+} from '../utils/headingHighlight';
 
 interface Props {
   section: Section;
@@ -95,56 +99,60 @@ export const HeroNeon: React.FC<Props> = ({
   })();
 
   // ── editable header elements (h4- ids → carry across hero variants) ──
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-badge`) || {
-    id: `${section.id}-h4-badge`, type: 'badge',
-    content: { text: badgeText, iconPosition: 'left' },
-    style: { fontSize: '0.72rem', fontWeight: '600', letterSpacing: '0.02em', textTransform: 'none' as any, padding: '4px 6px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: 'transparent', color: textColor },
-  };
-  const badgeElResolved: WebsiteElement = { ...badgeEl, content: { ...(badgeEl.content || {}), text: badgeText } };
+  const badgeElResolved: WebsiteElement = preferSavedElement(
+    section.elements?.find(e => e.id === `${section.id}-h4-badge`),
+    {
+      id: `${section.id}-h4-badge`, type: 'badge',
+      content: { text: badgeText, iconPosition: 'left' },
+      style: { fontSize: '0.72rem', fontWeight: '600', letterSpacing: '0.02em', textTransform: 'none' as any, padding: '4px 6px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: 'transparent', color: textColor },
+    }
+  );
 
-  // Headline — real editable heading; last word is the highlighted (accent) word
-  // and gets the shimmer treatment via CSS targeting the highlight span.
-  const titleEl: WebsiteElement = (() => {
-    const id = `${section.id}-h4-title`;
-    const existing = section.elements?.find(e => e.id === id);
-    const src = (existing?.content as any)?.text || headlineText;
-    const words = String(src).replace(/<[^>]+>/g, '').trim().split(/\s+/).filter(Boolean);
-    const before = words.length > 1 ? words.slice(0, -1).join(' ') : '';
-    const highlight = words.length ? words[words.length - 1] : src;
-    const base: WebsiteElement = existing || {
-      id, type: 'heading',
-      content: { text: src, textBefore: before, highlightedText: highlight, textAfter: '', htmlTag: 'h1' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2.75rem, 6vw, 5.1rem)', lineHeight: '1.02', letterSpacing: '-0.045em', textAlign: 'center' as any, highlightColor: accent },
-    };
-    return {
-      ...base,
-      content: { ...(base.content || {}), text: src, textBefore: before, highlightedText: highlight, textAfter: '', htmlTag: (base.content as any)?.htmlTag || 'h1' },
-      style: { ...(base.style as any), color: (base.style as any)?.color || titleColor, highlightColor: (base.style as any)?.highlightColor || accent },
-    };
-  })();
+  // Headline — prefer saved edits; else last-word highlight from API/default
+  const titleEl: WebsiteElement = resolveEditableHeadingElement({
+    id: `${section.id}-h4-title`,
+    existing: section.elements?.find(e => e.id === `${section.id}-h4-title`),
+    sourceText: String(headlineText || '').replace(/<[^>]+>/g, '').trim(),
+    htmlTag: 'h1',
+    style: {
+      color: titleColor,
+      fontWeight: '800',
+      fontSize: 'clamp(2.75rem, 6vw, 5.1rem)',
+      lineHeight: '1.02',
+      letterSpacing: '-0.045em',
+      textAlign: 'center' as any,
+      highlightColor: accent,
+    },
+  }) as WebsiteElement;
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-desc`) || {
-    id: `${section.id}-h4-desc`, type: 'text',
-    content: { text: subheadText, textSize: 'large' },
-    style: { color: textColor, textAlign: 'center' as any, maxWidth: '620px', margin: '0 auto', lineHeight: '1.7' },
-  };
-  const descElResolved: WebsiteElement = { ...descEl, content: { ...(descEl.content || {}), text: subheadText } };
+  const descElResolved: WebsiteElement = preferSavedElement(
+    section.elements?.find(e => e.id === `${section.id}-h4-desc`),
+    {
+      id: `${section.id}-h4-desc`, type: 'text',
+      content: { text: subheadText, textSize: 'large' },
+      style: { color: textColor, textAlign: 'center' as any, maxWidth: '620px', margin: '0 auto', lineHeight: '1.7' },
+    }
+  );
 
   // Both CTAs use the new 'cta-button' element — reliable variants, fully
   // sidebar-editable (Button content form + ButtonStylesBlock), theme-driven.
-  const btn1El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn1`) || {
-    id: `${section.id}-h4-btn1`, type: 'cta-button',
-    content: { text: primaryText, link: primaryHref, buttonVariant: 'primary' },
-    style: { buttonVariant: 'primary', padding: '0 1.75rem', height: '3rem', borderRadius: '9999px', fontWeight: '600', fontSize: '0.9rem' } as any,
-  };
-  const btn1ElResolved: WebsiteElement = { ...btn1El, content: { ...(btn1El.content || {}), text: primaryText, link: primaryHref } };
+  const btn1ElResolved: WebsiteElement = preferSavedElement(
+    section.elements?.find(e => e.id === `${section.id}-h4-btn1`),
+    {
+      id: `${section.id}-h4-btn1`, type: 'cta-button',
+      content: { text: primaryText, link: primaryHref, buttonVariant: 'primary' },
+      style: { buttonVariant: 'primary', padding: '0 1.75rem', height: '3rem', borderRadius: '9999px', fontWeight: '600', fontSize: '0.9rem' } as any,
+    }
+  );
 
-  const btn2El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn2`) || {
-    id: `${section.id}-h4-btn2`, type: 'cta-button',
-    content: { text: secondaryText, link: secondaryHref, buttonVariant: 'secondary' },
-    style: { buttonVariant: 'secondary', padding: '0 1.75rem', height: '3rem', borderRadius: '9999px', fontWeight: '500', fontSize: '0.9rem' } as any,
-  };
-  const btn2ElResolved: WebsiteElement = { ...btn2El, content: { ...(btn2El.content || {}), text: secondaryText, link: secondaryHref } };
+  const btn2ElResolved: WebsiteElement = preferSavedElement(
+    section.elements?.find(e => e.id === `${section.id}-h4-btn2`),
+    {
+      id: `${section.id}-h4-btn2`, type: 'cta-button',
+      content: { text: secondaryText, link: secondaryHref, buttonVariant: 'secondary' },
+      style: { buttonVariant: 'secondary', padding: '0 1.75rem', height: '3rem', borderRadius: '9999px', fontWeight: '500', fontSize: '0.9rem' } as any,
+    }
+  );
 
   // Stat value = white on the dark hero (theme title color, forced white
   // fallback). No highlightedText → never picks up the accent.
@@ -152,15 +160,17 @@ export const HeroNeon: React.FC<Props> = ({
   const getStatValueEl = (i: number, value: string): WebsiteElement => {
     const id = `${section.id}-h4-stat${i}-value`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    if (existing) {
+      return preferSavedElement(existing, {
+        id, type: 'heading',
+        content: { text: value, htmlTag: 'div' as any, textBefore: '', highlightedText: '', textAfter: '' },
+        style: { color: statValueColor, fontWeight: '800', fontSize: 'clamp(1.4rem, 2.5vw, 1.75rem)', lineHeight: '1', letterSpacing: '-0.03em', textAlign: 'center' as any },
+      });
+    }
+    return {
       id, type: 'heading',
       content: { text: value, htmlTag: 'div' as any, textBefore: '', highlightedText: '', textAfter: '' },
       style: { color: statValueColor, fontWeight: '800', fontSize: 'clamp(1.4rem, 2.5vw, 1.75rem)', lineHeight: '1', letterSpacing: '-0.03em', textAlign: 'center' as any },
-    };
-    return {
-      ...base,
-      content: { ...(base.content || {}), text: (existing?.content as any)?.text || value, textBefore: '', highlightedText: '', textAfter: '' },
-      style: { ...(base.style as any), color: (base.style as any)?.color || statValueColor },
     };
   };
   const getStatLabelEl = (i: number, label: string): WebsiteElement => {

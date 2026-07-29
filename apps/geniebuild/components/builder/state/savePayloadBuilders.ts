@@ -183,10 +183,81 @@ export function buildWebsitePayload(
  * Extract non-empty section content entries for /upsertSectionContentFromBuilder.
  * Skips sections with missing or empty-object content to avoid overwriting AI content.
  */
+function composeElementPlainText(content: any): string {
+  if (!content || typeof content !== 'object') return '';
+  const before = String(content.textBefore || '').trim();
+  const hi = String(content.highlightedText || '').trim();
+  const after = String(content.textAfter || '').trim();
+  if (before || hi || after) {
+    return [before, hi, after].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  }
+  return String(content.text || content.title || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Fold builder element edits (esp. headings) into SectionContent payload. */
+function enrichSectionContentFromElements(sectionData: any): Record<string, unknown> | null {
+  const content = { ...(sectionData?.content || {}) };
+  const elements = Array.isArray(sectionData?.elements) ? sectionData.elements : [];
+  const sectionId = String(sectionData?.id || '');
+
+  for (const el of elements) {
+    const id = String(el?.id || '');
+    const type = String(el?.type || '').toLowerCase();
+    const plain = composeElementPlainText(el?.content);
+
+    if (
+      type === 'heading' &&
+      plain &&
+      (id === `${sectionId}-title` ||
+        id === `${sectionId}-hero-title` ||
+        id === `${sectionId}-sp2-title` ||
+        (/-(?:title|heading)$/i.test(id) && !/-svc\d+-/i.test(id) && !/-item-/i.test(id)))
+    ) {
+      content.title = plain;
+    }
+
+    if (
+      (type === 'text' || type === 'heading') &&
+      plain &&
+      (id === `${sectionId}-sp2-desc` ||
+        id === `${sectionId}-description` ||
+        id === `${sectionId}-hero-description` ||
+        id.endsWith('-desc'))
+    ) {
+      if (!/-svc\d+-/i.test(id)) {
+        content.description = plain;
+        if (!content.subtitle) content.subtitle = plain;
+      }
+    }
+
+    if (type === 'badge' && plain && (id === `${sectionId}-sp2-badge` || id.endsWith('-badge'))) {
+      content.badgeText = plain;
+    }
+
+    // Services cards: `-sp2-svcN-name|desc`
+    const svc = id.match(/-sp2-svc(\d+)(?:-(name|desc|title|description))?$/);
+    if (svc && Array.isArray(content.items)) {
+      const idx = parseInt(svc[1], 10);
+      const field = svc[2] || 'name';
+      if (content.items[idx] && plain) {
+        const item = { ...content.items[idx] };
+        if (field === 'name' || field === 'title' || !svc[2]) item.title = plain;
+        if (field === 'desc' || field === 'description') item.description = plain;
+        content.items = content.items.map((it: any, i: number) => (i === idx ? item : it));
+      }
+    }
+  }
+
+  return content;
+}
+
 function enrichFaqSectionContent(sectionData: any): Record<string, unknown> | null {
   const type = String(sectionData?.type || '').toLowerCase();
-  if (type !== 'faq') return sectionData?.content ?? null;
-  const content = { ...(sectionData?.content || {}) };
+  if (type !== 'faq') return enrichSectionContentFromElements(sectionData);
+  const content = enrichSectionContentFromElements(sectionData) || {};
   const hasItems = Array.isArray(content.items) && content.items.length > 0;
   if (hasItems) return content;
   const accordionEl = (sectionData?.elements || []).find(
@@ -214,7 +285,7 @@ export function buildSectionContentEntries(
     const content =
       String(type).toLowerCase() === 'faq'
         ? enrichFaqSectionContent(comp?.sectionData)
-        : comp?.sectionData?.content;
+        : enrichSectionContentFromElements(comp?.sectionData);
     if (!content) return;
     if (typeof content === 'object' && !Array.isArray(content) && Object.keys(content).length === 0) return;
     sectionMapByType.set(String(type).toLowerCase(), content);

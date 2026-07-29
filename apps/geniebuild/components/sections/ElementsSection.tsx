@@ -27,6 +27,7 @@ import {
 } from './homepage/utils/sectionImageResolve';
 import {
   bindEditableHtml,
+  cancelCaretRestore,
   createEditableHtmlProps,
   editableFocusBlur,
   forceSyncEditableHtml,
@@ -35,6 +36,7 @@ import {
   getPlainTextCaretOffset,
   isInlineEditing,
   restoreCaretAfterReactUpdate,
+  setLiveTrailingSpace,
 } from './editableHtmlHelpers';
 import {
   stripImageBoxImageKeys,
@@ -733,16 +735,22 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
   };
 
   /**
-   * Heading live edit — only the LAST word is highlighted, in realtime while typing.
-   * Rewrites the highlight <span> on every commit, but restores the caret by plain-text
-   * offset so Space / mid-line typing does not jump to end-of-line.
+   * Heading live edit — canvas highlight must match sidebar (last word only).
+   * - Trailing Space: do NOT rewrite (keeps the space so the next word can be typed).
+   * - After the next word starts: rewrite DOM so only that last word is highlighted,
+   *   restoring caret by plain-text offset so typing stays smooth.
+   * - Blur: always rewrite highlight structure.
    */
   const applyHeadingParts = (
     id: string,
     el: WebsiteElement,
     parts: ReturnType<typeof splitHeadingToHighlightParts>,
     highlightSpanStyle: string | undefined,
-    opts: { rewriteDom: boolean; caretOffset?: number | null; focused?: boolean }
+    opts: {
+      rewriteDom: boolean;
+      caretOffset?: number | null;
+      focused?: boolean;
+    }
   ) => {
     if (id.includes('-hero-title') && onTextEdit) {
       onTextEdit('title', parts.text);
@@ -774,7 +782,6 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     const html = buildHeadingEditableHtml(parts, style);
 
     if (opts.focused) {
-      // Live: move highlight to last word, keep caret where the user was typing.
       const plainAfter = `${parts.text}${parts.trailingSpace ? ' ' : ''}`;
       const safeOffset =
         opts.caretOffset === null || opts.caretOffset === undefined
@@ -784,7 +791,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
         caret: 'preserve',
         caretOffset: safeOffset,
       });
-      // React may still paint and nudge selection — reinforce after commit.
+      // Keep caret after React re-render from onElementUpdate.
       restoreCaretAfterReactUpdate(id, safeOffset);
       return;
     }
@@ -798,17 +805,23 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     rawHtml: string,
     highlightSpanStyle?: string
   ) => {
+    cancelCaretRestore(id);
     const node = getEditableNode(id);
     const caretOffset =
       getLiveCaretOffset(id) ?? (node ? getPlainTextCaretOffset(node) : null);
     const parts = splitHeadingToHighlightParts(rawHtml);
     const focused = isInlineEditing(id);
+    // Only skip rewrite while the line still ends with a Space (so Space isn't eaten).
+    // As soon as the next word is typed, rewrite so canvas highlight matches sidebar.
+    const holdingSpace = focused && parts.trailingSpace === true;
 
     applyHeadingParts(id, el, parts, highlightSpanStyle, {
-      rewriteDom: true,
+      rewriteDom: !holdingSpace,
       caretOffset,
       focused,
     });
+
+    if (!parts.trailingSpace) setLiveTrailingSpace(id, false);
   };
 
   const handleArrayContentUpdate = (id: string, arrayKey: string, index: number, itemKey: string, value: any) => {

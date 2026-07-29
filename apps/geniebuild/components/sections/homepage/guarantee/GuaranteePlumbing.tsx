@@ -3,6 +3,10 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import {
+  preferSavedElement,
+  resolveEditableHeadingElement,
+} from '../utils/headingHighlight';
 
 interface Props {
   section: Section;
@@ -117,7 +121,7 @@ export const GuaranteePlumbing: React.FC<Props> = ({
   };
 
   // Badge — accent-tinted pill
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-gp-badge`) || {
+  const badgeFallback: WebsiteElement = {
     id: `${section.id}-gp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Our Promise', icon: 'fa-shield-halved', iconPosition: 'left', iconSize: '0.65rem' },
     style: {
@@ -128,42 +132,36 @@ export const GuaranteePlumbing: React.FC<Props> = ({
       color: accent,
     },
   };
-  const badgeElResolved: WebsiteElement = {
-    ...badgeEl,
-    content: { ...(badgeEl.content || {}), text: apiBadgeText },
-  };
+  const badgeElResolved: WebsiteElement = preferSavedElement(
+    section.elements?.find(e => e.id === `${section.id}-gp-badge`),
+    { ...badgeFallback, content: { ...(badgeFallback.content || {}), text: apiBadgeText } }
+  );
 
-  // Heading — last word highlighted
-  const titleEl: WebsiteElement = (() => {
-    const id = `${section.id}-gp-title`;
-    const existing = section.elements?.find(e => e.id === id);
-    const c = (existing?.content || {}) as any;
-    const sourceText: string = apiTitleText.toString().replace(/<[^>]+>/g, '').trim();
-    const words = sourceText.split(/\s+/).filter(Boolean);
-    let textBefore = '';
-    let highlightedText = sourceText;
-    if (words.length > 1) {
-      highlightedText = words[words.length - 1];
-      textBefore = words.slice(0, -1).join(' ');
-    }
-    const base: WebsiteElement = existing || {
-      id, type: 'heading',
-      content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
-      style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
-    return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
-  })();
+  // Heading — prefer saved element (sidebar/canvas edits); else last-word highlight from API
+  const titleEl: WebsiteElement = resolveEditableHeadingElement({
+    id: `${section.id}-gp-title`,
+    existing: section.elements?.find(e => e.id === `${section.id}-gp-title`),
+    sourceText: apiTitleText.toString().replace(/<[^>]+>/g, '').trim(),
+    htmlTag: 'h2',
+    style: {
+      textAlign: 'center' as any,
+      fontWeight: '800',
+      fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)',
+      lineHeight: '1.15',
+      letterSpacing: '-0.02em',
+    },
+  }) as WebsiteElement;
 
   // Description
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-gp-desc`) || {
+  const descFallback: WebsiteElement = {
     id: `${section.id}-gp-desc`, type: 'text',
     content: { text: apiDescriptionText, textSize: 'large' },
     style: { textAlign: 'center' as any, maxWidth: '560px', margin: '0 auto', lineHeight: '1.65' },
   };
-  const descElResolved: WebsiteElement = {
-    ...descEl,
-    content: { ...(descEl.content || {}), text: apiDescriptionText },
-  };
+  const descElResolved: WebsiteElement = preferSavedElement(
+    section.elements?.find(e => e.id === `${section.id}-gp-desc`),
+    descFallback
+  );
 
   // Stat card — the big "10 / YEAR GUARANTEE" callout on the left
   const statEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-gp-stat`) || {

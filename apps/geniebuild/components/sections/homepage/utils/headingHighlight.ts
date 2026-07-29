@@ -101,3 +101,33 @@ export const resolveHeadingContent = (baseText?: string, existingContent?: any):
   }
   return splitHeadingWithLastWordHighlight(baseText || "");
 };
+
+/**
+ * Prefer a saved element over API/default content (badge, text, button, etc.).
+ * Once the user edited the element, never force section.content back on top.
+ */
+export function preferSavedElement<T extends { id?: string; type?: string; content?: any; style?: any }>(
+  existing: T | null | undefined,
+  fallback: T
+): T {
+  if (!existing?.content) return fallback;
+  const ec = existing.content || {};
+  const hasUserContent = Object.keys(ec).some((k) => {
+    const v = ec[k];
+    if (v === undefined || v === null) return false;
+    if (typeof v === "string") return v.trim().length > 0;
+    if (typeof v === "number" || typeof v === "boolean") return true;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") return Object.keys(v).length > 0;
+    return true;
+  });
+  if (!hasUserContent) return fallback;
+  return {
+    ...fallback,
+    ...existing,
+    id: existing.id || fallback.id,
+    type: existing.type || fallback.type,
+    content: { ...(fallback.content || {}), ...ec },
+    style: { ...(fallback.style || {}), ...(existing.style || {}) },
+  } as T;
+}

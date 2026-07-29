@@ -44,6 +44,11 @@ interface SectionRendererProps {
   /** Builder: open linked page inside GenieBuild (Open | Select chooser). */
   onOpenInternalLink?: (href: string) => void;
   selectedElementId?: string | null;
+  /**
+   * Preferred element writer (App.updateElement → applyUpdateElement).
+   * Keeps canvas + sidebar on one path. Falls back to local handleElementUpdate.
+   */
+  onElementUpdate?: (elementId: string, updates: Partial<WebsiteElement>) => void;
 }
 
 interface SectionErrorBoundaryProps {
@@ -227,7 +232,8 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
   onUpload,
   onElementSelect,
   onOpenInternalLink,
-  selectedElementId
+  selectedElementId,
+  onElementUpdate: onElementUpdateProp,
 }) => {
   const { aboutUs } = useAboutUsContact();
   const displaySection = useMemo(
@@ -297,29 +303,60 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
       newElements = [...elements];
       newElements[existingIndex] = applyStyleFields(newElements[existingIndex], updates);
     } else {
-      newElements = [...elements, applyStyleFields({ id: elementId, type: 'text', content: {}, style: {} } as WebsiteElement, updates)];
+      const inferredType =
+        (updates.type as WebsiteElement['type']) ||
+        (elementId.includes('title') ||
+        elementId.includes('heading') ||
+        /-name$/.test(elementId)
+          ? 'heading'
+          : 'text');
+      newElements = [
+        ...elements,
+        applyStyleFields(
+          { id: elementId, type: inferredType, content: {}, style: {} } as WebsiteElement,
+          { ...updates, type: updates.type || inferredType }
+        ),
+      ];
     }
 
-    // Sync with section content/styles if this elementId refers to virtual title/subtitle/description
-    const isTitle = elementId === `${section.id}-title` || elementId === `${section.id}-hero-title`;
+    // Sync virtual title/subtitle/description/button/image back to section content/styles
+    // (aligned with applyUpdateElement title-like id rules)
+    const isTitle =
+      elementId === `${section.id}-title` ||
+      elementId === `${section.id}-hero-title` ||
+      elementId === `${section.id}-sp2-title` ||
+      (
+        /-(?:title|heading)$/i.test(elementId) &&
+        !/-svc\d+-/i.test(elementId) &&
+        !/-item-/i.test(elementId) &&
+        !/-card-/i.test(elementId)
+      );
     const isSubtitle = elementId === `${section.id}-subtitle` || elementId === `${section.id}-hero-subtitle`;
-    const isDescription = elementId === `${section.id}-description` || elementId === `${section.id}-hero-description`;
+    const isDescription =
+      elementId === `${section.id}-description` ||
+      elementId === `${section.id}-hero-description` ||
+      elementId === `${section.id}-sp2-desc`;
     const isButton = elementId === `${section.id}-hero-button`;
     const isImage = elementId === `${section.id}-hero-image`;
 
     if (isTitle || isSubtitle || isDescription || isButton || isImage) {
       const prefix = isTitle ? 'title' : (isSubtitle ? 'subtitle' : (isDescription ? 'description' : (isButton ? 'cta' : 'image')));
       const sectionUpdates: any = { content: { ...content }, styles: { ...styles } };
-      
+      const elAfter = newElements.find((e) => e.id === elementId);
+      const uc = (elAfter?.content || updates.content || {}) as any;
+
       if (isButton) {
-        if (updates.content?.text !== undefined) sectionUpdates.content.ctaText = updates.content.text;
-        if (updates.content?.link !== undefined) sectionUpdates.content.ctaHref = updates.content.link;
+        if (uc.text !== undefined) sectionUpdates.content.ctaText = uc.text;
+        if (uc.link !== undefined) sectionUpdates.content.ctaHref = uc.link;
       } else if (isImage) {
-        if (updates.content?.imageUrl !== undefined) sectionUpdates.content.imageUrl = updates.content.imageUrl;
-      } else if (updates.content?.text !== undefined) {
-          sectionUpdates.content[prefix] = updates.content.text;
+        if (uc.imageUrl !== undefined) sectionUpdates.content.imageUrl = uc.imageUrl;
+      } else {
+        const plain = composeHeadingPlainText(uc);
+        if (plain || uc.text !== undefined) {
+          sectionUpdates.content[prefix] = plain || uc.text;
+        }
       }
-      
+
       if (updates.style) {
         if (isButton) {
           if (updates.style.backgroundColor) sectionUpdates.styles.buttonBackgroundColor = updates.style.backgroundColor;
@@ -334,7 +371,7 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
           if (updates.style.fontStyle) sectionUpdates.styles[`${prefix}FontStyle`] = updates.style.fontStyle;
         }
       }
-      
+
       onUpdate(section.id, { elements: newElements, ...sectionUpdates });
       return;
     }
@@ -1108,7 +1145,7 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
         onRemoveItem={removeItem}
         onSectionUpdate={onUpdate}
         onUpload={onUpload}
-        onElementUpdate={handleElementUpdate}
+        onElementUpdate={onElementUpdateProp || handleElementUpdate}
         onElementSelect={onElementSelect}
         onOpenInternalLink={onOpenInternalLink}
         selectedElementId={selectedElementId}

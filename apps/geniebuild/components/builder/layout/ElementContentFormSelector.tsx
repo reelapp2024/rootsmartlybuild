@@ -236,7 +236,10 @@ export const ElementContentFormSelector: React.FC<Props> = ({
   onTriggerUpload,
 }) => {
   const updateContent = (updates: any) =>
-    onUpdateElement(selectedSection.id, selectedElement.id, { content: { ...(selectedElement.content || {}), ...updates } });
+    onUpdateElement(selectedSection.id, selectedElement.id, {
+      type: selectedElement.type,
+      content: { ...(selectedElement.content || {}), ...updates },
+    });
   const linkVal = String(selectedElement.content?.link || '');
   const linkContactKind = inferKindFromLink(linkVal);
   const contactKind = inferElementContactKind(selectedElement) || linkContactKind;

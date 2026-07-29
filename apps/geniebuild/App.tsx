@@ -62,6 +62,7 @@ import { useHistory, useUndoRedoShortcuts } from './components/builder/state/use
 import { useAutosave, readLocalBackup, clearLocalBackup } from './components/builder/state/useAutosave';
 import { buildResponsiveOverrideCss, resolveSectionForBreakpoint, styleFieldForBreakpoint, type EditBreakpoint } from './components/builder/state/responsiveOverrideCss';
 import { flushInlineEdits } from './components/sections/editableHtmlHelpers';
+import { commitPendingEditablesToSiteData } from './components/sections/flushEditableForSave';
 import { applySeoToDocument } from './components/builder/state/seoHelpers';
 import {
   apiSeoToMetadata,
@@ -487,6 +488,12 @@ const AppContent: React.FC = () => {
     }
 
     try {
+      // Read live contentEditable DOM into siteData BEFORE build — blur/setState is async
+      // and would otherwise save the previous heading/text (refresh shows old content).
+      const siteDataWithEdits = commitPendingEditablesToSiteData(siteData);
+      if (siteDataWithEdits !== siteData) {
+        setSiteData(siteDataWithEdits);
+      }
       flushInlineEdits();
       setSavingPageData(true);
       const apiUrl = API_BASE_URL;
@@ -497,7 +504,7 @@ const AppContent: React.FC = () => {
       
       // Commit the active page's current working sections into pages[currentPageId]
       // before building the payload, so in-progress edits persist with the page.
-      const siteDataForSave = commitSectionsToCurrentPage(siteData);
+      const siteDataForSave = commitSectionsToCurrentPage(siteDataWithEdits);
       // Persist chrome + body together — backend expects a flat header/body/footer stack.
       const sectionsForSave = [
         ...(siteDataForSave.globalSections || []),
@@ -2401,6 +2408,7 @@ const AppContent: React.FC = () => {
                                   setSelectedElementId(elId);
                                   setSelectedVirtualElement(el || null);
                                 }}
+                                onElementUpdate={(elId, updates) => updateElement(section.id, elId, updates)}
                                 onOpenInternalLink={handleOpenInternalLink}
                               />
                             ));

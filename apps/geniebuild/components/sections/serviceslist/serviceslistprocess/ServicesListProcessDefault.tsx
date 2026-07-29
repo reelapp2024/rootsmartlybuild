@@ -174,6 +174,17 @@ export const ServicesListProcessDefault: React.FC<Props> = ({
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
     };
+    if (existing) {
+      return {
+        ...existing,
+        type: 'heading',
+        content: {
+          ...(existing.content || {}),
+          htmlTag: (existing.content as any)?.htmlTag || 'h2',
+        },
+        style: { ...(base.style as any), ...(existing.style as any) },
+      } as WebsiteElement;
+    }
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 

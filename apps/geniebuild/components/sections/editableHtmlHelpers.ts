@@ -11,6 +11,10 @@ const liveCommitRafById = new Map<string, number>();
 const liveCommitPendingById = new Map<string, string>();
 /** Caret plain-text offset captured on each input (before React can move it). */
 const liveCaretOffsetById = new Map<string, number>();
+/** Sticky: user just typed a trailing Space — do not rewrite DOM until next non-space char. */
+const liveTrailingSpaceById = new Map<string, boolean>();
+/** Pending caret-restore timers (cancel on newer input so stale rAFs don't steal focus). */
+const caretRestoreTimersById = new Map<string, number[]>();
 
 export function getEditableNode(elementId: string): HTMLElement | null {
   return editableNodesById.get(elementId) || null;
@@ -190,17 +194,39 @@ export function restoreCaretAfterReactUpdate(
   offset: number | null
 ): void {
   if (offset === null || offset === undefined) return;
+  cancelCaretRestore(elementId);
   const run = () => {
+    caretRestoreTimersById.delete(elementId);
     const node = editableNodesById.get(elementId);
     if (!node || !inlineEditingIds.has(elementId)) return;
     placeCaretAtPlainOffset(node, offset);
   };
-  // Double-rAF: first paint may still be React commit; second restores reliably.
   if (typeof requestAnimationFrame === 'function') {
-    requestAnimationFrame(() => requestAnimationFrame(run));
+    const t1 = requestAnimationFrame(() => {
+      const t2 = requestAnimationFrame(run);
+      const list = caretRestoreTimersById.get(elementId) || [];
+      list.push(t2);
+      caretRestoreTimersById.set(elementId, list);
+    });
+    caretRestoreTimersById.set(elementId, [t1]);
   } else {
-    setTimeout(run, 0);
+    const t = window.setTimeout(run, 0) as unknown as number;
+    caretRestoreTimersById.set(elementId, [t]);
   }
+}
+
+export function cancelCaretRestore(elementId: string): void {
+  const timers = caretRestoreTimersById.get(elementId);
+  if (!timers?.length) return;
+  timers.forEach((t) => {
+    if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(t);
+    try {
+      clearTimeout(t);
+    } catch {
+      /* ignore */
+    }
+  });
+  caretRestoreTimersById.delete(elementId);
 }
 
 export function clearLiveCommit(elementId: string): void {
@@ -215,6 +241,77 @@ export function getLiveCaretOffset(elementId: string): number | null {
   return liveCaretOffsetById.has(elementId)
     ? (liveCaretOffsetById.get(elementId) as number)
     : null;
+}
+
+/** True when the last input was a trailing Space that must not be rewritten away. */
+export function hasLiveTrailingSpace(elementId: string): boolean {
+  return liveTrailingSpaceById.get(elementId) === true;
+}
+
+export function setLiveTrailingSpace(elementId: string, value: boolean): void {
+  if (value) liveTrailingSpaceById.set(elementId, true);
+  else liveTrailingSpaceById.delete(elementId);
+}
+
+/**
+ * At end of the highlight <span>, browsers often fail to insert a real Space.
+ * Insert a text-node space AFTER the span and park the caret after it.
+ * Returns true when Space was handled (caller should preventDefault).
+ */
+export function insertSpaceAfterHighlightIfAtEnd(node: HTMLElement): boolean {
+  try {
+    const doc = node.ownerDocument || document;
+    const win = doc.defaultView || window;
+    const sel = win.getSelection?.();
+    if (!sel || sel.rangeCount === 0) return false;
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return false;
+
+    const span = node.querySelector('span');
+    if (!span || !span.contains(range.startContainer)) return false;
+
+    // Caret is at end of span when nothing countable remains after it inside the span.
+    const afterRange = range.cloneRange();
+    try {
+      afterRange.selectNodeContents(span);
+      afterRange.setStart(range.startContainer, range.startOffset);
+    } catch {
+      return false;
+    }
+    const afterText = String(afterRange.toString() || '').replace(/\u200b/g, '');
+    if (afterText !== '') return false;
+
+    // Reuse an existing trailing space text node after the span when present.
+    let spaceNode = span.nextSibling;
+    if (
+      spaceNode &&
+      spaceNode.nodeType === Node.TEXT_NODE &&
+      /^\s/.test(String(spaceNode.textContent || ''))
+    ) {
+      const tn = spaceNode as Text;
+      const nextRange = doc.createRange();
+      nextRange.setStart(tn, Math.min(1, Math.max(1, tn.textContent?.length || 1)));
+      nextRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(nextRange);
+      return true;
+    }
+
+    spaceNode = doc.createTextNode(' ');
+    if (span.nextSibling) {
+      span.parentNode?.insertBefore(spaceNode, span.nextSibling);
+    } else {
+      span.parentNode?.appendChild(spaceNode);
+    }
+    const nextRange = doc.createRange();
+    nextRange.setStart(spaceNode, 1);
+    nextRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(nextRange);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** True while the contentEditable for this id is focused (live typing). */
@@ -262,7 +359,9 @@ export function editableFocusBlur(
     },
     onBlur: (e) => {
       clearLiveCommit(elementId);
+      cancelCaretRestore(elementId);
       liveCaretOffsetById.delete(elementId);
+      liveTrailingSpaceById.delete(elementId);
       inlineEditingIds.delete(elementId);
       onCommit(e.currentTarget.innerHTML);
     },
@@ -270,6 +369,26 @@ export function editableFocusBlur(
       ? {
           onInput: (e) => {
             const node = e.currentTarget as HTMLElement;
+            const native = e.nativeEvent as InputEvent;
+            // Space at end: sticky flag so highlight rewrite cannot eat it (→ "youman").
+            if (native && native.inputType === 'insertText' && native.data === ' ') {
+              liveTrailingSpaceById.set(elementId, true);
+            } else if (
+              native &&
+              (native.inputType === 'insertText' ||
+                native.inputType === 'insertCompositionText') &&
+              native.data &&
+              native.data !== ' '
+            ) {
+              liveTrailingSpaceById.delete(elementId);
+            } else if (
+              native &&
+              (native.inputType === 'deleteContentBackward' ||
+                native.inputType === 'deleteContentForward')
+            ) {
+              const plain = String(node.textContent || '').replace(/\u200b/g, '');
+              if (!/\s$/.test(plain)) liveTrailingSpaceById.delete(elementId);
+            }
             const offset = getPlainTextCaretOffset(node);
             if (offset !== null) liveCaretOffsetById.set(elementId, offset);
             scheduleLiveCommit(elementId, node.innerHTML, onCommit);
@@ -289,6 +408,45 @@ export function flushInlineEdits(): void {
   if (active instanceof HTMLElement && active.isContentEditable) {
     active.blur();
   }
+}
+
+/**
+ * Synchronously collect the latest HTML from every in-progress editable
+ * (pending rAF commits + currently focused nodes). Clears pending timers.
+ * Used by save so we don't persist stale React state.
+ */
+export function collectPendingEditableHtml(): Map<string, string> {
+  const out = new Map<string, string>();
+
+  liveCommitPendingById.forEach((html, elementId) => {
+    out.set(elementId, html);
+  });
+
+  // Cancel scheduled commits — we're taking over synchronously.
+  Array.from(liveCommitRafById.keys()).forEach((elementId) => {
+    clearLiveCommit(elementId);
+  });
+
+  editableNodesById.forEach((node, elementId) => {
+    if (!inlineEditingIds.has(elementId) && !out.has(elementId)) return;
+    try {
+      out.set(elementId, node.innerHTML);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  // Also catch focused contentEditable that may not be in our map yet.
+  if (typeof document !== 'undefined') {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.isContentEditable) {
+      const headingId = active.getAttribute('data-gb-heading-id');
+      const id = headingId || active.getAttribute('data-gb-editable-id');
+      if (id) out.set(id, active.innerHTML);
+    }
+  }
+
+  return out;
 }
 
 export function createEditableHtmlProps(

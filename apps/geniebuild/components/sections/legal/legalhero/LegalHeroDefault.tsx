@@ -82,6 +82,17 @@ export const LegalHeroDefault: React.FC<Props> = ({
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h1' },
       style: { fontWeight: '900', fontSize: s.titleSize || 'clamp(2.25rem, 5.5vw, 3.5rem)', lineHeight: '1.1', letterSpacing: '-0.02em', textAlign: 'center' as any },
     };
+    if (existing) {
+      return {
+        ...existing,
+        type: 'heading',
+        content: {
+          ...(existing.content || {}),
+          htmlTag: (existing.content as any)?.htmlTag || 'h1',
+        },
+        style: { ...(base.style as any), ...(existing.style as any) },
+      } as WebsiteElement;
+    }
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h1' } };
   })();
 

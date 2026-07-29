@@ -127,6 +127,17 @@ export const AboutFaqDefault: React.FC<Props> = ({
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.875rem, 4vw, 2.875rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
     };
+    if (existing) {
+      return {
+        ...existing,
+        type: 'heading',
+        content: {
+          ...(existing.content || {}),
+          htmlTag: (existing.content as any)?.htmlTag || 'h2',
+        },
+        style: { ...(base.style as any), ...(existing.style as any) },
+      } as WebsiteElement;
+    }
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 

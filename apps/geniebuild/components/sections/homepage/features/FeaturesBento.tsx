@@ -174,6 +174,17 @@ export const FeaturesBento: React.FC<Props> = ({
       content: { text: src, textBefore: before, highlightedText: highlight, textAfter: '', htmlTag: 'h2' },
       style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'left' as any, highlightColor: accent },
     };
+    if (existing) {
+      return {
+        ...existing,
+        type: 'heading',
+        content: {
+          ...(existing.content || {}),
+          htmlTag: (existing.content as any)?.htmlTag || 'h2',
+        },
+        style: { ...(base.style as any), ...(existing.style as any), highlightColor: (existing.style as any)?.highlightColor || accent },
+      } as WebsiteElement;
+    }
     return { ...base, content: { ...(base.content || {}), text: src, textBefore: before, highlightedText: highlight, textAfter: '', htmlTag: (base.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), highlightColor: (base.style as any)?.highlightColor || accent } };
   })();
 

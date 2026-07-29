@@ -331,9 +331,21 @@ export const applyUpdateElement = (
     }
 
     // Sync virtual title/subtitle/description/button/image back to section content/styles
-    const isTitle = elementId === `${updatedSection.id}-title` || elementId === `${updatedSection.id}-hero-title`;
+    const isTitle =
+      elementId === `${updatedSection.id}-title` ||
+      elementId === `${updatedSection.id}-hero-title` ||
+      elementId === `${updatedSection.id}-sp2-title` ||
+      (
+        /-(?:title|heading)$/i.test(elementId) &&
+        !/-svc\d+-/i.test(elementId) &&
+        !/-item-/i.test(elementId) &&
+        !/-card-/i.test(elementId)
+      );
     const isSubtitle = elementId === `${updatedSection.id}-subtitle` || elementId === `${updatedSection.id}-hero-subtitle`;
-    const isDescription = elementId === `${updatedSection.id}-description` || elementId === `${updatedSection.id}-hero-description`;
+    const isDescription =
+      elementId === `${updatedSection.id}-description` ||
+      elementId === `${updatedSection.id}-hero-description` ||
+      elementId === `${updatedSection.id}-sp2-desc`;
     const isButton = elementId === `${updatedSection.id}-hero-button`;
     const isImage = elementId === `${updatedSection.id}-hero-image`;
 
