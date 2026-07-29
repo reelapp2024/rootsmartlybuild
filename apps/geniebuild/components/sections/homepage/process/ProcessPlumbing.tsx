@@ -42,6 +42,8 @@ export const ProcessPlumbing: React.FC<Props> = ({
   const textColor  = fb.textColor  || lc.textColor  || '#4B5563';
   const iconColor  = fb.iconColor  || lc.iconColor  || accent;
   const iconBg     = fb.iconBg     || lc.iconBgColor || `${accent}15`;
+  const cardBorder = fb.border     || lc.cardBorderColor || 'rgba(0,0,0,0.08)';
+  const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
 
   // Section bg stays white on theme switch
   const savedBg = s.backgroundColor;
@@ -138,7 +140,7 @@ export const ProcessPlumbing: React.FC<Props> = ({
     featureBoxTextColor:  textColor,
   };
 
-  // Badge — uses theme accent color so it picks up palette changes.
+  // Badge — neutral muted eyebrow (reads as a quiet label, not a spot of colour).
   const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-pp-badge`) || {
     id: `${section.id}-pp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Our Process', icon: 'fa-list-ol', iconPosition: 'left', iconSize: '0.65rem' },
@@ -146,28 +148,21 @@ export const ProcessPlumbing: React.FC<Props> = ({
       fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
       textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
+      backgroundColor: cardBorder,
+      color: mutedColor,
     },
   };
 
-  // Highlighted heading — last word in accent
+  // Restrained heading — fully neutral (no accent-coloured last word).
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-pp-title`;
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
     const sourceText: string = (c.text || content.title || 'How Our Service Works').toString().replace(/<[^>]+>/g, '').trim();
-    const words = sourceText.split(/\s+/).filter(Boolean);
-    let textBefore = '';
-    let highlightedText = sourceText;
-    if (words.length > 1) {
-      highlightedText = words[words.length - 1];
-      textBefore = words.slice(0, -1).join(' ');
-    }
     const base: WebsiteElement = existing || {
       id, type: 'heading',
-      content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
-      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
+      content: { text: sourceText, htmlTag: 'h2' },
+      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
     };
     if (existing) {
       return {
@@ -180,7 +175,7 @@ export const ProcessPlumbing: React.FC<Props> = ({
         style: { ...(base.style as any), ...(existing.style as any) },
       } as WebsiteElement;
     }
-    return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
+    return { ...base, content: { ...(base.content || {}), text: sourceText, htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
   const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-pp-desc`) || {
@@ -276,8 +271,8 @@ export const ProcessPlumbing: React.FC<Props> = ({
           const stepCount = rawSteps.length;
           const desktopCols = Math.min(Math.max(stepCount, 1), 4);
           const gridId = `pp-grid-${section.id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-          // Use accent color at ~19% (~#30 hex) for the dashed line, theme-aware.
-          const lineColor = `${accent}30`;
+          // Neutral connector line — reads as quiet chrome, not another spot of colour.
+          const lineColor = cardBorder;
           return (
             <div className="relative">
               <style>{`

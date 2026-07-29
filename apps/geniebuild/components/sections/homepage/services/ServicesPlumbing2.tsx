@@ -227,6 +227,8 @@ export const ServicesPlumbing2: React.FC<Props> = ({
   const titleColor = lc.titleColor || '#111827';
   const textColor  = lc.textColor  || '#4B5563';
   const cardBg     = lc.cardBackgroundColor || '#FFFFFF';
+  const cardBorder = (lc as any).cardBorderColor || 'rgba(0,0,0,0.08)';
+  const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
   const btnBg      = (lc.buttonBackgroundColor as string) || tc?.buttonBackgroundColor || accent;
   const btnText    = (lc.buttonTextColor as string)       || tc?.buttonTextColor       || '#FFFFFF';
 
@@ -307,7 +309,7 @@ export const ServicesPlumbing2: React.FC<Props> = ({
     titleColor,
     textColor,
     accentColor: accent,
-    secondaryHeadingColor: accent,
+    secondaryHeadingColor: titleColor,
     cardBackgroundColor: cardBg,
     buttonBackgroundColor: btnBg,
     buttonTextColor: btnText,
@@ -329,8 +331,8 @@ export const ServicesPlumbing2: React.FC<Props> = ({
       fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
       textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
+      backgroundColor: cardBorder,
+      color: mutedColor,
     },
   };
 
@@ -338,23 +340,15 @@ export const ServicesPlumbing2: React.FC<Props> = ({
   let titleEl: WebsiteElement =
     titleFound || {
     id: `${section.id}-sp2-title`, type: 'heading',
-    content: (() => {
-      const raw = content.title || 'Our Plumbing Services';
-      const words = String(raw).replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean);
-      const highlightedText = words.length ? words[words.length - 1] : raw;
-      const textBefore = words.length > 1 ? words.slice(0, -1).join(' ') : '';
-      return {
-        text: raw,
-        textBefore,
-        highlightedText,
-        textAfter: '',
-        htmlTag: 'h2',
-      };
-    })(),
+    content: {
+      text: content.title || 'Our Plumbing Services',
+      htmlTag: 'h2',
+    },
     style: {
       textAlign: 'center' as any, fontWeight: '800',
       fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)',
       lineHeight: '1.15',
+      color: titleColor,
     },
   };
 
@@ -390,9 +384,6 @@ export const ServicesPlumbing2: React.FC<Props> = ({
         content: {
           ...(titleEl.content as any),
           text: apiTitle,
-          textBefore: '',
-          highlightedText: '',
-          textAfter: '',
           htmlTag: (titleEl.content as any)?.htmlTag || 'h2',
         },
       };

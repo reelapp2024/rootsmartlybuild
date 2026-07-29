@@ -37,6 +37,7 @@ export const HeroImageLeft: React.FC<Props> = ({
   const accent     = tc?.iconColor || tc?.accentColor || '#E11D48';
   const btnBg      = tc?.buttonBackgroundColor || '#E11D48';
   const btnText    = tc?.buttonTextColor || '#FFFFFF';
+  const cardBorder = tc?.cardBorder || 'rgba(255,255,255,0.12)';
 
   const bg = s.backgroundColor || tc?.backgroundColor || '#0C1015';
 
@@ -66,7 +67,7 @@ export const HeroImageLeft: React.FC<Props> = ({
 
   const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-title`) || {
     id: `${section.id}-h4-title`, type: 'heading',
-    content: { text: content.title || `Plumbing Done <span style="color:${accent}">Right.</span> First Time.`, htmlTag: 'h1' },
+    content: { text: content.title || 'Plumbing Done Right. First Time.', htmlTag: 'h1' },
     style: { color: titleColor, fontSize: s.titleSize || 'clamp(2.25rem, 5vw, 3.75rem)', fontWeight: '900', lineHeight: '1.08', textAlign: 'left' as any, letterSpacing: '-0.02em' },
   };
 
@@ -121,7 +122,7 @@ export const HeroImageLeft: React.FC<Props> = ({
   return (
     <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute -top-40 -right-32 w-[34rem] h-[34rem] rounded-full blur-[130px]" style={{ backgroundColor: `${accent}18` }} />
+        <div className="absolute -top-40 -right-32 w-[34rem] h-[34rem] rounded-full blur-[130px]" style={{ backgroundColor: cardBorder }} />
         <div className="absolute top-0 left-0 w-full h-full opacity-[0.04]"
           style={{ backgroundImage: `radial-gradient(${textColor} 1px, transparent 1px)`, backgroundSize: '40px 40px' }} />
       </div>
@@ -136,7 +137,7 @@ export const HeroImageLeft: React.FC<Props> = ({
             transition={{ duration: 0.7 }}
             className="relative order-1"
           >
-            <div className="relative rounded-3xl overflow-hidden border" style={{ borderColor: `${accent}22`, boxShadow: `0 30px 60px -30px ${accent}44` }}>
+            <div className="relative rounded-3xl overflow-hidden border" style={{ borderColor: cardBorder, boxShadow: '0 30px 60px -30px rgba(0,0,0,0.55)' }}>
               <img src={heroImage} alt="" className="w-full h-full object-cover" style={{ aspectRatio: '4/3' }} />
             </div>
             {/* Floating stat card */}

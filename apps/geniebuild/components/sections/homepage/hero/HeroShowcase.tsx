@@ -40,6 +40,8 @@ export const HeroShowcase: React.FC<Props> = ({
   const btnText    = tc?.buttonTextColor || '#FFFFFF';
 
   const bg = s.backgroundColor || tc?.backgroundColor || '#0C1015';
+  const line       = tc?.navBorderColor || 'rgba(255,255,255,0.10)';
+  const mutedColor = tc?.textColorMuted || (tc as any)?.muted || 'rgba(255,255,255,0.55)';
 
   const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=1400&q=80';
   const heroImage = (() => {
@@ -59,12 +61,12 @@ export const HeroShowcase: React.FC<Props> = ({
   const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-badge`) || {
     id: `${section.id}-h4-badge`, type: 'badge',
     content: { text: content.badgeText || 'Trusted by 5,000+ homes', icon: 'fa-shield-halved', iconPosition: 'left', iconSize: '0.7rem' },
-    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '8px 16px', borderRadius: '9999px', textAlign: 'center' as any },
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '8px 16px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: line, color: mutedColor },
   };
 
   const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-title`) || {
     id: `${section.id}-h4-title`, type: 'heading',
-    content: { text: content.title || `Plumbing Done <span style="color:${accent}">Right.</span> First Time.`, htmlTag: 'h1' },
+    content: { text: content.title || 'Plumbing Done Right. First Time.', htmlTag: 'h1' },
     style: { color: titleColor, fontSize: s.titleSize || 'clamp(2.5rem, 6vw, 4.5rem)', fontWeight: '900', lineHeight: '1.05', textAlign: 'center' as any, letterSpacing: '-0.02em' },
   };
 
@@ -160,7 +162,7 @@ export const HeroShowcase: React.FC<Props> = ({
           style={{ marginBottom: '-4rem' }}
         >
           <div className="relative rounded-3xl overflow-hidden border mx-auto max-w-4xl"
-            style={{ borderColor: `${accent}22`, boxShadow: `0 40px 80px -30px ${accent}55` }}>
+            style={{ borderColor: line, boxShadow: `0 40px 80px -30px ${bg}` }}>
             <img src={heroImage} alt="" className="w-full h-full object-cover" style={{ aspectRatio: '16/8' }} />
           </div>
         </motion.div>

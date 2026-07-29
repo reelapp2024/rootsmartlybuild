@@ -40,6 +40,7 @@ export const WhyChoosePlumbing: React.FC<Props> = ({
   const iconBg     = fb.iconBg     || lc.iconBgColor || `${accent}15`;
   const cardBg     = fb.background || lc.cardBackgroundColor || '#FFFFFF';
   const cardBorder = fb.border     || lc.cardBorderColor     || 'rgba(0,0,0,0.08)';
+  const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
 
   // bg white-lock
   const savedBg = s.backgroundColor;
@@ -95,8 +96,8 @@ export const WhyChoosePlumbing: React.FC<Props> = ({
       fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
       textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
+      backgroundColor: cardBorder,
+      color: mutedColor,
     },
   };
 
@@ -105,17 +106,10 @@ export const WhyChoosePlumbing: React.FC<Props> = ({
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
     const sourceText: string = (c.text || content.title || 'Why Choose Us').toString().replace(/<[^>]+>/g, '').trim();
-    const words = sourceText.split(/\s+/).filter(Boolean);
-    let textBefore = '';
-    let highlightedText = sourceText;
-    if (words.length > 1) {
-      highlightedText = words[words.length - 1];
-      textBefore = words.slice(0, -1).join(' ');
-    }
     const base: WebsiteElement = existing || {
       id, type: 'heading',
-      content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
-      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
+      content: { text: sourceText, htmlTag: 'h2' },
+      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
     };
     if (existing) {
       return {
@@ -128,7 +122,7 @@ export const WhyChoosePlumbing: React.FC<Props> = ({
         style: { ...(base.style as any), ...(existing.style as any) },
       } as WebsiteElement;
     }
-    return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
+    return { ...base, content: { ...(base.content || {}), text: sourceText, htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
   const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-wc-desc`) || {
@@ -167,12 +161,12 @@ export const WhyChoosePlumbing: React.FC<Props> = ({
         borderWidth:       '0',
         borderLeftWidth:   '4px',
         borderLeftStyle:   'solid',
-        borderLeftColor:   accent,
+        borderLeftColor:   cardBorder,
         borderRadius:      '0',
         borderTopRightRadius:    '0.625rem',
         borderBottomRightRadius: '0.625rem',
         padding: '1.25rem 1.5rem',
-        backgroundColor: `${accent}08`,
+        backgroundColor: cardBg,
         textAlign: 'left' as any,
         descriptionAlign: 'left' as any,
         titleAlign: 'left' as any,

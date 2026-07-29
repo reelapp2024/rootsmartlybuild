@@ -564,6 +564,9 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
     'TestimonialsPlumbing', 'WhyChoosePlumbing',
     'AboutPlumbing', 'AboutBento', 'AreasPlumbing', 'GuaranteePlumbing', 'FAQPlumbing',
     'HeaderPlumbing',
+    // "Editorial" complete-homepage variant set — light sections (Hero + CTA are dark)
+    'AboutEditorial', 'FeaturesEditorial', 'ServicesEditorial', 'ProcessEditorial',
+    'TestimonialsEditorial', 'WhyChooseEditorial', 'GuaranteeEditorial', 'FAQEditorial', 'AreasEditorial',
     // About / Service page light sections — keep them theme-consistent (light)
     'MissionVisionDefault', 'CoreValuesDefault', 'USPDefault',
     'PromiseDefault', 'RelatedServicesDefault', 'AboutServiceConsistent',

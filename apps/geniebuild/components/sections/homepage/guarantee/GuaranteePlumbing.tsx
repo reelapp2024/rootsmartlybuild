@@ -5,7 +5,6 @@ import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
 import {
   preferSavedElement,
-  resolveEditableHeadingElement,
 } from '../utils/headingHighlight';
 
 interface Props {
@@ -78,6 +77,7 @@ export const GuaranteePlumbing: React.FC<Props> = ({
   const textColor  = lc.textColor  || '#4B5563';
   const cardBg     = lc.cardBackgroundColor || '#FFFFFF';
   const cardBorder = lc.cardBorderColor || 'rgba(0,0,0,0.08)';
+  const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
   const btnBg      = (lc.buttonBackgroundColor as string) || tc?.buttonBackgroundColor || accent;
   const btnText    = (lc.buttonTextColor as string)       || tc?.buttonTextColor       || '#FFFFFF';
 
@@ -128,8 +128,8 @@ export const GuaranteePlumbing: React.FC<Props> = ({
       fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
       textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
+      backgroundColor: cardBorder,
+      color: mutedColor,
     },
   };
   const badgeElResolved: WebsiteElement = preferSavedElement(
@@ -137,20 +137,23 @@ export const GuaranteePlumbing: React.FC<Props> = ({
     { ...badgeFallback, content: { ...(badgeFallback.content || {}), text: apiBadgeText } }
   );
 
-  // Heading — prefer saved element (sidebar/canvas edits); else last-word highlight from API
-  const titleEl: WebsiteElement = resolveEditableHeadingElement({
-    id: `${section.id}-gp-title`,
-    existing: section.elements?.find(e => e.id === `${section.id}-gp-title`),
-    sourceText: apiTitleText.toString().replace(/<[^>]+>/g, '').trim(),
-    htmlTag: 'h2',
+  // Heading — plain neutral title (no accent highlight); prefer saved edits
+  const titleFallback: WebsiteElement = {
+    id: `${section.id}-gp-title`, type: 'heading',
+    content: { text: apiTitleText.toString().replace(/<[^>]+>/g, '').trim(), htmlTag: 'h2' } as any,
     style: {
       textAlign: 'center' as any,
       fontWeight: '800',
       fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)',
       lineHeight: '1.15',
       letterSpacing: '-0.02em',
+      color: titleColor,
     },
-  }) as WebsiteElement;
+  };
+  const titleEl: WebsiteElement = preferSavedElement(
+    section.elements?.find(e => e.id === `${section.id}-gp-title`),
+    titleFallback
+  );
 
   // Description
   const descFallback: WebsiteElement = {
@@ -252,9 +255,9 @@ export const GuaranteePlumbing: React.FC<Props> = ({
 
   return (
     <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
-      {/* Subtle accent halo behind the callout card — keeps the white feeling premium */}
+      {/* Subtle neutral halo behind the callout card — keeps the white feeling premium */}
       <div className="absolute inset-0 pointer-events-none"
-        style={{ background: `radial-gradient(ellipse at 50% 60%, ${accent}10 0%, transparent 60%)` }} />
+        style={{ background: `radial-gradient(ellipse at 50% 60%, ${cardBorder} 0%, transparent 60%)` }} />
 
       <div className={`${innerClass} relative z-10`} style={innerStyle}>
 
@@ -292,7 +295,7 @@ export const GuaranteePlumbing: React.FC<Props> = ({
           style={{
             backgroundColor: cardBg,
             border: `1px solid ${cardBorder}`,
-            boxShadow: `0 12px 32px -16px ${accent}20`,
+            boxShadow: `0 12px 32px -16px ${cardBorder}`,
           }}
         >
           {/* Left — stat-card */}
@@ -330,3 +333,5 @@ export const GuaranteePlumbing: React.FC<Props> = ({
     </div>
   );
 };
+
+export default GuaranteePlumbing;

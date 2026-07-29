@@ -42,6 +42,9 @@ export const HeroSplit: React.FC<Props> = ({
 
   // Dark surface background (theme-driven, works on theme-switch).
   const bg = s.backgroundColor || tc?.backgroundColor || '#0C1015';
+  const line       = tc?.navBorderColor || 'rgba(255,255,255,0.10)';
+  const surface    = tc?.surface || 'rgba(255,255,255,0.03)';
+  const mutedColor = tc?.textColorMuted || (tc as any)?.muted || 'rgba(255,255,255,0.55)';
 
   // Image (same resolution chain as HeroPlumbing4).
   const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=1200&q=80';
@@ -62,12 +65,12 @@ export const HeroSplit: React.FC<Props> = ({
   const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-badge`) || {
     id: `${section.id}-h4-badge`, type: 'badge',
     content: { text: content.badgeText || 'Trusted by 5,000+ homes', icon: 'fa-shield-halved', iconPosition: 'left', iconSize: '0.7rem' },
-    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '8px 16px', borderRadius: '9999px', textAlign: 'left' as any },
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '8px 16px', borderRadius: '9999px', textAlign: 'left' as any, backgroundColor: surface, color: mutedColor },
   };
 
   const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-title`) || {
     id: `${section.id}-h4-title`, type: 'heading',
-    content: { text: content.title || `Plumbing Done <span style="color:${accent}">Right.</span> First Time.`, htmlTag: 'h1' },
+    content: { text: content.title || `Plumbing Done Right. First Time.`, htmlTag: 'h1' },
     style: { color: titleColor, fontSize: s.titleSize || 'clamp(2.25rem, 5vw, 3.75rem)', fontWeight: '900', lineHeight: '1.08', textAlign: 'left' as any, letterSpacing: '-0.02em' },
   };
 
@@ -167,10 +170,10 @@ export const HeroSplit: React.FC<Props> = ({
             transition={{ duration: 0.7, delay: 0.15 }}
             className="relative order-1 lg:order-2"
           >
-            <div className="relative rounded-3xl overflow-hidden border" style={{ borderColor: `${accent}22`, boxShadow: `0 30px 60px -30px ${accent}44` }}>
+            <div className="relative rounded-3xl overflow-hidden border" style={{ borderColor: line, boxShadow: `0 30px 60px -30px ${bg}` }}>
               <img src={heroImage} alt="" className="w-full h-full object-cover" style={{ aspectRatio: '4/3' }} />
-              {/* soft accent corner accent */}
-              <div className="absolute -bottom-6 -right-6 w-28 h-28 rounded-2xl" style={{ backgroundColor: accent, opacity: 0.14 }} />
+              {/* soft neutral corner accent */}
+              <div className="absolute -bottom-6 -right-6 w-28 h-28 rounded-2xl" style={{ backgroundColor: surface }} />
             </div>
           </motion.div>
 

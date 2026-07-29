@@ -119,21 +119,12 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-about-title`;
     const existing = section.elements?.find(e => e.id === id);
-    const c = (existing?.content || {}) as any;
-    // Always re-split the current title text so first half renders in primary color
-    // and the LAST word highlights in accent — matches Features section design.
+    // Render the heading as plain neutral text (no accent-highlighted last word).
     const sourceText: string = apiTitleText.toString().replace(/<[^>]+>/g, '').trim();
-    const words = sourceText.split(/\s+/).filter(Boolean);
-    let textBefore = '';
-    let highlightedText = sourceText;
-    if (words.length > 1) {
-      highlightedText = words[words.length - 1];
-      textBefore = words.slice(0, -1).join(' ');
-    }
     const base: WebsiteElement = existing || {
       id, type: 'heading',
-      content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
-      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em', textAlign: 'left' as any },
+      content: { text: sourceText, htmlTag: 'h2' },
+      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em', textAlign: 'left' as any, color: titleColor },
     };
     if (existing) {
       return {
@@ -141,14 +132,15 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
         type: 'heading',
         content: {
           ...(existing.content || {}),
+          text: sourceText,
           htmlTag: (existing.content as any)?.htmlTag || 'h2',
         },
-        style: { ...(base.style as any), ...(existing.style as any) },
+        style: { ...(base.style as any), ...(existing.style as any), color: titleColor },
       } as WebsiteElement;
     }
     return {
       ...base,
-      content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' },
+      content: { text: sourceText, htmlTag: base.content?.htmlTag || 'h2' },
     };
   })();
 

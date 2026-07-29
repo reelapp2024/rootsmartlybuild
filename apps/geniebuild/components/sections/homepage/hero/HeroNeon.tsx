@@ -4,7 +4,6 @@ import { ElementsSection } from '../ElementsSection';
 import { motion } from 'motion/react';
 import {
   preferSavedElement,
-  resolveEditableHeadingElement,
 } from '../utils/headingHighlight';
 
 interface Props {
@@ -64,6 +63,7 @@ export const HeroNeon: React.FC<Props> = ({
   const bg         = s.backgroundColor || tc?.backgroundColor || '#0A0A0B';
   const surface    = tc?.surface || 'rgba(255,255,255,0.02)';
   const line       = tc?.navBorderColor || 'rgba(255,255,255,0.10)';
+  const mutedColor = tc?.textColorMuted || (tc as any)?.muted || 'rgba(255,255,255,0.55)';
 
   const uid = `hn-${String(section.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
@@ -104,26 +104,29 @@ export const HeroNeon: React.FC<Props> = ({
     {
       id: `${section.id}-h4-badge`, type: 'badge',
       content: { text: badgeText, iconPosition: 'left' },
-      style: { fontSize: '0.72rem', fontWeight: '600', letterSpacing: '0.02em', textTransform: 'none' as any, padding: '4px 6px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: 'transparent', color: textColor },
+      style: { fontSize: '0.72rem', fontWeight: '600', letterSpacing: '0.02em', textTransform: 'none' as any, padding: '4px 6px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: 'transparent', color: mutedColor },
     }
   );
 
-  // Headline — prefer saved edits; else last-word highlight from API/default
-  const titleEl: WebsiteElement = resolveEditableHeadingElement({
-    id: `${section.id}-h4-title`,
-    existing: section.elements?.find(e => e.id === `${section.id}-h4-title`),
-    sourceText: String(headlineText || '').replace(/<[^>]+>/g, '').trim(),
-    htmlTag: 'h1',
-    style: {
-      color: titleColor,
-      fontWeight: '800',
-      fontSize: 'clamp(2.75rem, 6vw, 5.1rem)',
-      lineHeight: '1.02',
-      letterSpacing: '-0.045em',
-      textAlign: 'center' as any,
-      highlightColor: accent,
-    },
-  }) as WebsiteElement;
+  // Headline — plain neutral heading (no accent highlight); fully editable.
+  const titleEl: WebsiteElement = (() => {
+    const id = `${section.id}-h4-title`;
+    const existing = section.elements?.find(e => e.id === id);
+    const src = (existing?.content as any)?.text || String(headlineText || '').replace(/<[^>]+>/g, '').trim();
+    const base: WebsiteElement = existing || {
+      id, type: 'heading',
+      content: { text: src, htmlTag: 'h1' },
+      style: {
+        color: titleColor,
+        fontWeight: '800',
+        fontSize: 'clamp(2.75rem, 6vw, 5.1rem)',
+        lineHeight: '1.02',
+        letterSpacing: '-0.045em',
+        textAlign: 'center' as any,
+      },
+    };
+    return { ...base, content: { ...(base.content || {}), text: src, htmlTag: (base.content as any)?.htmlTag || 'h1' } };
+  })();
 
   const descElResolved: WebsiteElement = preferSavedElement(
     section.elements?.find(e => e.id === `${section.id}-h4-desc`),
@@ -163,13 +166,13 @@ export const HeroNeon: React.FC<Props> = ({
     if (existing) {
       return preferSavedElement(existing, {
         id, type: 'heading',
-        content: { text: value, htmlTag: 'div' as any, textBefore: '', highlightedText: '', textAfter: '' },
+        content: { text: value, htmlTag: 'div' as any },
         style: { color: statValueColor, fontWeight: '800', fontSize: 'clamp(1.4rem, 2.5vw, 1.75rem)', lineHeight: '1', letterSpacing: '-0.03em', textAlign: 'center' as any },
       });
     }
     return {
       id, type: 'heading',
-      content: { text: value, htmlTag: 'div' as any, textBefore: '', highlightedText: '', textAfter: '' },
+      content: { text: value, htmlTag: 'div' as any },
       style: { color: statValueColor, fontWeight: '800', fontSize: 'clamp(1.4rem, 2.5vw, 1.75rem)', lineHeight: '1', letterSpacing: '-0.03em', textAlign: 'center' as any },
     };
   };
@@ -288,7 +291,7 @@ export const HeroNeon: React.FC<Props> = ({
         <div className="mx-auto max-w-[900px] text-center">
           {/* Availability pill — animated border wrapper around the editable badge */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="flex justify-center">
-            <div className="inline-flex items-center gap-2.5 rounded-full px-1 py-1 pr-3 backdrop-blur-md" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: `1px solid ${accent}55` }}>
+            <div className="inline-flex items-center gap-2.5 rounded-full px-1 py-1 pr-3 backdrop-blur-md" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: `1px solid ${line}` }}>
               <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ backgroundColor: accent, color: btnText }}>
                 <span aria-hidden className="hn-dot h-1.5 w-1.5 rounded-full" style={{ backgroundColor: `${btnText}B3` }} />
                 Open

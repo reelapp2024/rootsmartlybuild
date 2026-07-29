@@ -140,13 +140,11 @@ export const FeaturesPlumbing: React.FC<Props> = ({
     id: `${section.id}-fp-title`, type: 'heading',
     content: {
       text: content.title || 'Why Homeowners Trust Us',
-      textBefore: 'Why Homeowners',
-      highlightedText: 'Trust Us',
-      textAfter: '',
       htmlTag: 'h2',
     },
-    // No explicit color — global heading color / theme.titleColor drives it.
-    style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15' },
+    // Neutral heading: no split highlight, and highlightColor pinned to titleColor
+    // so the renderer's accent default can never colour a word.
+    style: { color: titleColor, highlightColor: titleColor, textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15' },
   };
 
   const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fp-desc`) || {

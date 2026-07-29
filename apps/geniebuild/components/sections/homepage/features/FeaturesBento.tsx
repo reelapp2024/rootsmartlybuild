@@ -166,13 +166,10 @@ export const FeaturesBento: React.FC<Props> = ({
     const id = `${section.id}-fp-title`;
     const existing = section.elements?.find(e => e.id === id);
     const src = (existing?.content as any)?.text || content.title || "Everything you'd want from a local team.";
-    const words = String(src).replace(/<[^>]+>/g, '').trim().split(/\s+/).filter(Boolean);
-    const before = words.length > 2 ? words.slice(0, -2).join(' ') : '';
-    const highlight = words.length > 2 ? words.slice(-2).join(' ') : src;
     const base: WebsiteElement = existing || {
       id, type: 'heading',
-      content: { text: src, textBefore: before, highlightedText: highlight, textAfter: '', htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'left' as any, highlightColor: accent },
+      content: { text: src, htmlTag: 'h2' },
+      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'left' as any },
     };
     if (existing) {
       return {
@@ -182,10 +179,10 @@ export const FeaturesBento: React.FC<Props> = ({
           ...(existing.content || {}),
           htmlTag: (existing.content as any)?.htmlTag || 'h2',
         },
-        style: { ...(base.style as any), ...(existing.style as any), highlightColor: (existing.style as any)?.highlightColor || accent },
+        style: { ...(base.style as any), ...(existing.style as any) },
       } as WebsiteElement;
     }
-    return { ...base, content: { ...(base.content || {}), text: src, textBefore: before, highlightedText: highlight, textAfter: '', htmlTag: (base.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), highlightColor: (base.style as any)?.highlightColor || accent } };
+    return { ...base, content: { ...(base.content || {}), text: src, htmlTag: (base.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any) } };
   })();
 
   const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fp-desc`) || {

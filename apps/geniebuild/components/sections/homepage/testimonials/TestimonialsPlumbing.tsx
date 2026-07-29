@@ -51,6 +51,8 @@ export const TestimonialsPlumbing: React.FC<Props> = ({
   const accent     = lc.accentColor || tc?.accentColor || '#E11D48';
   const titleColor = lc.titleColor || '#111827';
   const textColor  = lc.textColor  || '#4B5563';
+  const cardBorder = lc.cardBorderColor || 'rgba(0,0,0,0.08)';
+  const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
 
   // Section bg: white-lock on theme switch
   const savedBg = s.backgroundColor;
@@ -146,8 +148,8 @@ export const TestimonialsPlumbing: React.FC<Props> = ({
       fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
       textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
+      backgroundColor: cardBorder,
+      color: mutedColor,
     },
   };
   const badgeElResolved: WebsiteElement = {
@@ -158,19 +160,11 @@ export const TestimonialsPlumbing: React.FC<Props> = ({
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-tp-title`;
     const existing = section.elements?.find(e => e.id === id);
-    const c = (existing?.content || {}) as any;
     const sourceText: string = apiTitleText.toString().replace(/<[^>]+>/g, '').trim();
-    const words = sourceText.split(/\s+/).filter(Boolean);
-    let textBefore = '';
-    let highlightedText = sourceText;
-    if (words.length > 1) {
-      highlightedText = words[words.length - 1];
-      textBefore = words.slice(0, -1).join(' ');
-    }
     const base: WebsiteElement = existing || {
       id, type: 'heading',
-      content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
-      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
+      content: { text: sourceText, htmlTag: 'h2' },
+      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
     };
     if (existing) {
       return {
@@ -183,7 +177,7 @@ export const TestimonialsPlumbing: React.FC<Props> = ({
         style: { ...(base.style as any), ...(existing.style as any) },
       } as WebsiteElement;
     }
-    return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
+    return { ...base, content: { ...(base.content || {}), text: sourceText, htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
   const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-tp-desc`) || {

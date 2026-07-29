@@ -101,23 +101,16 @@ export const AreasPlumbing: React.FC<Props> = ({
     },
   };
 
-  // Highlighted heading
+  // Neutral heading — plain title text, no accent-highlighted split word.
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-ap-title`;
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
     const sourceText: string = (c.text || content.title || 'Service Areas').toString().replace(/<[^>]+>/g, '').trim();
-    const words = sourceText.split(/\s+/).filter(Boolean);
-    let textBefore = '';
-    let highlightedText = sourceText;
-    if (words.length > 1) {
-      highlightedText = words[words.length - 1];
-      textBefore = words.slice(0, -1).join(' ');
-    }
     const base: WebsiteElement = existing || {
       id, type: 'heading',
-      content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
-      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
+      content: { text: sourceText, htmlTag: 'h2' },
+      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em', color: titleColor },
     };
     if (existing) {
       return {
@@ -125,12 +118,13 @@ export const AreasPlumbing: React.FC<Props> = ({
         type: 'heading',
         content: {
           ...(existing.content || {}),
+          text: sourceText,
           htmlTag: (existing.content as any)?.htmlTag || 'h2',
         },
         style: { ...(base.style as any), ...(existing.style as any) },
       } as WebsiteElement;
     }
-    return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
+    return { ...base, content: { text: sourceText, htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
   const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-ap-desc`) || {

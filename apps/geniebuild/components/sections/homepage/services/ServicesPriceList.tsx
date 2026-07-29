@@ -96,6 +96,7 @@ export const ServicesPriceList: React.FC<Props> = ({
   const textColor  = lc.textColor  || '#4B5563';
   const cardBg     = lc.cardBackgroundColor || '#FFFFFF';
   const cardBorder = (lc as any).cardBorderColor || 'rgba(0,0,0,0.08)';
+  const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
   const btnBg      = (lc.buttonBackgroundColor as string) || tc?.buttonBackgroundColor || accent;
   const btnText    = (lc.buttonTextColor as string)       || tc?.buttonTextColor       || '#FFFFFF';
 
@@ -169,20 +170,14 @@ export const ServicesPriceList: React.FC<Props> = ({
   let badgeEl: WebsiteElement = badgeFound || {
     id: `${section.id}-sp2-badge`, type: 'badge',
     content: { text: content.badgeText || 'Services', icon: 'fa-tools', iconPosition: 'left', iconSize: '0.65rem' },
-    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: `${accent}1A`, color: accent },
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: cardBorder, color: mutedColor },
   };
 
   const titleFound = section.elements?.find((e) => e.id === `${section.id}-sp2-title`);
   let titleEl: WebsiteElement = titleFound || {
     id: `${section.id}-sp2-title`, type: 'heading',
-    content: (() => {
-      const raw = content.title || 'Our Plumbing Services';
-      const words = String(raw).replace(/<[^>]+>/g, ' ').trim().split(/\s+/).filter(Boolean);
-      const highlightedText = words.length ? words[words.length - 1] : raw;
-      const textBefore = words.length > 1 ? words.slice(0, -1).join(' ') : '';
-      return { text: raw, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' };
-    })(),
-    style: { textAlign: 'left' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15' },
+    content: { text: content.title || 'Our Plumbing Services', htmlTag: 'h2' },
+    style: { textAlign: 'left' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', color: titleColor },
   };
 
   const descFound = section.elements?.find((e) => e.id === `${section.id}-sp2-desc`);
@@ -206,9 +201,6 @@ export const ServicesPriceList: React.FC<Props> = ({
         content: {
           ...(titleEl.content as any),
           text: apiTitle,
-          textBefore: '',
-          highlightedText: '',
-          textAfter: '',
           htmlTag: (titleEl.content as any)?.htmlTag || 'h2',
         },
       };
@@ -355,10 +347,10 @@ export const ServicesPriceList: React.FC<Props> = ({
               <div className="flex flex-col sm:flex-row gap-5 sm:gap-6 items-stretch">
                 {/* Thumbnail — fills the full row height, edge to edge, image never distorts */}
                 <div className="relative flex-none w-full sm:w-48 md:w-56 self-stretch min-h-[150px] rounded-2xl overflow-hidden"
-                  style={{ backgroundColor: `${accent}0A` }}>
+                  style={{ backgroundColor: cardBg }}>
                   <img src={imageUrl} alt={def.title} loading="lazy"
                     className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover/item:scale-105" />
-                  <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${accent}20, transparent 55%)` }} />
+                  <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${cardBorder}, transparent 55%)` }} />
                   {!hideAllIcons && (
                     <span className="absolute bottom-2.5 left-2.5 w-9 h-9 rounded-xl flex items-center justify-center shadow-md"
                       style={{ backgroundColor: cardBg, color: accent }}>
@@ -377,7 +369,7 @@ export const ServicesPriceList: React.FC<Props> = ({
                       {tags.map((label, t) => (
                         <span key={t}
                           className="inline-flex items-center whitespace-nowrap text-[0.72rem] font-semibold rounded-full px-2.5 py-[3px]"
-                          style={{ backgroundColor: `${accent}0F`, color: accent, border: `1px solid ${accent}22` }}>
+                          style={{ backgroundColor: cardBg, color: mutedColor, border: `1px solid ${cardBorder}` }}>
                           {label}
                         </span>
                       ))}
@@ -385,7 +377,7 @@ export const ServicesPriceList: React.FC<Props> = ({
                   )}
                 </div>
                 {/* Chevron affordance */}
-                <div className="hidden md:flex flex-none items-center self-center pl-2 opacity-0 -translate-x-2 group-hover/item:opacity-100 group-hover/item:translate-x-0 transition-all duration-300" style={{ color: accent }}>
+                <div className="hidden md:flex flex-none items-center self-center pl-2 opacity-0 -translate-x-2 group-hover/item:opacity-100 group-hover/item:translate-x-0 transition-all duration-300" style={{ color: mutedColor }}>
                   <i className="fa-solid fa-arrow-right" />
                 </div>
               </div>

@@ -47,17 +47,10 @@ export const CTAPlumbing1: React.FC<Props> = ({
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
     const sourceText: string = (c.text || content.title || "Pipe Burst? We're On Our Way.").toString().replace(/<[^>]+>/g, '').trim();
-    const words = sourceText.split(/\s+/).filter(Boolean);
-    let textBefore = '';
-    let highlightedText = sourceText;
-    if (words.length > 1) {
-      highlightedText = words[words.length - 1];
-      textBefore = words.slice(0, -1).join(' ');
-    }
     const base: WebsiteElement = existing || {
       id, type: 'heading',
-      content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
-      style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 4vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
+      content: { text: sourceText, htmlTag: 'h2' },
+      style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 4vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em', color: titleColor },
     };
     if (existing) {
       return {
@@ -67,10 +60,10 @@ export const CTAPlumbing1: React.FC<Props> = ({
           ...(existing.content || {}),
           htmlTag: (existing.content as any)?.htmlTag || 'h2',
         },
-        style: { ...(base.style as any), ...(existing.style as any) },
+        style: { ...(base.style as any), ...(existing.style as any), color: titleColor },
       } as WebsiteElement;
     }
-    return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
+    return { ...base, content: { ...(base.content || {}), text: sourceText, htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
   const phoneEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-c1-phone`) || {
