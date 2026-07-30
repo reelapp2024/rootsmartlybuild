@@ -5551,6 +5551,19 @@ Example format:
                 baseFilter._id = projectId;
             }
 
+            const projectTypeParam = req.query?.projectType;
+            if (
+                projectTypeParam !== undefined &&
+                projectTypeParam !== null &&
+                projectTypeParam !== "" &&
+                projectTypeParam !== "all"
+            ) {
+                const pt = Number(projectTypeParam);
+                if ([0, 1, 2].includes(pt)) {
+                    baseFilter.projectType = pt;
+                }
+            }
+
             if (search) {
                 const regex = { $regex: search, $options: "i" };
                 baseFilter.$or = [

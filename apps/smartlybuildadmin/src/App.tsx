@@ -43,6 +43,9 @@ import ProjectBlogs from "./pages/admin/ProjectBlogs";
 import { PluginManagement } from "./components/admin/PluginManagement";
 import BusinessWebsite from "./pages/admin/BusinessWebsite";
 import BusinessWebsiteList from "./pages/admin/BusinessWebsiteList";
+import ContentWebsite from "./pages/admin/ContentWebsite";
+import ContentWebsiteList from "./pages/admin/ContentWebsiteList";
+import ContentWebsiteSettingsPage from "./pages/admin/ContentWebsiteSettings";
 import ProjectSettings from "./pages/admin/ProjectSettings";
 import Subscription from "./pages/admin/Subscription";
 import ProfileSettings from "./pages/admin/ProfileSettings";
@@ -123,6 +126,10 @@ const App = () => (
           <Route path="/admin/business-website" element={<AdminLayout><BusinessWebsiteList /></AdminLayout>} />
           <Route path="/admin/business-website/list" element={<AdminLayout><BusinessWebsiteList /></AdminLayout>} />
           <Route path="/admin/business-website/create" element={<AdminLayout><BusinessWebsite /></AdminLayout>} />
+          <Route path="/admin/content-websites" element={<AdminLayout><ContentWebsiteList /></AdminLayout>} />
+          <Route path="/admin/content-websites/list" element={<AdminLayout><ContentWebsiteList /></AdminLayout>} />
+          <Route path="/admin/content-websites/create" element={<AdminLayout><ContentWebsite /></AdminLayout>} />
+          <Route path="/admin/content-websites/settings" element={<AdminLayout><ContentWebsiteSettingsPage /></AdminLayout>} />
           <Route path="/admin/forms" element={<AdminLayout><Forms /></AdminLayout>} />
           <Route path="/admin/notifications" element={<AdminLayout><Notifications /></AdminLayout>} />
       

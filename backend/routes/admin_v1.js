@@ -13,6 +13,7 @@ const CategoriesController = require('../controller/CategoriesController');
 const DynamicFormController = require("../controller/DynamicFormController");
 const NotificationController = require("../controller/NotificationController");
 const PinterestController = require("../controller/PinterestController");
+const PinterestControllerV2 = require("../controller/PinterestControllerV2");
 const ProjectControoler = require("../controller/projectcontrooler");
 const projectcontrooler = require('../controller/projectcontrooler');
 const WalletSystemController = require("../controller/WalletSystemController");
@@ -54,6 +55,34 @@ router.post("/pinterest/createProject", authentication, PinterestController.crea
 router.post("/pinterest/generatePinTitles", authentication, PinterestController.generatePinTitles);
 router.post("/pinterest/generatePinterestBlogs", authentication, PinterestController.generatePinterestBlogs);
 router.post("/pinterest/generateNanoBananaImages", authentication, PinterestController.generateNanoBananaImages);
+
+// Content Websites (Pinterest flow v2) — projectType 2
+router.post("/pinterest/v2/addGoals", authentication, PinterestControllerV2.addGoals);
+router.post("/pinterest/v2/createGoal", authentication, PinterestControllerV2.createGoal);
+router.post("/pinterest/v2/fetchGoals", authentication, PinterestControllerV2.fetchGoals);
+router.post("/pinterest/v2/updateGoal", authentication, PinterestControllerV2.updateGoal);
+router.post("/pinterest/v2/deleteGoal", authentication, PinterestControllerV2.deleteGoal);
+
+router.post("/pinterest/v2/seedLanguages", authentication, PinterestControllerV2.seedLanguages);
+router.post("/pinterest/v2/createLanguage", authentication, PinterestControllerV2.createLanguage);
+router.post("/pinterest/v2/fetchLanguages", authentication, PinterestControllerV2.fetchLanguages);
+router.post("/pinterest/v2/updateLanguage", authentication, PinterestControllerV2.updateLanguage);
+router.post("/pinterest/v2/deleteLanguage", authentication, PinterestControllerV2.deleteLanguage);
+
+router.post("/pinterest/v2/createCategory", authentication, PinterestControllerV2.createCategory);
+router.post("/pinterest/v2/fetchCategories", authentication, PinterestControllerV2.fetchCategories);
+router.post("/pinterest/v2/updateCategory", authentication, PinterestControllerV2.updateCategory);
+router.post("/pinterest/v2/deleteCategory", authentication, PinterestControllerV2.deleteCategory);
+router.post("/pinterest/v2/seedCategoriesAndNiches", authentication, PinterestControllerV2.seedCategoriesAndNiches);
+
+router.post("/pinterest/v2/createNiche", authentication, PinterestControllerV2.createNiche);
+router.post("/pinterest/v2/createNichesBulk", authentication, PinterestControllerV2.createNichesBulk);
+router.post("/pinterest/v2/fetchNiches", authentication, PinterestControllerV2.fetchNiches);
+router.post("/pinterest/v2/updateNiche", authentication, PinterestControllerV2.updateNiche);
+router.post("/pinterest/v2/deleteNiche", authentication, PinterestControllerV2.deleteNiche);
+
+router.post("/pinterest/v2/createContentWebsite", authentication, PinterestControllerV2.createContentWebsite);
+router.post("/pinterest/v2/analyzeNiche", authentication, PinterestControllerV2.analyzeNiche);
 
 router.post("/addBulkCategoriesWithSubs", CategoriesController.addBulkCategoriesWithSubs);
 

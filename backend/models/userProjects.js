@@ -86,7 +86,33 @@ const userProjectsSchema = new mongoose.Schema(
     projectType: {
       type: Number,
       default: 0,
-      enum: [0, 1], // 0 = location based site, 1 = business site
+      enum: [0, 1, 2], // 0 = location based site, 1 = business site, 2 = content website
+    },
+    /** Content website (projectType 2): EN | ES | DE | FR | HI */
+    language: {
+      type: String,
+      required: false,
+      trim: true,
+      default: null,
+    },
+    /** Content website goal name e.g. "Pinterest Traffic" */
+    contentGoal: {
+      type: String,
+      required: false,
+      trim: true,
+      default: null,
+    },
+    contentCategoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PinterestCategory',
+      required: false,
+      default: null,
+    },
+    contentNicheId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PinterestNiche',
+      required: false,
+      default: null,
     },
     googleSiteVerification: {
       type: String,

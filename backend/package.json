@@ -25,6 +25,7 @@
     "form-data": "^4.0.3",
     "fs-extra": "^11.3.0",
     "ftp": "^0.3.10",
+    "google-ads-api": "^24.1.0",
     "google-trends-api": "^4.9.2",
     "http-errors": "~1.6.3",
     "ioredis": "^5.4.2",

@@ -59,6 +59,7 @@ interface AdminSidebarProps {
 const CREATE_WIZARD_ROUTES = new Set([
   "/admin/bulk-pages-websites/create",
   "/admin/business-website/create",
+  "/admin/content-websites/create",
 ]);
 
 function navigateToCreateWizard(
@@ -79,6 +80,16 @@ const getBaseSidebarItems = () => [
     submenu: [
       { id: "create-project", label: "Create", icon: ListPlus, route: "/admin/bulk-pages-websites/create" },
       { id: "project-list", label: "List", icon: ListTodo, route: "/admin/bulk-pages-websites/list" },
+    ],
+  },
+  {
+    id: "content-websites",
+    label: "Content Websites",
+    icon: Sparkles,
+    submenu: [
+      { id: "content-websites-create", label: "Create", icon: ListPlus, route: "/admin/content-websites/create" },
+      { id: "content-websites-list", label: "List", icon: ListTodo, route: "/admin/content-websites/list" },
+      { id: "content-websites-settings", label: "Settings", icon: Settings, route: "/admin/content-websites/settings" },
     ],
   },
   { id: "hosting", label: "Hosting", icon: Server, route: "/admin/hosting" },

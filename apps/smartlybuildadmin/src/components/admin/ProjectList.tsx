@@ -41,7 +41,7 @@ import socket from "../../socket.js";
 import { clearWebsiteWizardStorageForRoute } from "./businesswebsiteSteps/businessWebsiteConfig";
 
 interface ProjectListProps {
-  projectType?: 0 | 1 | "all";
+  projectType?: 0 | 1 | 2 | "all";
   moduleTitle?: string;
   moduleDescription?: string;
   createRoute?: string;
@@ -296,7 +296,12 @@ export function ProjectList({
   };
 
   const handleUpdateProject = (id, pType = 0) => {
-    const isBusiness = Number(pType) === 1;
+    const type = Number(pType);
+    if (type === 2) {
+      navigate(`/admin/content-websites/create?projectId=${id}`, { replace: true });
+      return;
+    }
+    const isBusiness = type === 1;
     const target = isBusiness
       ? `/admin/business-website/create?projectId=${id}`
       : `/admin/bulk-pages-websites/create?projectId=${id}`;
