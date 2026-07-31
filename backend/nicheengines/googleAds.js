@@ -182,14 +182,20 @@ async function fetchAdsKeywordIdeas({ keyword, country, language }) {
 
 /**
  * Main entry: search volume + competition for a niche keyword.
+ * GOOGLE_ADS_API_MODE=true + credentials → Google Ads.
+ * Otherwise → OpenAI estimate (High/Med/Low) + Google Suggest related terms.
  */
 async function getKeywordDemand({
   keyword,
   country = 'US',
   language = 'EN',
+  categoryName = '',
+  userId = null,
 } = {}) {
+  const LOG = '[NicheAnalysis][Ads]';
   const q = String(keyword || '').trim();
   if (!q) {
+    console.log(`${LOG} SKIP — keyword empty`);
     return {
       mode: 'none',
       dataLabel: 'estimate',
@@ -199,10 +205,36 @@ async function getKeywordDemand({
     };
   }
 
-  if (isAdsModeEnabled() && hasAdsCredentials()) {
+  const adsOn = isAdsModeEnabled();
+  const credsOk = hasAdsCredentials();
+  console.log(`${LOG} Volume engine decision:`, {
+    keyword: q,
+    country,
+    language,
+    categoryName: categoryName || null,
+    GOOGLE_ADS_API_MODE: adsOn,
+    credentialsPresent: credsOk,
+    willTryGoogleAds: adsOn && credsOk,
+    fallbackIfNeeded: 'OpenAI + Google Suggest',
+  });
+
+  if (adsOn && credsOk) {
     try {
+      console.log(`${LOG} Calling Google Ads Keyword Plan Ideas…`);
+      const t0 = Date.now();
       const rows = await fetchAdsKeywordIdeas({ keyword: q, country, language });
       const primary = rows[0] || null;
+      console.log(`${LOG} Google Ads OK (${Date.now() - t0}ms):`, {
+        mode: 'google_ads',
+        dataLabel: primary?.dataLabel || 'real',
+        primaryKeyword: primary?.keyword,
+        avgMonthlySearches: primary?.avgMonthlySearches,
+        volumeLevel: primary?.volumeLevel,
+        volumeRange: primary?.volumeRange,
+        competition: primary?.competition,
+        relatedCount: Math.max(0, rows.length - 1),
+        relatedSample: rows.slice(1, 5).map((r) => r.keyword),
+      });
       return {
         mode: 'google_ads',
         dataLabel: primary?.dataLabel || 'real',
@@ -211,45 +243,162 @@ async function getKeywordDemand({
       };
     } catch (err) {
       console.warn(
-        '[nicheengines/googleAds] Ads API failed, falling back:',
+        `${LOG} Google Ads FAILED → falling back to OpenAI + Suggest:`,
         err.message
       );
     }
+  } else {
+    console.log(
+      `${LOG} Google Ads NOT used — reason: ${
+        !adsOn
+          ? 'GOOGLE_ADS_API_MODE is false/unset'
+          : 'Ads credentials missing in .env'
+      }`
+    );
   }
 
-  // Fallback — Google Suggest + estimate labels (honest, no fake exact numbers)
+  // Ads off / failed → OpenAI demand estimate + Suggest for related keywords
+  console.log(`${LOG} Fetching Google Suggest (autocomplete) for related terms…`);
+  const suggestStarted = Date.now();
   const suggestions = await fetchGoogleSuggest(q, language);
-  const related = suggestions
-    .filter((s) => s.toLowerCase() !== q.toLowerCase())
+  console.log(`${LOG} Google Suggest (${Date.now() - suggestStarted}ms):`, {
+    count: suggestions.length,
+    suggestions: suggestions.slice(0, 10),
+  });
+
+  let aiEstimate = null;
+
+  try {
+    console.log(`${LOG} Calling OpenAI for volume/competition estimate (High/Med/Low)…`);
+    const { fetchJSONFromOpenAI } = require('../additional/openaiHelpers');
+    const tAi = Date.now();
+    aiEstimate = await fetchJSONFromOpenAI(
+      `You estimate niche keyword demand for content / Pinterest sites.
+
+Return ONLY JSON:
+{
+  "volumeLevel": "High|Medium|Low",
+  "volumeRange": "e.g. estimate · 1K–10K or estimate · High",
+  "demandScore": 47,
+  "competition": "High|Medium|Low",
+  "competitionNote": "one short sentence",
+  "relatedKeywords": ["up to 8 related long-tail keywords"]
+}
+
+Rules:
+- demandScore MUST be an integer from 15 to 92 (never 0, never exactly 50 or 80 unless truly deserved)
+- Vary demandScore based on niche specificity, commercial intent, and Suggest hints
+- Do NOT invent exact monthly search numbers
+- Be honest for niche: "${q}"
+- Category: ${categoryName || 'n/a'}
+- Country: ${country}
+- Language: ${language}
+- Google Suggest hints (optional): ${JSON.stringify(suggestions.slice(0, 8))}
+`,
+      'NICHE_DEMAND_ESTIMATE',
+      {
+        userId: userId ? String(userId) : undefined,
+        promptFrom: 'nicheengines/googleAds',
+        promptFor: `Demand estimate - ${q}`,
+      }
+    );
+    console.log(`${LOG} OpenAI demand estimate OK (${Date.now() - tAi}ms):`, aiEstimate);
+  } catch (err) {
+    console.warn(
+      `${LOG} OpenAI estimate FAILED — will use Suggest-count heuristic:`,
+      err.message
+    );
+  }
+
+  const volumeLevel =
+    aiEstimate?.volumeLevel === 'High' ||
+    aiEstimate?.volumeLevel === 'Medium' ||
+    aiEstimate?.volumeLevel === 'Low'
+      ? aiEstimate.volumeLevel
+      : suggestions.length >= 8
+        ? 'High'
+        : suggestions.length >= 4
+          ? 'Medium'
+          : 'Low';
+
+  const competition =
+    aiEstimate?.competition === 'High' ||
+    aiEstimate?.competition === 'Medium' ||
+    aiEstimate?.competition === 'Low'
+      ? aiEstimate.competition
+      : 'Medium';
+
+  let demandScore = null;
+  const rawDemand = Number(aiEstimate?.demandScore);
+  if (Number.isFinite(rawDemand) && rawDemand > 0 && rawDemand <= 100) {
+    demandScore = Math.round(rawDemand);
+  } else {
+    // Derive continuous score from suggest depth + volume level (never stuck on 0/80)
+    const base =
+      volumeLevel === 'High' ? 68 : volumeLevel === 'Medium' ? 48 : 28;
+    demandScore = Math.min(
+      92,
+      Math.max(18, base + suggestions.length * 2 + String(q).split(/\s+/).length * 3)
+    );
+  }
+
+  const volumeSource = aiEstimate
+    ? 'openai'
+    : 'google_suggest_heuristic';
+
+  const relatedFromAi = Array.isArray(aiEstimate?.relatedKeywords)
+    ? aiEstimate.relatedKeywords
+    : [];
+  const relatedMerged = [
+    ...relatedFromAi,
+    ...suggestions.filter((s) => s.toLowerCase() !== q.toLowerCase()),
+  ]
+    .map((s) => String(s || '').trim())
+    .filter(Boolean)
+    .filter((s, i, arr) => arr.findIndex((x) => x.toLowerCase() === s.toLowerCase()) === i)
     .slice(0, 8)
     .map((s) => ({
       keyword: s,
       avgMonthlySearches: null,
       volumeRange: 'estimate',
-      volumeLevel: suggestions.length >= 8 ? 'High' : suggestions.length >= 4 ? 'Medium' : 'Low',
+      volumeLevel,
       competition: 'estimate',
-      source: 'google_suggest',
+      source: 'openai_estimate',
       dataLabel: 'estimate',
     }));
 
-  const suggestStrength =
-    suggestions.length >= 8 ? 'High' : suggestions.length >= 4 ? 'Medium' : 'Low';
-
-  return {
-    mode: isAdsModeEnabled() ? 'fallback_suggest' : 'google_suggest',
+  const result = {
+    mode: 'openai_estimate',
     dataLabel: 'estimate',
     primary: {
       keyword: q,
       avgMonthlySearches: null,
-      volumeRange: 'estimate · ' + suggestStrength,
-      volumeLevel: suggestStrength,
-      competition: 'estimate · ' + suggestStrength,
-      source: 'google_suggest',
+      volumeRange: aiEstimate?.volumeRange || `estimate · ${volumeLevel}`,
+      volumeLevel,
+      competition,
+      competitionNote: aiEstimate?.competitionNote || null,
+      demandScore,
+      source: 'openai_estimate',
       dataLabel: 'estimate',
       suggestionCount: suggestions.length,
+      volumeSource,
     },
-    related,
+    related: relatedMerged,
   };
+
+  console.log(`${LOG} Volume engine RESULT:`, {
+    mode: result.mode,
+    dataLabel: result.dataLabel,
+    volumeSource,
+    volumeLevel,
+    demandScore,
+    volumeRange: result.primary.volumeRange,
+    competition,
+    relatedCount: relatedMerged.length,
+    related: relatedMerged.map((r) => r.keyword),
+  });
+
+  return result;
 }
 
 module.exports = {

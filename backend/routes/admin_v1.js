@@ -83,6 +83,7 @@ router.post("/pinterest/v2/deleteNiche", authentication, PinterestControllerV2.d
 
 router.post("/pinterest/v2/createContentWebsite", authentication, PinterestControllerV2.createContentWebsite);
 router.post("/pinterest/v2/analyzeNiche", authentication, PinterestControllerV2.analyzeNiche);
+router.post("/pinterest/v2/generateWebsiteBlueprint", authentication, PinterestControllerV2.generateWebsiteBlueprint);
 
 router.post("/addBulkCategoriesWithSubs", CategoriesController.addBulkCategoriesWithSubs);
 

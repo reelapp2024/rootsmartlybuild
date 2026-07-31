@@ -107,8 +107,10 @@ async function getTrendSignals({
   country = 'US',
   timeframe = 'today 12-m',
 } = {}) {
+  const LOG = '[NicheAnalysis][Trends]';
   const q = String(keyword || '').trim();
   if (!q) {
+    console.log(`${LOG} SKIP — keyword empty`);
     return {
       mode: 'none',
       dataLabel: 'estimate',
@@ -119,6 +121,7 @@ async function getTrendSignals({
   }
 
   if (!isTrendsModeEnabled()) {
+    console.log(`${LOG} SKIPPED — GOOGLE_TRENDS_MODE is false`);
     return {
       mode: 'disabled',
       dataLabel: 'estimate',
@@ -136,6 +139,13 @@ async function getTrendSignals({
 
   try {
     const geo = resolveGeo(country);
+    console.log(`${LOG} Calling Google Trends interestOverTime…`, {
+      keyword: q,
+      country,
+      geo: geo || 'GLOBAL',
+      window: 'last ~12 months',
+    });
+    const t0 = Date.now();
     const raw = await withRetry(() =>
       googleTrends.interestOverTime({
         keyword: q,
@@ -148,6 +158,14 @@ async function getTrendSignals({
     const timeline = parseInterestTimeline(raw);
     const summary = summarizeSeasonality(timeline);
 
+    console.log(`${LOG} Google Trends OK (${Date.now() - t0}ms):`, {
+      mode: 'google_trends',
+      dataLabel: timeline.length ? 'real' : 'estimate',
+      geo: geo || 'GLOBAL',
+      timelinePoints: timeline.length,
+      summary,
+    });
+
     return {
       mode: 'google_trends',
       dataLabel: timeline.length ? 'real' : 'estimate',
@@ -157,7 +175,7 @@ async function getTrendSignals({
       timeframe,
     };
   } catch (err) {
-    console.warn('[nicheengines/googleTrends] failed:', err.message);
+    console.warn(`${LOG} Google Trends FAILED:`, err.message);
     return {
       mode: 'error',
       dataLabel: 'estimate',

@@ -9,6 +9,11 @@ const Users = require('../models/users');
 const Notification = require('../models/notification');
 const CONTENT_CATEGORY_SEED = require('../data/contentWebsiteCategorySeed');
 const { collectNicheSignals } = require('../nicheengines');
+const {
+  computeSignalScore,
+  mergeOverallScore,
+  buildHeuristicAnalysis,
+} = require('../nicheengines/scoreNiche');
 const { fetchJSONFromOpenAI } = require('../additional/openaiHelpers');
 
 const DEFAULT_GOALS = [
@@ -926,42 +931,101 @@ const PinterestControllerV2 = {
       const countryLabel = String(country || 'US').trim() || 'US';
       const langCode = String(language || 'EN').trim().toUpperCase() || 'EN';
       const keyword = nicheName;
+      const NA = '[NicheAnalysis]';
+
+      console.log(`\n${NA} ▶ analyzeNiche REQUEST`);
+      console.log(`${NA} Context:`, {
+        categoryName,
+        nicheName,
+        keyword,
+        country: countryLabel,
+        language: langCode,
+        contentGoal: contentGoal || null,
+        userId: userId ? String(userId) : null,
+      });
+      console.log(`${NA} Pipeline:`);
+      console.log(`${NA}   Step A — Ads/OpenAI + Trends + Pinterest + Amazon signals`);
+      console.log(`${NA}   Step B — Signal score engine + OpenAI niche analyst`);
 
       const signals = await collectNicheSignals({
         keyword,
         country: countryLabel,
         language: langCode,
+        categoryName,
+        userId,
       });
 
       const adsPrimary = signals.ads?.primary || {};
       const trendSummary = signals.trends?.summary || {};
+      const pinSignals = signals.pinterest || {};
+      const amazonSignals = signals.amazon || {};
       const relatedKeywords = (signals.ads?.related || [])
         .map((r) => r.keyword)
         .filter(Boolean)
         .slice(0, 8);
 
+      console.log(`${NA} Feeding signals into OpenAI analyst:`, {
+        adsMode: signals.ads?.mode,
+        adsDataLabel: signals.ads?.dataLabel,
+        volumeLevel: adsPrimary.volumeLevel,
+        volumeRange: adsPrimary.volumeRange,
+        demandScore: adsPrimary.demandScore,
+        competition: adsPrimary.competition,
+        relatedKeywords,
+        trendsMode: signals.trends?.mode,
+        trendsDataLabel: signals.trends?.dataLabel,
+        trendDirection: trendSummary.trendDirection,
+        seasonality: trendSummary.seasonality,
+        averageInterest: trendSummary.averageInterest,
+        rising: trendSummary.rising,
+        pinterestMode: pinSignals.mode,
+        pinterestScore: pinSignals.score,
+        pinterestLevel: pinSignals.level,
+        amazonMode: amazonSignals.mode,
+        amazonScore: amazonSignals.score,
+        amazonLevel: amazonSignals.level,
+      });
+
+      const signalScore = computeSignalScore({
+        ads: signals.ads,
+        trends: signals.trends,
+        pinterest: pinSignals,
+        amazon: amazonSignals,
+        nicheName,
+        categoryName,
+      });
+      console.log(`${NA} Signal engine score:`, {
+        overallScore: signalScore.overallScore,
+        breakdown: signalScore.breakdown,
+      });
+
       const prompt = `
-You are a niche research analyst for a Pinterest / content-website business.
+You are a senior niche research analyst for Pinterest / content websites (2026, quality-first).
 
 Return ONLY valid JSON with this exact shape:
 {
-  "competition": { "level": "High|Medium|Low", "summary": "2-3 sentences" },
+  "competition": { "level": "High|Medium|Low", "summary": "2-3 sentences grounded in DATA SIGNALS" },
   "searches": { "level": "High|Medium|Low", "summary": "2-3 sentences about demand" },
-  "pinterestPotential": { "level": "High|Medium|Low", "summary": "why it works or not on Pinterest" },
-  "affiliatePotential": { "level": "High|Medium|Low", "summary": "affiliate / Amazon angle" },
+  "pinterestPotential": { "level": "High|Medium|Low", "summary": "cite Pinterest signal mode/score" },
+  "affiliatePotential": { "level": "High|Medium|Low", "summary": "cite Amazon signal mode/score" },
   "adsPotential": { "level": "High|Medium|Low", "summary": "paid ads viability" },
   "digitalProductPotential": { "level": "High|Medium|Low", "summary": "printables / digital products" },
   "difficulty": { "level": "High|Medium|Low", "summary": "how hard to rank / win" },
-  "seasonality": { "level": "Strong|Moderate|Steady|Unknown", "summary": "seasonal pattern" },
-  "overallScore": 0,
-  "verdict": "one short paragraph: go / caution / avoid and why",
+  "seasonality": { "level": "Strong|Moderate|Steady|Unknown", "summary": "seasonal pattern from Trends" },
+  "overallScore": 64,
+  "scoreRationale": "1-2 sentences explaining why this exact score (cite volume, competition, trends, Pinterest, Amazon)",
+  "verdict": "go | caution | avoid — one short paragraph with why",
   "recommendedNextSteps": ["3 short actionable bullets"]
 }
 
-Rules:
-- overallScore is integer 0-100
-- Prefer the provided DATA SIGNALS when present
-- If a signal is labeled estimate, do NOT invent exact search volumes — speak in High/Medium/Low only
+SCORING RULES (critical):
+- overallScore MUST be an integer from 18 to 92
+- NEVER return 0. NEVER copy a placeholder. Avoid round defaults like exactly 50 or 80 unless signals truly justify them
+- Start from SIGNAL_ENGINE_SCORE (${signalScore.overallScore}) then adjust ±12 max based on qualitative judgment
+- Prefer DATA SIGNALS over vibes; if Trends averageInterest is low and volume is Low, score must be below 45
+- If volume High + rising Trends + strong Pinterest + Amazon product density, score should usually be 70+
+- Ground pinterestPotential in PINTEREST_SIGNALS and affiliatePotential in AMAZON_SIGNALS
+- If a signal is labeled estimate, speak in High/Medium/Low only — no fake exact volumes
 - Be honest; do not overhype thin niches
 
 CONTEXT:
@@ -971,6 +1035,9 @@ CONTEXT:
 - Language: ${langCode}
 - Content goal: ${contentGoal || 'n/a'}
 
+SIGNAL_ENGINE_SCORE: ${signalScore.overallScore}
+SIGNAL_BREAKDOWN: ${JSON.stringify(signalScore.breakdown)}
+
 DATA SIGNALS (from APIs):
 ${JSON.stringify(
   {
@@ -978,8 +1045,10 @@ ${JSON.stringify(
     adsDataLabel: signals.ads?.dataLabel,
     volumeRange: adsPrimary.volumeRange,
     volumeLevel: adsPrimary.volumeLevel,
+    demandScore: adsPrimary.demandScore ?? null,
     competitionHint: adsPrimary.competition,
     avgMonthlySearches: adsPrimary.avgMonthlySearches,
+    suggestionCount: adsPrimary.suggestionCount ?? null,
     relatedKeywords,
     trendsMode: signals.trends?.mode,
     trendsDataLabel: signals.trends?.dataLabel,
@@ -992,76 +1061,87 @@ ${JSON.stringify(
   null,
   2
 )}
+
+PINTEREST_SIGNALS:
+${JSON.stringify(
+  {
+    mode: pinSignals.mode,
+    dataLabel: pinSignals.dataLabel,
+    score: pinSignals.score,
+    level: pinSignals.level,
+    pinCount: pinSignals.pinCount,
+    avgSaves: pinSignals.avgSaves,
+    summary: pinSignals.summary,
+    pinAngles: pinSignals.pinAngles,
+    cseTotal: pinSignals.cse?.totalEstimated,
+  },
+  null,
+  2
+)}
+
+AMAZON_SIGNALS:
+${JSON.stringify(
+  {
+    mode: amazonSignals.mode,
+    dataLabel: amazonSignals.dataLabel,
+    score: amazonSignals.score,
+    level: amazonSignals.level,
+    productCount: amazonSignals.productCount,
+    avgReviews: amazonSignals.avgReviews,
+    summary: amazonSignals.summary,
+    productAngles: amazonSignals.productAngles,
+    suggestions: amazonSignals.suggestions,
+    cseTotal: amazonSignals.cse?.totalEstimated,
+  },
+  null,
+  2
+)}
 `.trim();
 
       let ai = null;
+      let aiFailed = false;
       try {
+        console.log(`${NA} Calling OpenAI niche analyst (NICHE_ANALYSIS)…`);
+        const tAi = Date.now();
         ai = await fetchJSONFromOpenAI(prompt, 'NICHE_ANALYSIS', {
           userId: userId ? String(userId) : undefined,
           promptFrom: 'PinterestControllerV2',
           promptFor: `Niche Analysis - ${categoryName} / ${nicheName}`,
         });
+        console.log(`${NA} OpenAI niche analyst OK (${Date.now() - tAi}ms):`, {
+          overallScore: ai?.overallScore,
+          scoreRationale: ai?.scoreRationale,
+          verdict: ai?.verdict,
+          searches: ai?.searches?.level,
+          competition: ai?.competition?.level,
+          pinterestPotential: ai?.pinterestPotential?.level,
+          affiliatePotential: ai?.affiliatePotential?.level,
+          difficulty: ai?.difficulty?.level,
+          seasonality: ai?.seasonality?.level,
+        });
       } catch (aiErr) {
-        console.warn('[PinterestV2] analyzeNiche AI failed:', aiErr.message);
-        // heuristic fallback score if AI fails
-        const vol =
-          adsPrimary.volumeLevel === 'High'
-            ? 75
-            : adsPrimary.volumeLevel === 'Medium'
-              ? 55
-              : 35;
-        const trendBoost = trendSummary.rising ? 10 : 0;
-        ai = {
-          competition: {
-            level: adsPrimary.competition || 'Medium',
-            summary: 'AI scoring unavailable; competition inferred from demand signals.',
-          },
-          searches: {
-            level: adsPrimary.volumeLevel || 'Medium',
-            summary: `Volume signal: ${adsPrimary.volumeRange || 'estimate'} (${signals.ads?.dataLabel || 'estimate'}).`,
-          },
-          pinterestPotential: {
-            level: 'Medium',
-            summary: 'Visual niches usually work on Pinterest; validate with pin tests.',
-          },
-          affiliatePotential: { level: 'Medium', summary: 'Depends on product density in niche.' },
-          adsPotential: { level: 'Medium', summary: 'Needs CPC validation before paid spend.' },
-          digitalProductPotential: {
-            level: 'Medium',
-            summary: 'Printables/checklists may fit if how-to intent is strong.',
-          },
-          difficulty: {
-            level: 'Medium',
-            summary: 'Treat as medium until real SERP review.',
-          },
-          seasonality: {
-            level:
-              trendSummary.seasonality === 'strong'
-                ? 'Strong'
-                : trendSummary.seasonality === 'moderate'
-                  ? 'Moderate'
-                  : trendSummary.seasonality === 'steady'
-                    ? 'Steady'
-                    : 'Unknown',
-            summary: `Trend direction: ${trendSummary.trendDirection || 'unknown'}.`,
-          },
-          overallScore: Math.min(100, Math.max(0, vol + trendBoost)),
-          verdict: 'Partial analysis (AI unavailable). Review signals before scaling.',
-          recommendedNextSteps: [
-            'Validate top related keywords manually',
-            'Publish a Phase-1 test set of 10 articles',
-            'Measure Pinterest CTR before scaling',
-          ],
-          _fallback: true,
-        };
+        aiFailed = true;
+        console.warn(`${NA} OpenAI niche analyst FAILED — signal engine + heuristic:`, aiErr.message);
       }
 
-      const overallScore = Math.min(
-        100,
-        Math.max(0, parseInt(ai?.overallScore, 10) || 0)
-      );
+      const scoreMerge = mergeOverallScore(signalScore, aiFailed ? null : ai?.overallScore);
+      console.log(`${NA} Final score merge:`, scoreMerge);
 
-      return helper.sendSuccess(res, 200, 'Niche analysis completed.', {
+      if (aiFailed || !ai) {
+        ai = buildHeuristicAnalysis({
+          ads: signals.ads,
+          trends: signals.trends,
+          pinterest: pinSignals,
+          amazon: amazonSignals,
+          nicheName,
+          categoryName,
+          signalMerge: scoreMerge,
+        });
+      }
+
+      const overallScore = scoreMerge.overallScore;
+
+      const responsePayload = {
         input: {
           categoryId: categoryId || null,
           nicheId: nicheId || null,
@@ -1086,22 +1166,346 @@ ${JSON.stringify(
             geo: signals.trends?.geo || null,
             error: signals.trends?.error || null,
           },
+          pinterest: {
+            mode: pinSignals.mode,
+            dataLabel: pinSignals.dataLabel,
+            level: pinSignals.level,
+            score: pinSignals.score,
+            summary: pinSignals.summary || null,
+            pinCount: pinSignals.pinCount ?? null,
+            avgSaves: pinSignals.avgSaves ?? null,
+            samplePins: pinSignals.samplePins || null,
+            pinAngles: pinSignals.pinAngles || null,
+            cse: pinSignals.cse || null,
+            note: pinSignals.note || null,
+          },
+          amazon: {
+            mode: amazonSignals.mode,
+            dataLabel: amazonSignals.dataLabel,
+            level: amazonSignals.level,
+            score: amazonSignals.score,
+            summary: amazonSignals.summary || null,
+            productCount: amazonSignals.productCount ?? null,
+            avgReviews: amazonSignals.avgReviews ?? null,
+            sampleProducts: amazonSignals.sampleProducts || null,
+            productAngles: amazonSignals.productAngles || null,
+            suggestions: amazonSignals.suggestions || null,
+            cse: amazonSignals.cse || null,
+            note: amazonSignals.note || null,
+          },
           collectedAt: signals.collectedAt,
         },
         analysis: {
           ...ai,
           overallScore,
+          scoreRationale:
+            ai?.scoreRationale ||
+            `Signal engine ${scoreMerge.signalScore}` +
+              (scoreMerge.aiScore != null && scoreMerge.aiScore !== 0
+                ? ` blended with AI ${scoreMerge.aiScore}`
+                : ''),
+        },
+        score: {
+          overall: overallScore,
+          method: scoreMerge.method,
+          signalScore: scoreMerge.signalScore,
+          aiScore: scoreMerge.aiScore,
+          note: scoreMerge.note,
+          breakdown: signalScore.breakdown,
+          formula: signalScore.formula,
         },
         labels: {
           volume: signals.ads?.dataLabel || 'estimate',
           trends: signals.trends?.dataLabel || 'estimate',
+          pinterest: pinSignals.dataLabel || 'estimate',
+          amazon: amazonSignals.dataLabel || 'estimate',
           note:
-            'Fields marked estimate are High/Medium/Low guidance — not exact Keyword Planner volumes.',
+            'overallScore uses volume + Trends + Pinterest + Amazon signals (real APIs when credentials set; otherwise live fallbacks).',
+        },
+        sourcesUsed: {
+          volume:
+            signals.ads?.mode === 'google_ads'
+              ? 'Google Ads Keyword Planner'
+              : signals.ads?.mode === 'openai_estimate'
+                ? 'OpenAI estimate + Google Suggest'
+                : signals.ads?.mode || 'none',
+          trends:
+            signals.trends?.mode === 'google_trends'
+              ? 'Google Trends'
+              : signals.trends?.mode === 'disabled'
+                ? 'Disabled (GOOGLE_TRENDS_MODE=false)'
+                : signals.trends?.mode || 'none',
+          pinterest:
+            pinSignals.mode === 'pinterest_api'
+              ? 'Pinterest API v5'
+              : pinSignals.mode === 'hybrid_fallback'
+                ? 'Pinterest fallback (CSE/OpenAI/heuristic)'
+                : pinSignals.mode || 'none',
+          amazon:
+            amazonSignals.mode === 'amazon_paapi'
+              ? 'Amazon PA-API'
+              : amazonSignals.mode === 'hybrid_fallback'
+                ? 'Amazon fallback (Suggest/CSE/OpenAI)'
+                : amazonSignals.mode || 'none',
+          scoring: scoreMerge.method,
+          scoringDetail: scoreMerge.note,
+          adsApiMode: String(process.env.GOOGLE_ADS_API_MODE || 'false'),
+          trendsApiMode: String(process.env.GOOGLE_TRENDS_MODE || 'true'),
+          pinterestApiMode: String(process.env.PINTEREST_API_MODE || 'false'),
+          amazonApiMode: String(process.env.AMAZON_API_MODE || 'false'),
+        },
+      };
+
+      console.log(`${NA} ▶ analyzeNiche COMPLETE`);
+      console.log(`${NA} Sources used:`, responsePayload.sourcesUsed);
+      console.log(`${NA} Final score:`, {
+        overallScore,
+        method: scoreMerge.method,
+        signalScore: scoreMerge.signalScore,
+        aiScore: scoreMerge.aiScore,
+        pinterest: { mode: pinSignals.mode, score: pinSignals.score },
+        amazon: { mode: amazonSignals.mode, score: amazonSignals.score },
+        verdict: responsePayload.analysis?.verdict,
+      });
+      console.log(`${NA} ────────────────────────────────────────\n`);
+
+      return helper.sendSuccess(res, 200, 'Niche analysis completed.', responsePayload);
+    } catch (error) {
+      console.error('[NicheAnalysis] analyzeNiche error:', error);
+      return helper.sendError(res, 500, error.message || 'Failed to analyze niche.');
+    }
+  },
+
+  // ==================== WEBSITE BLUEPRINT (Step 4) ====================
+
+  /**
+   * AI generates a full website blueprint for preview + approve.
+   * Does NOT create the project yet — approve/create happens separately.
+   */
+  generateWebsiteBlueprint: async (req, res) => {
+    try {
+      const userId = req.user?.userId;
+      const {
+        contentGoal,
+        country,
+        language,
+        categoryId,
+        nicheId,
+        projectName,
+        categoryName: bodyCategoryName,
+        nicheName: bodyNicheName,
+        selectedPages: bodySelectedPages,
+        pageSections: bodyPageSections,
+        nicheAnalysis: bodyNicheAnalysis,
+      } = req.body || {};
+
+      let categoryName = bodyCategoryName ? String(bodyCategoryName).trim() : '';
+      let nicheName = bodyNicheName ? String(bodyNicheName).trim() : '';
+
+      if (categoryId) {
+        if (!mongoose.isValidObjectId(categoryId)) {
+          return helper.sendError(res, 400, 'Valid category ID is required.');
+        }
+        const category = await PinterestCategory.findById(categoryId).lean();
+        if (!category) return helper.sendError(res, 404, 'Category not found.');
+        categoryName = category.categoryName;
+      }
+
+      if (nicheId) {
+        if (!mongoose.isValidObjectId(nicheId)) {
+          return helper.sendError(res, 400, 'Valid niche ID is required.');
+        }
+        const niche = await PinterestNiche.findById(nicheId).lean();
+        if (!niche) return helper.sendError(res, 404, 'Niche not found.');
+        nicheName = niche.nicheName;
+        if (!categoryName && niche.categoryId) {
+          const cat = await PinterestCategory.findById(niche.categoryId).lean();
+          if (cat) categoryName = cat.categoryName;
+        }
+      }
+
+      if (!categoryName || !nicheName) {
+        return helper.sendError(res, 400, 'Category and niche are required.');
+      }
+
+      const countryLabel = String(country || 'US').trim() || 'US';
+      const langCode = String(language || 'EN').trim().toUpperCase() || 'EN';
+      const goal = String(contentGoal || 'Pinterest Traffic').trim();
+      const preferredName = projectName ? String(projectName).trim() : '';
+
+      const selectedPagesPayload = Array.isArray(bodySelectedPages)
+        ? bodySelectedPages
+            .map((p) => ({
+              id: String(p?.id || '').trim(),
+              name: String(p?.name || p?.id || '').trim(),
+              templateOnly: Boolean(p?.templateOnly),
+              sections: Array.isArray(bodyPageSections?.[p?.id])
+                ? bodyPageSections[p.id].map((s) => ({
+                    id: String(s?.id || '').trim(),
+                    name: String(s?.name || s?.id || '').trim(),
+                  }))
+                : Array.isArray(p?.sections)
+                  ? p.sections.map((s) => ({
+                      id: String(s?.id || '').trim(),
+                      name: String(s?.name || s?.id || '').trim(),
+                    }))
+                  : [],
+            }))
+            .filter((p) => p.id)
+        : [];
+
+      const homepageSectionNames =
+        selectedPagesPayload
+          .find((p) => p.id === 'home')
+          ?.sections?.map((s) => s.name)
+          .filter(Boolean) || [];
+
+      const scoreHint =
+        bodyNicheAnalysis?.analysis?.overallScore != null
+          ? `Niche analysis overallScore: ${bodyNicheAnalysis.analysis.overallScore}/100. Verdict: ${bodyNicheAnalysis.analysis?.verdict || 'n/a'}`
+          : '';
+
+      const prompt = `
+You are a brand + content-site architect for Pinterest-driven niche websites (E-E-A-T focused).
+
+Return ONLY valid JSON with this exact shape:
+{
+  "websiteName": "brand name",
+  "tagline": "short tagline",
+  "logo": {
+    "text": "logo wordmark",
+    "style": "minimal|serif|bold|script|geometric",
+    "iconHint": "simple icon idea",
+    "tagline": "optional under-logo text"
+  },
+  "colors": {
+    "primary": "#RRGGBB",
+    "secondary": "#RRGGBB",
+    "accent": "#RRGGBB",
+    "background": "#RRGGBB",
+    "text": "#RRGGBB",
+    "schemeName": "short palette name"
+  },
+  "fonts": {
+    "heading": "Google Font name",
+    "body": "Google Font name"
+  },
+  "brandVoice": {
+    "tone": "e.g. warm expert, practical, friendly",
+    "personality": ["3-5 adjectives"],
+    "do": ["3 writing dos"],
+    "dont": ["3 writing donts"],
+    "sampleBio": "2-3 sentence brand about blurb"
+  },
+  "authors": [
+    {
+      "name": "full name",
+      "role": "e.g. Founder & Editor",
+      "bio": "2-3 sentences with credible expertise (E-E-A-T)",
+      "expertise": ["topic1", "topic2"]
+    }
+  ],
+  "contentCategories": ["3-6 site content category labels under this niche"],
+  "urlStructure": {
+    "home": "/",
+    "blog": "/blog",
+    "category": "/category/{slug}",
+    "article": "/blog/{slug}",
+    "about": "/about",
+    "contact": "/contact",
+    "privacy": "/privacy",
+    "terms": "/terms",
+    "disclaimer": "/disclaimer"
+  },
+  "navigation": ["Home", "Blog", "...", "About", "Contact"],
+  "footer": {
+    "columns": [
+      { "title": "Explore", "links": ["Blog", "About"] },
+      { "title": "Legal", "links": ["Privacy", "Terms", "Disclaimer"] }
+    ],
+    "copyright": "© {year} Brand. All rights reserved.",
+    "disclaimerLine": "one-line affiliate / editorial disclaimer"
+  },
+  "pages": {
+    "homepage": {
+      "heroHeading": "",
+      "heroSubheading": "",
+      "sections": ["Hero", "Featured Posts", "Categories", "About Teaser", "Newsletter"]
+    },
+    "about": { "outline": "short outline" },
+    "contact": { "outline": "short outline" },
+    "privacy": { "outline": "short outline" },
+    "terms": { "outline": "short outline" },
+    "disclaimer": { "outline": "short outline" }
+  }
+}
+
+Rules:
+- Make brand name unique and Pinterest-friendly (not generic)
+${preferredName ? `- Prefer websiteName close to: "${preferredName}" (improve if needed)` : ''}
+- Colors must be accessible (text contrast on background)
+- Include exactly 2 author profiles with believable E-E-A-T bios
+- Navigation 4-7 items max — only include pages the user selected (skip template-only pages in nav)
+- For homepage.sections use the user's selected Home sections when provided
+- Match language market: ${langCode}, country: ${countryLabel}
+- Goal: ${goal}
+- Category: ${categoryName}
+- Niche: ${nicheName}
+${scoreHint ? `- ${scoreHint}` : ''}
+
+USER SELECTED PAGES & SECTIONS (respect these):
+${JSON.stringify(selectedPagesPayload.length ? selectedPagesPayload : 'defaults not sent — invent sensible content-site pages', null, 2)}
+${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.stringify(homepageSectionNames)}` : ''}
+`.trim();
+
+      const blueprint = await fetchJSONFromOpenAI(prompt, 'WEBSITE_BLUEPRINT', {
+        userId: userId ? String(userId) : undefined,
+        promptFrom: 'PinterestControllerV2',
+        promptFor: `Blueprint - ${categoryName} / ${nicheName}`,
+      });
+
+      // Light normalize
+      if (!blueprint.websiteName) {
+        blueprint.websiteName = preferredName || `${nicheName} Hub`;
+      }
+      if (!Array.isArray(blueprint.authors) || blueprint.authors.length === 0) {
+        blueprint.authors = [
+          {
+            name: 'Alex Morgan',
+            role: 'Editor',
+            bio: `Writer covering ${nicheName} with practical, research-backed guides.`,
+            expertise: [nicheName, categoryName],
+          },
+        ];
+      }
+
+      if (selectedPagesPayload.length) {
+        blueprint.selectedPages = selectedPagesPayload;
+        if (
+          homepageSectionNames.length &&
+          blueprint.pages &&
+          typeof blueprint.pages === 'object'
+        ) {
+          blueprint.pages.homepage = {
+            ...(blueprint.pages.homepage || {}),
+            sections: homepageSectionNames,
+          };
+        }
+      }
+
+      return helper.sendSuccess(res, 200, 'Website blueprint generated.', {
+        blueprint,
+        meta: {
+          categoryName,
+          nicheName,
+          country: countryLabel,
+          language: langCode,
+          contentGoal: goal,
         },
       });
     } catch (error) {
-      console.error('[PinterestV2] analyzeNiche error:', error);
-      return helper.sendError(res, 500, error.message || 'Failed to analyze niche.');
+      console.error('[PinterestV2] generateWebsiteBlueprint error:', error);
+      return helper.sendError(res, 500, error.message || 'Failed to generate website blueprint.');
     }
   },
 
@@ -1116,12 +1520,17 @@ ${JSON.stringify(
         language,
         categoryId,
         nicheId,
+        blueprint,
+        nicheAnalysis,
       } = req.body || {};
 
       if (!userId) {
         return helper.sendError(res, 401, 'Unauthorized.');
       }
-      if (!projectName || String(projectName).trim() === '') {
+      if (
+        (!projectName || String(projectName).trim() === '') &&
+        !(blueprint && blueprint.websiteName)
+      ) {
         return helper.sendError(res, 400, 'Project name is required.');
       }
       if (!contentGoal || String(contentGoal).trim() === '') {
@@ -1175,7 +1584,10 @@ ${JSON.stringify(
         );
       }
 
-      const name = String(projectName).trim();
+      const name = String(projectName || blueprint?.websiteName || '').trim();
+      if (!name) {
+        return helper.sendError(res, 400, 'Project name is required.');
+      }
 
       const project = await UserProject.create({
         userId,
@@ -1192,6 +1604,9 @@ ${JSON.stringify(
         wantImages: 1,
         focusKeyword: niche.nicheName,
         projectKeywordsText: `${niche.nicheName}, ${category.categoryName}, ${goalName}`,
+        contentBlueprint: blueprint && typeof blueprint === 'object' ? blueprint : null,
+        blueprintApproved: Boolean(blueprint && typeof blueprint === 'object'),
+        nicheAnalysis: nicheAnalysis && typeof nicheAnalysis === 'object' ? nicheAnalysis : null,
       });
 
       try {

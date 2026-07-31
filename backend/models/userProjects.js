@@ -114,6 +114,21 @@ const userProjectsSchema = new mongoose.Schema(
       required: false,
       default: null,
     },
+    /** AI website blueprint (content sites) — name, colors, voice, authors, pages, etc. */
+    contentBlueprint: {
+      type: mongoose.Schema.Types.Mixed,
+      required: false,
+      default: null,
+    },
+    blueprintApproved: {
+      type: Boolean,
+      default: false,
+    },
+    nicheAnalysis: {
+      type: mongoose.Schema.Types.Mixed,
+      required: false,
+      default: null,
+    },
     googleSiteVerification: {
       type: String,
       required: false,
