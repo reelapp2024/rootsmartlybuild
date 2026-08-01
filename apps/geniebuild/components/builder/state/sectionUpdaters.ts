@@ -160,10 +160,13 @@ export const applyUpdateElement = (
     } else if (
       (selectedVirtualElement && selectedVirtualElement.id === elementId) ||
       updates.content !== undefined ||
-      updates.type !== undefined
+      updates.type !== undefined ||
+      updates.style !== undefined ||
+      updates.tabletStyle !== undefined ||
+      updates.mobileStyle !== undefined
     ) {
       // Materialize virtual / first-time sidebar edits into section.elements so the
-      // canvas can find them on the next render.
+      // canvas can find them on the next render (including color-only style patches).
       const seed = selectedVirtualElement?.id === elementId ? selectedVirtualElement : null;
       const nextStyle = resolveStyleFieldUpdate(
         seed?.style as Record<string, any> | undefined,

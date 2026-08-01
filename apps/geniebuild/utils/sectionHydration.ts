@@ -145,8 +145,10 @@ export function mapApiSectionToCanvas(sec: any, index: number): Section | null {
 
   const baseStyles =
     sec?.styles && typeof sec.styles === 'object' ? { ...(sec.styles as Record<string, unknown>) } : {};
-  // Prefer explicit API fields: styles.variant → top-level variant → nothing (caller may default).
-  const topVariant = String(sec?.variant || '').trim();
+  // Prefer explicit API fields: styles.variant → top-level variant → variant_uniqueId.
+  const topVariant = String(
+    sec?.variant || sec?.variant_uniqueId || sec?.uniqueId || ''
+  ).trim();
   const styleVariant = String((baseStyles as any).variant || '').trim();
   const chosenVariant = styleVariant || topVariant;
   if (chosenVariant) {
@@ -154,8 +156,10 @@ export function mapApiSectionToCanvas(sec: any, index: number): Section | null {
   }
 
   const existingVariant = String((baseStyles as any).variant || '').trim();
-  // Only fall back to Plumbing defaults when the API did not send a chosen variant.
-  const fallbackVariant = DEFAULT_SECTION_VARIANTS[type] || getDefaultVariant(type as Section['type']);
+  // Plumbing defaults when the API omitted a variant (business sites).
+  // Content-only types (featuredposts, etc.) fall through to discovery (*Funky).
+  const fallbackVariant =
+    DEFAULT_SECTION_VARIANTS[type] || getDefaultVariant(type as Section['type']) || '';
   const normalizedContent = normalizeSectionContent(type, mergedContent);
 
   return {

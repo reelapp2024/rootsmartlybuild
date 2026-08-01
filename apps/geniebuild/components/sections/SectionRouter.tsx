@@ -6,7 +6,7 @@
 import React, { Suspense, lazy, useMemo, useEffect } from 'react';
 import { Section, WebsiteElement } from '../../types';
 import { getDefaultVariant } from '../SectionsAndVariantRegistry';
-import { resolveVariantGlobPath, getVariantModuleLoader, isDiscoveredVariant } from './sectionDiscovery';
+import { resolveVariantGlobPath, getVariantModuleLoader } from './sectionDiscovery';
 import { ElementsSection } from './homepage/ElementsSection';
 
 // Module-level cache: resolved lazy components survive re-renders.
@@ -139,11 +139,12 @@ export const SectionRouter: React.FC<SectionRouterProps> = (props) => {
 
   const sectionType = normalizeSectionType(safeSection.type as string);
   const rawVariant = (safeSection.styles as any)?.variant;
-  // If the saved variant is hidden (old generic replaced by plumbing variant),
-  // fall through to the discovered default instead of rendering a hidden file.
-  const variant = (rawVariant && isDiscoveredVariant(sectionType, rawVariant))
-    ? rawVariant
-    : getDefaultVariant(sectionType);
+  // Prefer saved variant when it resolves to a real module (business or content Funky).
+  // Otherwise fall through to the discovered default.
+  const variant =
+    rawVariant && resolveVariantGlobPath(sectionType, String(rawVariant))
+      ? rawVariant
+      : getDefaultVariant(sectionType);
 
   const forceCommonVariants = new Set([
     // Legacy navbar variants

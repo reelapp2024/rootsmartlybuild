@@ -15,6 +15,10 @@ import {
   type HeadingTag,
   type TextSizePreset,
 } from '../../utils/resolveElementTypography';
+import {
+  isDarkCanvasTextColor,
+  resolveIsLightSurface,
+} from '../../utils/themeSurface';
 import { ELEMENT_DEFAULTS, IMAGE_BOX_DEFAULT_TITLE_HEADING, PRESET_THEMES } from '../../constants';
 import * as LucideIcons from 'lucide-react';
 import { StatCardValue } from './StatCardValue';
@@ -569,11 +573,20 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
   // Compose a heading getter that respects level + light/dark mode.
   const getHeadingStyleFor = (level: 'h1'|'h2'|'h3'|'h4'|'h5'|'h6', light: boolean) => {
     const lvl = (gHeadings as any)[level] || {};
-    // Resolution: per-level > all > legacy flat (for old saves)
+    // Per-level / all mode color only — never fall back across modes.
+    // Legacy flat `heading.color` is usually dark-canvas light text and breaks light sections.
+    const modeColor = light
+      ? (lvl.colorLight ?? gHeadingAll.colorLight)
+      : (lvl.color ?? gHeadingAll.color);
+    const legacy = gHeadingLegacy.color as string | undefined;
+    const legacySafe =
+      !legacy
+        ? undefined
+        : light
+          ? (isDarkCanvasTextColor(legacy) ? undefined : legacy)
+          : (isDarkCanvasTextColor(legacy) ? legacy : undefined);
     return {
-      color:           (light ? lvl.colorLight : lvl.color)
-                       ?? (light ? gHeadingAll.colorLight : gHeadingAll.color)
-                       ?? gHeadingLegacy.color,
+      color: modeColor ?? legacySafe,
       fontSize:        lvl.fontSize ?? gHeadingAll.fontSize,
       fontFamily:      lvl.fontFamily ?? gHeadingAll.fontFamily ?? gHeadingLegacy.fontFamily,
       fontWeight:      lvl.fontWeight ?? gHeadingAll.fontWeight ?? gHeadingLegacy.fontWeight,
@@ -590,32 +603,53 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
   const gList    = globalElementStyles?.list    || {};
   const gBadge   = globalElementStyles?.badge   || {};
 
-  // Get theme colors from section styles or passed prop
+  // Get theme colors from section styles or passed prop.
+  // Prefer actual background luminance over themeMode — dark mode + cream/white
+  // bg (or light mode + dark bg) was painting unreadable element colors.
   const sectionStyles = (section.styles || {}) as Record<string, unknown>;
-  const isLightMode = section.styles?.themeMode === 'light';
+  const isLightMode = resolveIsLightSurface({
+    themeMode: (section.styles?.themeMode as string) || (themeColors as any)?.themeMode,
+    backgroundColor:
+      (sectionStyles.backgroundColor as string) ||
+      (themeColors as any)?.backgroundColor,
+    fallbackBackgroundColor: (themeColors as any)?.cardBackgroundColor,
+  });
   // themeData may be { name, elements: {...} } or the elements object directly — normalise the same way SectionRenderer does
   const td = (themeData as any)?.elements || themeData || {};
   const tdLight = (td as any)?.light || {};
   const baseTheme = {
     // Globals win over theme tokens but per-section/per-element overrides still trump globals.
-    titleColor: section.styles?.titleColor
+    // Drop section title/text tokens that disagree with the resolved surface.
+    titleColor: (() => {
+      const raw = section.styles?.titleColor as string | undefined;
+      if (raw && isLightMode && isDarkCanvasTextColor(raw)) return undefined;
+      if (raw && !isLightMode && !isDarkCanvasTextColor(raw)) return undefined;
+      return raw;
+    })()
       || (isLightMode ? gHeadingAll.colorLight : gHeadingAll.color)
-      || gHeadingLegacy.color
-      || td?.heading || (isLightMode ? '#111827' : '#F8FAFC'),
-    textColor: section.styles?.textColor
+      || (isLightMode ? undefined : gHeadingLegacy.color)
+      || (isLightMode ? tdLight?.heading : td?.heading)
+      || (isLightMode ? '#111827' : '#F8FAFC'),
+    textColor: (() => {
+      const raw = section.styles?.textColor as string | undefined;
+      if (raw && isLightMode && isDarkCanvasTextColor(raw)) return undefined;
+      if (raw && !isLightMode && !isDarkCanvasTextColor(raw)) return undefined;
+      return raw;
+    })()
       || (isLightMode ? gText.colorLight : gText.color)
-      || td?.description || (isLightMode ? '#4B5563' : '#D1D5DB'),
+      || (isLightMode ? tdLight?.description : td?.description)
+      || (isLightMode ? '#4B5563' : '#D1D5DB'),
     backgroundColor: (sectionStyles?.backgroundColor as string) || td?.surface || '',
     accordionQuestionColor:
       (sectionStyles?.accordionQuestionColor as string) ||
       td?.accordion?.questionColor ||
       td?.heading ||
-      '#F8FAFC',
+      (isLightMode ? '#111827' : '#F8FAFC'),
     accordionAnswerColor:
       (sectionStyles?.accordionAnswerColor as string) ||
       td?.accordion?.answerColor ||
       td?.description ||
-      '#D1D5DB',
+      (isLightMode ? '#4B5563' : '#D1D5DB'),
     cardBackgroundColor: (sectionStyles?.cardBackgroundColor as string) || td?.cardBackground || td?.surface || (isLightMode ? '#FFFFFF' : '#131A20'),
     cardBorderColor: (sectionStyles?.cardBorderColor as string) || td?.cardBorder || td?.borderColor || (isLightMode ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'),
     accordionBackgroundColor:
@@ -683,7 +717,35 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
       (sectionStyles?.subtitleFontSize as string),
   };
 
-  const theme = { ...baseTheme, ...(themeColors || {}) };
+  const theme = (() => {
+    const incoming = { ...(themeColors || {}) } as Record<string, any>;
+    if (isLightMode) {
+      if (isDarkCanvasTextColor(incoming.titleColor)) delete incoming.titleColor;
+      if (isDarkCanvasTextColor(incoming.textColor)) delete incoming.textColor;
+      if (isDarkCanvasTextColor(incoming.subheadingColor)) delete incoming.subheadingColor;
+      if (isDarkCanvasTextColor(incoming.accordionQuestionColor)) delete incoming.accordionQuestionColor;
+      if (isDarkCanvasTextColor(incoming.accordionAnswerColor)) delete incoming.accordionAnswerColor;
+    } else {
+      // Drop light-surface ink tokens on dark surfaces
+      const inkLike = (c?: string) => {
+        const s = String(c || '').trim().toLowerCase();
+        return (
+          s === '#111827' ||
+          s === '#1a1025' ||
+          s === '#0f172a' ||
+          s === '#4b5563' ||
+          s === '#6b6178' ||
+          s === '#6b7280'
+        );
+      };
+      if (inkLike(incoming.titleColor)) delete incoming.titleColor;
+      if (inkLike(incoming.textColor)) delete incoming.textColor;
+      if (inkLike(incoming.subheadingColor)) delete incoming.subheadingColor;
+      if (inkLike(incoming.accordionQuestionColor)) delete incoming.accordionQuestionColor;
+      if (inkLike(incoming.accordionAnswerColor)) delete incoming.accordionAnswerColor;
+    }
+    return { ...baseTheme, ...incoming };
+  })();
   
   // Helper to merge element style with theme defaults
   // Only uses element color if it's explicitly set (not undefined/null/empty)
@@ -1006,6 +1068,24 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             }
             // Per-level + light/dark global overrides for THIS heading's tag.
             const gHead = getHeadingStyleFor(headingTag, isLightMode);
+            // Dark-canvas global heading colors must not win on light sections.
+            const gHeadColorRaw = gHead.color;
+            const gHeadColorLooksLight = (() => {
+              const s = String(gHeadColorRaw || '').trim().toLowerCase();
+              if (!s) return false;
+              return (
+                s === '#fff' ||
+                s === '#ffffff' ||
+                s === 'white' ||
+                s === '#f8fafc' ||
+                s === '#f1f5f9' ||
+                s === '#e2e8f0' ||
+                s === '#d1d5db' ||
+                s === '#cbd5e1'
+              );
+            })();
+            const gHeadColor =
+              isLightMode && gHeadColorLooksLight ? undefined : gHeadColorRaw;
 
             const resolvedTitleFontSize = resolveHeadingFontSize({
               elementStyle: renderStyle,
@@ -1021,7 +1101,12 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 : (gHead.fontFamily || theme?.titleFontFamily);
 
             // Color resolution — per-element > per-level global > theme > fallback
-            const titleCol = safeStyle.color || gHead.color || theme?.titleColor || renderStyle.color || '#F8FAFC';
+            const titleCol =
+              safeStyle.color ||
+              gHeadColor ||
+              theme?.titleColor ||
+              renderStyle.color ||
+              (isLightMode ? '#111827' : '#F8FAFC');
 
             const accentCol = resolveHighlightAccentColor({
               elementStyle: renderStyle,
@@ -1223,7 +1308,10 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
 
             const textStyle: React.CSSProperties = {
                 ...safeStyle,
-                color: safeStyle.color || (isSubtitleElement ? theme.subheadingColor : theme.textColor) || '#D1D5DB',
+                color:
+                  safeStyle.color ||
+                  (isSubtitleElement ? theme.subheadingColor : theme.textColor) ||
+                  (isLightMode ? '#4B5563' : '#D1D5DB'),
                 fontWeight: renderStyle.fontWeight || gText.fontWeight || '400',
                 fontSize: resolvedTextFontSize,
                 textAlign: (renderStyle.textAlign as any) || 'left',
@@ -4419,12 +4507,14 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             );
         }
 
+        case 'faq':
         case 'accordion': {
             // Wrapper: opt-in background only when user explicitly sets `bgType`
             // (gradient/image) OR a dedicated `wrapperBackgroundColor` key.
             // Plain `backgroundColor` is treated as the ITEM card color, NOT the
             // wrapper — otherwise sections that style items would also paint a
             // tinted wrapper around them.
+            // `faq` is an alias of accordion (content-site Funky sections).
             const accWantsWrapperBg = !!(renderStyle as any).wrapperBackgroundColor
                 || (renderStyle as any).bgType === 'gradient'
                 || (renderStyle as any).bgType === 'image';
@@ -4563,7 +4653,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                     <span
                                         className="acc-q outline-none flex-1"
                                         style={{
-                                            color: (safeStyle as Record<string, string>).titleColor || theme?.accordionQuestionColor || theme?.titleColor || safeStyle.color || '#F8FAFC',
+                                            color: (safeStyle as Record<string, string>).titleColor || theme?.accordionQuestionColor || theme?.titleColor || safeStyle.color || (isLightMode ? '#111827' : '#F8FAFC'),
                                             fontFamily: (renderStyle as any).questionFontFamily || (renderStyle as any).fontFamily || theme?.titleFontFamily,
                                             fontSize: accQuestionFontSize,
                                             fontWeight: accQuestionFontWeight as any,
@@ -4585,7 +4675,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                         paddingTop: accDividerColor ? itemPadding : 0,
                                         borderTop: accDividerColor ? `1px solid ${accDividerColor}` : 'none',
                                         marginTop: accDividerColor ? '0' : '-0.5rem',
-                                        color: safeStyle.color ?? theme?.accordionAnswerColor ?? theme?.textColor ?? '#D1D5DB',
+                                        color: safeStyle.color ?? theme?.accordionAnswerColor ?? theme?.textColor ?? (isLightMode ? '#4B5563' : '#D1D5DB'),
                                         fontFamily: (renderStyle as any).answerFontFamily || (renderStyle as any).fontFamily || theme?.descriptionFontFamily,
                                         fontSize: accAnswerFontSize,
                                         lineHeight: accAnswerLineHeight,

@@ -4,8 +4,13 @@
  * - ./sectionType/Variant.tsx
  * - ./homepage/sectionType/Variant.tsx
  * - ./RootSection.tsx
+ * - ../contentwebsitesSections/{page}/{sectionType}/{Variant}Funky.tsx
  */
 import type { ComponentType } from 'react';
+import {
+  CONTENT_WEBSITE_FALLBACK_MODULES,
+  parseScopedSectionPath,
+} from './contentWebsiteModules';
 
 type GlobModuleMap = Record<string, () => Promise<{ default: ComponentType<unknown> }>>;
 
@@ -24,6 +29,7 @@ function safeGlob(pattern: string): GlobModuleMap {
 const pageScopedModules = safeGlob('./*/*/*.tsx');
 const nestedModules = safeGlob('./*/*.tsx');
 const rootModules = safeGlob('./*.tsx');
+const contentPageScopedModules = safeGlob('../contentwebsitesSections/*/*/*.tsx');
 
 const fallbackModules: GlobModuleMap = {
   './ElementsSection.tsx': () => import('./ElementsSection'),
@@ -124,22 +130,38 @@ const fallbackModules: GlobModuleMap = {
   './service/relatedservices/RelatedServicesDefault.tsx': () => import('./service/relatedservices/RelatedServicesDefault'),
   './homepage/testimonials/TestimonialsPlumbing.tsx': () => import('./homepage/testimonials/TestimonialsPlumbing'),
   './homepage/why-choose-us/WhyChoosePlumbing.tsx': () => import('./homepage/why-choose-us/WhyChoosePlumbing'),
+  // Content websites (Pinterest / niche) — Funky variants
+  ...CONTENT_WEBSITE_FALLBACK_MODULES,
 };
 
 const hasViteGlobModules =
   Object.keys(pageScopedModules).length > 0 ||
   Object.keys(nestedModules).length > 0 ||
-  Object.keys(rootModules).length > 0;
+  Object.keys(rootModules).length > 0 ||
+  Object.keys(contentPageScopedModules).length > 0;
 
 const allModules = hasViteGlobModules
-  ? { ...pageScopedModules, ...nestedModules, ...rootModules }
+  ? {
+      ...pageScopedModules,
+      ...nestedModules,
+      ...rootModules,
+      ...contentPageScopedModules,
+      // Explicit content loaders always win (Next + Vite)
+      ...CONTENT_WEBSITE_FALLBACK_MODULES,
+    }
   : fallbackModules;
 
 const runtimePageScopedModules: GlobModuleMap = {};
 const runtimeNestedModules: GlobModuleMap = {};
 const runtimeRootModules: GlobModuleMap = {};
+/** Content-site modules keyed by ../contentwebsitesSections/... path */
+const runtimeContentModules: GlobModuleMap = {};
 
 Object.entries(allModules).forEach(([key, loader]) => {
+  if (key.includes('contentwebsitesSections/')) {
+    runtimeContentModules[key] = loader;
+    return;
+  }
   const segments = key.replace(/^\.\//, '').split('/');
   if (segments.length === 3) runtimePageScopedModules[key] = loader;
   else if (segments.length === 2) runtimeNestedModules[key] = loader;
@@ -183,12 +205,17 @@ function buildVariantMap(): Map<string, SectionVariantEntry[]> {
   const map = new Map<string, SectionVariantEntry[]>();
 
   for (const key of Object.keys(runtimePageScopedModules)) {
-    const m = key.match(/^\.\/([^/]+)\/([^/]+)\/([^/]+)\.tsx$/i);
-    if (!m) continue;
-    const sectionFolder = m[2];
-    const variantFile = m[3];
-    if (IGNORED_SECTION_FOLDERS.has(sectionFolder.toLowerCase())) continue;
-    pushUnique(map, sectionFolder.toLowerCase(), variantFile);
+    const parsed = parseScopedSectionPath(key);
+    if (!parsed) continue;
+    if (IGNORED_SECTION_FOLDERS.has(parsed.sectionFolder.toLowerCase())) continue;
+    pushUnique(map, parsed.sectionFolder.toLowerCase(), parsed.variantFile);
+  }
+
+  for (const key of Object.keys(runtimeContentModules)) {
+    const parsed = parseScopedSectionPath(key);
+    if (!parsed) continue;
+    if (IGNORED_SECTION_FOLDERS.has(parsed.sectionFolder.toLowerCase())) continue;
+    pushUnique(map, parsed.sectionFolder.toLowerCase(), parsed.variantFile);
   }
 
   for (const key of Object.keys(runtimeNestedModules)) {
@@ -227,6 +254,12 @@ export function getDiscoveredVariants(sectionType: string): SectionVariantEntry[
 export function getDefaultVariantForSection(sectionType: string): string {
   const list = getDiscoveredVariants(sectionType);
   if (!list.length) return '';
+  // Content-native section types only ship Funky variants — prefer those.
+  const funky = list.filter((e) => /funky$/i.test(e.variantFile));
+  if (funky.length > 0 && funky.length === list.length) {
+    return [...funky].sort((a, b) => a.variantFile.localeCompare(b.variantFile))[0]
+      .variantFile;
+  }
   const sorted = [...list].sort((a, b) => a.variantFile.localeCompare(b.variantFile));
   return sorted[0].variantFile;
 }
@@ -245,6 +278,15 @@ export function isDiscoveredVariant(sectionType: string, variant: string): boole
 export function resolveVariantGlobPath(sectionType: string, variant: string): string | null {
   const sec = normalizeSectionType(sectionType);
   const slug = (variant || '').toString().replace(/\.tsx$/i, '').toLowerCase();
+
+  // Prefer content-site Funky variants when the requested name matches
+  // (avoids collision with business homepage/hero/* for HeroFunky vs Hero*).
+  for (const key of Object.keys(runtimeContentModules)) {
+    const parsed = parseScopedSectionPath(key);
+    if (!parsed) continue;
+    if (parsed.sectionFolder.toLowerCase() !== sec) continue;
+    if (parsed.variantFile.toLowerCase().replace(/\.tsx$/i, '') === slug) return key;
+  }
 
   for (const key of Object.keys(runtimePageScopedModules)) {
     const m = key.match(/^\.\/([^/]+)\/([^/]+)\/([^/]+)\.tsx$/i);
@@ -273,6 +315,15 @@ export function resolveVariantGlobPath(sectionType: string, variant: string): st
     if (fileBase.toLowerCase() === slug) return key;
   }
 
+  // Prefer content match by variant filename alone (e.g. legalbody + PrivacyBodyFunky).
+  if (slug) {
+    for (const key of Object.keys(runtimeContentModules)) {
+      const parsed = parseScopedSectionPath(key);
+      if (!parsed) continue;
+      if (parsed.variantFile.toLowerCase().replace(/\.tsx$/i, '') === slug) return key;
+    }
+  }
+
   return null;
 }
 
@@ -280,8 +331,27 @@ export function getVariantModuleLoader(
   resolvedPath: string | null
 ): (() => Promise<{ default: ComponentType<unknown> }>) | null {
   if (!resolvedPath) return null;
-  const pageScoped = runtimePageScopedModules as Record<string, () => Promise<{ default: ComponentType<unknown> }>>;
-  const nested = runtimeNestedModules as Record<string, () => Promise<{ default: ComponentType<unknown> }>>;
-  const root = runtimeRootModules as Record<string, () => Promise<{ default: ComponentType<unknown> }>>;
-  return pageScoped[resolvedPath] || nested[resolvedPath] || root[resolvedPath] || null;
+  const pageScoped = runtimePageScopedModules as Record<
+    string,
+    () => Promise<{ default: ComponentType<unknown> }>
+  >;
+  const nested = runtimeNestedModules as Record<
+    string,
+    () => Promise<{ default: ComponentType<unknown> }>
+  >;
+  const root = runtimeRootModules as Record<
+    string,
+    () => Promise<{ default: ComponentType<unknown> }>
+  >;
+  const content = runtimeContentModules as Record<
+    string,
+    () => Promise<{ default: ComponentType<unknown> }>
+  >;
+  return (
+    content[resolvedPath] ||
+    pageScoped[resolvedPath] ||
+    nested[resolvedPath] ||
+    root[resolvedPath] ||
+    null
+  );
 }

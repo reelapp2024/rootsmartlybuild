@@ -30,8 +30,11 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
       { id: "hero", name: "Hero", description: "Brand headline + CTA", defaultSelected: true },
       { id: "featured_posts", name: "Featured Posts", description: "Top articles / pins", defaultSelected: true },
       { id: "categories_grid", name: "Categories Grid", description: "Content category cards", defaultSelected: true },
+      { id: "trending_pins", name: "Trending Pins", description: "Hot pin saves strip", defaultSelected: true },
       { id: "about_teaser", name: "About Teaser", description: "Short brand story", defaultSelected: true },
       { id: "authors", name: "Authors", description: "E-E-A-T author strip", defaultSelected: true },
+      { id: "seasonal_spotlight", name: "Seasonal Spotlight", description: "Trend calendar sprint", defaultSelected: false },
+      { id: "pin_board_cta", name: "Pin Board CTA", description: "Starter board CTA", defaultSelected: false },
       { id: "newsletter", name: "Newsletter", description: "Email capture", defaultSelected: true },
       { id: "faq", name: "FAQ", description: "Common niche questions", defaultSelected: false },
     ],
@@ -43,8 +46,9 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
     defaultSelected: true,
     sections: [
       { id: "blog_hero", name: "Blog Hero", description: "Listing hero", defaultSelected: true },
-      { id: "post_grid", name: "Post Grid", description: "Article cards", defaultSelected: true },
       { id: "category_filter", name: "Category Filter", description: "Filter by category", defaultSelected: true },
+      { id: "post_grid", name: "Post Grid", description: "Article cards", defaultSelected: true },
+      { id: "popular_posts", name: "Popular Posts", description: "Reader favorites", defaultSelected: false },
       { id: "newsletter", name: "Newsletter", description: "Email capture on blog", defaultSelected: false },
     ],
   },
@@ -69,6 +73,7 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
     sections: [
       { id: "article_hero", name: "Article Hero", description: "Title, byline, featured image", defaultSelected: true },
       { id: "article_body", name: "Article Body", description: "Main content + TOC", defaultSelected: true },
+      { id: "shop_the_look", name: "Shop the Look", description: "Affiliate product tiles", defaultSelected: false },
       { id: "author_box", name: "Author Box", description: "E-E-A-T author bio", defaultSelected: true },
       { id: "related_posts", name: "Related Posts", description: "Internal links", defaultSelected: true },
       { id: "pin_cta", name: "Pin / Save CTA", description: "Pinterest save prompt", defaultSelected: true },
@@ -83,6 +88,7 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
     sections: [
       { id: "about_hero", name: "About Hero", description: "About banner", defaultSelected: true },
       { id: "brand_story", name: "Brand Story", description: "Mission / voice", defaultSelected: true },
+      { id: "brand_voice", name: "Brand Voice", description: "Do / don’t writing guide", defaultSelected: true },
       { id: "authors", name: "Team / Authors", description: "Author profiles", defaultSelected: true },
       { id: "about_cta", name: "CTA", description: "Contact / subscribe", defaultSelected: false },
     ],
@@ -96,6 +102,18 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
       { id: "contact_hero", name: "Contact Hero", description: "Contact banner", defaultSelected: true },
       { id: "contact_form", name: "Contact Form", description: "Message form", defaultSelected: true },
       { id: "contact_info", name: "Contact Info", description: "Email / social", defaultSelected: true },
+    ],
+  },
+  {
+    id: "author",
+    name: "Author Profile",
+    description: "Per-author E-E-A-T page",
+    defaultSelected: false,
+    templateOnly: true,
+    sections: [
+      { id: "author_hero", name: "Author Hero", description: "Profile header", defaultSelected: true },
+      { id: "author_bio", name: "Author Bio", description: "Long bio", defaultSelected: true },
+      { id: "author_posts", name: "Author Posts", description: "Posts by author", defaultSelected: true },
     ],
   },
   {

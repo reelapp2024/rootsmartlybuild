@@ -82,6 +82,7 @@ router.post("/pinterest/v2/updateNiche", authentication, PinterestControllerV2.u
 router.post("/pinterest/v2/deleteNiche", authentication, PinterestControllerV2.deleteNiche);
 
 router.post("/pinterest/v2/createContentWebsite", authentication, PinterestControllerV2.createContentWebsite);
+router.post("/pinterest/v2/bootstrapContentPages", authentication, PinterestControllerV2.bootstrapContentPages);
 router.post("/pinterest/v2/analyzeNiche", authentication, PinterestControllerV2.analyzeNiche);
 router.post("/pinterest/v2/generateWebsiteBlueprint", authentication, PinterestControllerV2.generateWebsiteBlueprint);
 

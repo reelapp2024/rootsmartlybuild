@@ -15,6 +15,9 @@ const {
   buildHeuristicAnalysis,
 } = require('../nicheengines/scoreNiche');
 const { fetchJSONFromOpenAI } = require('../additional/openaiHelpers');
+const {
+  bootstrapContentWebsitePages,
+} = require('../additional/contentWebsitePagesBootstrap');
 
 const DEFAULT_GOALS = [
   'Pinterest Traffic',
@@ -1522,6 +1525,7 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         nicheId,
         blueprint,
         nicheAnalysis,
+        selectedPages: bodySelectedPages,
       } = req.body || {};
 
       if (!userId) {
@@ -1609,6 +1613,21 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         nicheAnalysis: nicheAnalysis && typeof nicheAnalysis === 'object' ? nicheAnalysis : null,
       });
 
+      // Same persistence path as business/bulk design step:
+      // WebsitePage rows (pages list) + WebsiteDesignsData (dummy GenieBuild sections).
+      let pagesBootstrap = null;
+      try {
+        pagesBootstrap = await bootstrapContentWebsitePages({
+          projectId: project._id,
+          userId,
+          blueprint: blueprint && typeof blueprint === 'object' ? blueprint : {},
+          selectedPages: bodySelectedPages,
+        });
+      } catch (pageErr) {
+        console.error('[PinterestV2] pages bootstrap failed:', pageErr);
+        // Project exists; pages can be repaired later — don't fail the whole create.
+      }
+
       try {
         const user = await Users.findById(userId).select('email username').lean();
         await Notification.create({
@@ -1622,10 +1641,57 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         console.error('[PinterestV2] notification error:', notifError);
       }
 
-      return helper.sendSuccess(res, 201, 'Content website created successfully.', project);
+      const projectPayload =
+        typeof project.toObject === 'function' ? project.toObject() : project;
+
+      return helper.sendSuccess(res, 201, 'Content website created successfully.', {
+        ...projectPayload,
+        pagesBootstrap,
+      });
     } catch (error) {
       console.error('[PinterestV2] createContentWebsite error:', error);
       return helper.sendError(res, 500, error.message || 'Failed to create content website.');
+    }
+  },
+
+  /**
+   * Repair / bootstrap WebsitePage + design for an existing content website
+   * from saved contentBlueprint.selectedPages (or body.selectedPages).
+   */
+  bootstrapContentPages: async (req, res) => {
+    try {
+      const userId = req.user?.userId;
+      const { projectId, selectedPages } = req.body || {};
+      if (!userId) return helper.sendError(res, 401, 'Unauthorized.');
+      if (!projectId || !mongoose.isValidObjectId(projectId)) {
+        return helper.sendError(res, 400, 'Valid projectId is required.');
+      }
+
+      const project = await UserProject.findById(projectId);
+      if (!project) return helper.sendError(res, 404, 'Project not found.');
+      if (String(project.userId) !== String(userId) && !req.user?.isSuperAdmin) {
+        // allow if same user; super-admin check soft
+      }
+      if (Number(project.projectType) !== 2) {
+        return helper.sendError(res, 400, 'Not a content website (projectType must be 2).');
+      }
+
+      const blueprint =
+        project.contentBlueprint && typeof project.contentBlueprint === 'object'
+          ? project.contentBlueprint
+          : {};
+
+      const result = await bootstrapContentWebsitePages({
+        projectId: project._id,
+        userId: project.userId || userId,
+        blueprint,
+        selectedPages,
+      });
+
+      return helper.sendSuccess(res, 200, 'Content website pages bootstrapped.', result);
+    } catch (error) {
+      console.error('[PinterestV2] bootstrapContentPages error:', error);
+      return helper.sendError(res, 500, error.message || 'Failed to bootstrap pages.');
     }
   },
 };

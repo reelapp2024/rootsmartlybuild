@@ -12,6 +12,11 @@ import {
   type HeadingTag,
 } from '../utils/resolveElementTypography';
 import {
+  resolveIsLightSurface,
+  isDarkCanvasTextColor,
+  isLightCanvasTextColor,
+} from '../utils/themeSurface';
+import {
   collectSectionImageUrls,
   resolveSectionImageUrl,
   toDisplayImageUrl,
@@ -594,8 +599,29 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
     'ServiceDetailAboutDefault', 'ServiceDetailServicesDefault', 'ServiceDetailProcessDefault',
     'ServiceDetailWhyChooseDefault', 'ServiceDetailGuaranteeDefault', 'ServiceDetailTestimonialsDefault',
     'ServiceDetailFaqDefault',
+    // Content-website Funky variants — cream/pastel surfaces (dark mode must not
+    // force light text unless the section bg is actually dark).
+    'HeroFunky', 'FeaturedPostsFunky', 'CategoriesGridFunky', 'AboutTeaserFunky',
+    'AuthorsFunky', 'NewsletterFunky', 'FaqFunky', 'TrendingPinsFunky', 'PinBoardCtaFunky',
+    'SeasonalSpotlightFunky', 'BlogHeroFunky', 'PostGridFunky', 'CategoryFilterFunky',
+    'PopularPostsFunky', 'CategoryHeroFunky', 'RelatedCategoriesFunky', 'ArticleHeroFunky',
+    'ArticleBodyFunky', 'AuthorBoxFunky', 'RelatedPostsFunky', 'PinCtaFunky', 'ShopTheLookFunky',
+    'AboutHeroFunky', 'BrandStoryFunky', 'BrandVoiceFunky', 'AboutCtaFunky',
+    'ContactHeroFunky', 'ContactFormFunky', 'ContactInfoFunky',
+    'PrivacyBodyFunky', 'TermsBodyFunky', 'DisclaimerBodyFunky',
+    'AuthorHeroFunky', 'AuthorBioFunky', 'AuthorPostsFunky',
+    'HeaderFunky', 'FooterFunky',
   ]);
-  const isLight = styles.themeMode === 'light' || ALWAYS_LIGHT_VARIANTS.has((styles as any).variant || '');
+  const variantName = String((styles as any).variant || '');
+  const isFunkyVariant = /funky$/i.test(variantName) || ALWAYS_LIGHT_VARIANTS.has(variantName);
+  const isLight = resolveIsLightSurface({
+    themeMode: styles.themeMode,
+    backgroundColor: styles.backgroundColor as string | undefined,
+    fallbackBackgroundColor: isFunkyVariant ? '#FFF8F0' : undefined,
+    alwaysLight:
+      ALWAYS_LIGHT_VARIANTS.has(variantName) &&
+      String(styles.themeMode || '').toLowerCase() !== 'dark',
+  });
 
   const titleHeadingTag: HeadingTag =
     (styles.titleHeadingTag as HeadingTag) ||
@@ -653,14 +679,35 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
   const defaultTitle = isLight ? (activeLight.heading   || '#000000') : (activeGlobalTheme?.heading    || '#F8FAFC');
   const defaultText  = isLight ? (activeLight.description || '#333333') : (activeGlobalTheme?.description || '#C7CDD6');
 
+  // Drop saved section text tokens that fight the resolved surface (e.g. dark-mode
+  // #F8FAFC title left on a cream/white section after a themeMode toggle).
+  const styleTitle = styles.titleColor as string | undefined;
+  const styleText = styles.textColor as string | undefined;
+  const safeStyleTitle =
+    !styleTitle
+      ? undefined
+      : isLight && isDarkCanvasTextColor(styleTitle)
+        ? undefined
+        : !isLight && isLightCanvasTextColor(styleTitle)
+          ? undefined
+          : styleTitle;
+  const safeStyleText =
+    !styleText
+      ? undefined
+      : isLight && isDarkCanvasTextColor(styleText)
+        ? undefined
+        : !isLight && isLightCanvasTextColor(styleText)
+          ? undefined
+          : styleText;
+
   const resolvedBorderColor =
     styles.borderColor ||
     (isLight ? (activeLight.borderColor || 'rgba(0,0,0,0.1)') : (activeGlobalTheme?.borderColor || activeGlobalTheme?.ring || 'rgba(255,255,255,0.1)'));
 
   const themeColors = {
       backgroundColor: styles.backgroundColor || defaultBg,
-      textColor: styles.textColor || defaultText,
-      titleColor: styles.titleColor || globalTitleColor || defaultTitle,
+      textColor: safeStyleText || defaultText,
+      titleColor: safeStyleTitle || globalTitleColor || defaultTitle,
       subtitleColor: styles.subtitleColor || (isLight ? (activeLight.accent || activeGlobalTheme?.accent || '#F59E0B') : defaultText),
       subheadingColor: (styles as any).subheadingColor || (isLight ? (activeLight.subheading || activeLight.accent) : activeGlobalTheme?.subheading) || activeGlobalTheme?.accent || '#F59E0B',
       secondaryHeadingColor: (styles as any).secondaryHeadingColor || globalTitleHighlight || (isLight ? (activeLight.secondaryHeading || activeLight.accent) : activeGlobalTheme?.secondaryHeading) || activeGlobalTheme?.accent || '#E11D48',

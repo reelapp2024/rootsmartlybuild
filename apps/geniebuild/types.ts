@@ -27,6 +27,7 @@ export type ElementType =
   | 'blockquote'
   // Advanced
   | 'accordion'
+  | 'faq'
   | 'toggle'
   | 'tabs'
   | 'progress-bar'

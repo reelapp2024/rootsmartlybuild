@@ -669,6 +669,7 @@ export function ContentWebsiteCreate() {
           categoryId: selectedCategoryId,
           nicheId: selectedNicheId,
           nicheAnalysis: nicheAnalysis || undefined,
+          selectedPages: selectedPagesPayload,
           blueprint: {
             ...blueprint,
             websiteName: finalName,
@@ -682,6 +683,20 @@ export function ContentWebsiteCreate() {
       const projectId = project?._id;
       if (!projectId) {
         throw new Error("Project created but ID missing");
+      }
+
+      const pagesBoot = project?.pagesBootstrap;
+      if (!pagesBoot?.pagesTotal) {
+        // Fallback: ensure pages exist even if bootstrap was skipped
+        try {
+          await http.post(
+            "/pinterest/v2/bootstrapContentPages",
+            { projectId, selectedPages: selectedPagesPayload },
+            { headers: { Authorization: `Bearer ${token()}` } }
+          );
+        } catch (bootErr) {
+          console.warn("[ContentWebsiteCreate] pages bootstrap fallback failed", bootErr);
+        }
       }
 
       const isGlobal =
@@ -711,11 +726,12 @@ export function ContentWebsiteCreate() {
         }
       );
 
+      const pageCount = pagesBoot?.pagesTotal || selectedPagesPayload.length;
       toast({
         title: "Website created",
-        description: `"${finalName}" blueprint approved. Next: Keywords.`,
+        description: `"${finalName}" ready with ${pageCount} page(s). Opening Pages…`,
       });
-      navigate("/admin/content-websites/list");
+      navigate(`/admin/projects/${projectId}/dashboard/pages`);
     } catch (err: any) {
       toast({
         title: "Error",
