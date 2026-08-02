@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { motion } from 'motion/react';
 import { getCtaPhoneSubText, mapCtaTrustItems } from './ctaTrustStrip';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 
 interface Props {
   section: Section;
@@ -30,6 +31,10 @@ export const CTAPlumbing2: React.FC<Props> = ({
   const s = styles as any;
 
   const bg         = s.backgroundColor || tc?.backgroundColor || '#0C1015';
+  // Section background: honor user color / gradient / image (image-only overlay); default = dark bg.
+  const sectionBg = resolveSectionBackground(s, { defaultSurface: bg });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
   const titleColor = tc?.titleColor || '#F8FAFC';
   const textColor  = tc?.textColor || '#C7CDD6';
   const accent     = tc?.iconColor || tc?.accentColor || '#E11D48';
@@ -118,7 +123,8 @@ export const CTAPlumbing2: React.FC<Props> = ({
       };
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none z-[1]" style={bgOverlay} />}
       {/* CTA2 background = "Mesh gradient" —
           Smooth multi-stop gradient with off-axis blurred orbs. Modern and clean. */}
       <div

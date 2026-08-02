@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
-import { PRESET_THEMES } from '../../../../constants';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -60,20 +60,13 @@ export const FAQPlumbing: React.FC<Props> = ({
   const lc = tc?.light || {};
   const accent = lc.accentColor || tc?.accentColor || '#E11D48';
 
-  const savedBg = s.backgroundColor;
-  const isThemeSurface = (() => {
-    if (!savedBg || typeof savedBg !== 'string') return true;
-    const norm = savedBg.trim().toLowerCase();
-    return PRESET_THEMES.some(t => {
-      const dark = (t.elements?.surface || '').toLowerCase();
-      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
-      return norm === dark || norm === light;
-    });
-  })();
-  // FAQ is a LIGHT section. We read from the light palette (`tc.light`) and
-  // fall back to safe light-mode defaults so the section never renders dark
-  // even if a theme leaves a token missing.
-  const bg          = isThemeSurface ? '#FFFFFF' : savedBg;        // section bg = white
+  // Section background: honor the user's color / gradient / image choice (with
+  // image-only overlay) via the shared resolver. Default surface = theme light
+  // surface (white fallback) when nothing explicit is set. FAQ is a LIGHT section.
+  const defaultSurface = lc.surface || (lc as any).cardBackgroundColor || '#FFFFFF';
+  const sectionBg = resolveSectionBackground(s, { defaultSurface });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
   // Card surface for FAQ items — force white + neutral border. Themes that
   // tint their light palette (e.g. Crimson Jet sets cardBackground to a pink
   // wash) would otherwise leak into the FAQ items, which the design wants
@@ -330,8 +323,9 @@ export const FAQPlumbing: React.FC<Props> = ({
   };
 
   return (
-    <div className="w-full relative overflow-hidden" style={{ backgroundColor: bg }}>
-      <div className={`${innerClass} relative`} style={innerStyle}>
+    <div className="w-full relative overflow-hidden" style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgOverlay} />}
+      <div className={`relative z-10 ${innerClass}`} style={innerStyle}>
         {/* Header — centered */}
         <motion.div
           initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
-import { PRESET_THEMES } from '../../../../constants';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -51,17 +51,13 @@ export const FAQEditorial: React.FC<Props> = ({
   const lc = tc?.light || {};
   const accent = lc.accentColor || tc?.accentColor || '#E11D48';
 
-  const savedBg = s.backgroundColor;
-  const isThemeSurface = (() => {
-    if (!savedBg || typeof savedBg !== 'string') return true;
-    const norm = savedBg.trim().toLowerCase();
-    return PRESET_THEMES.some(t => {
-      const dark  = (t.elements?.surface || '').toLowerCase();
-      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
-      return norm === dark || norm === light;
-    });
-  })();
-  const bg         = isThemeSurface ? '#FFFFFF' : savedBg;
+  // Section background: honor the user's color / gradient / image choice (with
+  // image-only overlay) via the shared resolver. Default surface = theme light
+  // surface (white fallback) when nothing explicit is set.
+  const defaultSurface = lc.surface || (lc as any).cardBackgroundColor || '#FFFFFF';
+  const sectionBg = resolveSectionBackground(s, { defaultSurface });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
   const cardBg     = '#FFFFFF';
   const cardBorder = 'rgba(15,23,42,0.08)';
   const titleColor = lc.titleColor || '#0F172A';
@@ -172,8 +168,9 @@ export const FAQEditorial: React.FC<Props> = ({
   } as const;
 
   return (
-    <div className="w-full relative overflow-hidden" style={{ backgroundColor: bg }}>
-      <div className={`${innerClass} relative`} style={innerStyle}>
+    <div className="w-full relative overflow-hidden" style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgOverlay} />}
+      <div className={`relative z-10 ${innerClass}`} style={innerStyle}>
         <div className="grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-12 lg:gap-16">
 
           {/* Left — header + support CTA (sticky) */}

@@ -96,6 +96,7 @@ interface BuilderHeaderProps {
   onRedo: () => void;
   onOpenThemes: () => void;
   onAddTestSection: () => void;
+  onAddCanvasSection?: () => void;
   onViewModeChange: (mode: ViewMode) => void;
   onZoomChange: (zoom: number) => void;
   onTogglePreview: () => void;
@@ -167,6 +168,7 @@ export const BuilderHeader: React.FC<BuilderHeaderProps> = ({
   onRedo,
   onOpenThemes,
   onAddTestSection,
+  onAddCanvasSection,
   onViewModeChange,
   onZoomChange,
   onTogglePreview,
@@ -202,6 +204,16 @@ export const BuilderHeader: React.FC<BuilderHeaderProps> = ({
         >
           <i className="fa-solid fa-vial text-xs" aria-hidden="true"></i>
         </button>
+        {onAddCanvasSection && (
+          <button
+            onClick={onAddCanvasSection}
+            className="w-8 h-8 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            title="Add Canvas Section (add any element)"
+            aria-label="Add a blank canvas section you can fill with any elements"
+          >
+            <i className="fa-solid fa-shapes text-xs" aria-hidden="true"></i>
+          </button>
+        )}
         <div className="h-4 w-px bg-white/10 mx-1" aria-hidden="true"></div>
         <button
           onClick={onUndo}

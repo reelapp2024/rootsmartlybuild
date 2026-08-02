@@ -1,6 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -38,6 +39,10 @@ export const HeroAurora: React.FC<Props> = ({
   const btnText    = tc?.buttonTextColor || '#FFFFFF';
 
   const bg = s.backgroundColor || tc?.backgroundColor || '#08090D';
+  // Section background: honor user color / gradient / image (image-only overlay); default = the dark bg.
+  const sectionBg = resolveSectionBackground(s, { defaultSurface: bg });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
 
   const padT = s.paddingTop  || 'pt-28 sm:pt-32 lg:pt-40';
   const padB = s.paddingBottom || 'pb-28 sm:pb-32 lg:pb-40';
@@ -104,7 +109,8 @@ export const HeroAurora: React.FC<Props> = ({
   } as const;
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none z-[1]" style={bgOverlay} />}
       {/* Animated aurora gradient blobs */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         <motion.div

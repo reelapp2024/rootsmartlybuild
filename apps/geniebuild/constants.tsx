@@ -1517,49 +1517,35 @@ export const INITIAL_TEMPLATE: WebsiteData = {
 };
 
 export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
-  allelementsTest: {
-    type: 'allelementsTest',
-    content: {
-      title: 'All Elements Test Section',
-      subtitle: 'This section contains all 25 elements for testing and debugging purposes.'
-    },
+  // Elementor-style freeform canvas: user adds/edits/reorders any element.
+  canvas: {
+    type: 'canvas',
+    content: { title: 'Canvas' },
     elements: [
-      // Basic Elements (13)
-      { id: 'test-heading', type: 'heading', content: { text: 'Sample Heading', htmlTag: 'h2' }, style: {} },
-      { id: 'test-text', type: 'text', content: { text: 'This is a sample text element for testing.', textSize: 'base' }, style: {} },
-      { id: 'test-button', type: 'button', content: { text: 'Click Me', link: '' }, style: {} },
-      { id: 'test-image', type: 'image', content: { imageUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=400', imageAlt: 'Sample Image' }, style: { width: '200px', height: '150px' } },
-      { id: 'test-video', type: 'video', content: { videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ', videoTitle: 'Sample Video' }, style: { width: '100%', maxWidth: '560px' } },
-      { id: 'test-icon', type: 'icon', content: { icon: 'fa-star', iconSize: '24px' }, style: {} },
-      { id: 'test-icon-box', type: 'icon-box', content: { icon: 'fa-check-circle', title: 'Icon Box', description: 'Sample icon box element' }, style: {} },
-      { id: 'test-image-box', type: 'image-box', content: { imageUrl: 'http://localhost:1111/files/placeholder.jpg', title: 'Image Box', description: 'Sample image box element' }, style: {} },
-      { id: 'test-list', type: 'list', content: { items: [{ title: 'Item 1' }, { title: 'Item 2' }, { title: 'Item 3' }], listType: 'ul' }, style: {} },
-      { id: 'test-star-rating', type: 'star-rating', content: { rating: 4.5, maxRating: 5 }, style: {} },
-      { id: 'test-badge', type: 'badge', content: { text: 'New', variant: 'primary' }, style: {} }, // Use theme badge colors
-      { id: 'test-highlight-text', type: 'highlight-text', content: { text: 'This is highlighted text', highlightColor: '#F59E0B' }, style: {} },
-      { id: 'test-blockquote', type: 'blockquote', content: { text: 'This is a sample blockquote for testing purposes.', author: 'Test Author' }, style: {} },
-      // Advanced Elements (12)
-      { id: 'test-accordion', type: 'accordion', content: { items: [{ title: 'Item 1', content: 'Content 1' }, { title: 'Item 2', content: 'Content 2' }] }, style: {} },
-      { id: 'test-toggle', type: 'toggle', content: { label: 'Toggle Switch', checked: false }, style: {} },
-      { id: 'test-tabs', type: 'tabs', content: { tabs: [{ label: 'Tab 1', content: 'Content 1' }, { label: 'Tab 2', content: 'Content 2' }] }, style: {} },
-      { id: 'test-progress-bar', type: 'progress-bar', content: { value: 75, max: 100, label: 'Progress' }, style: {} },
-      { id: 'test-counter', type: 'counter', content: { value: 100, label: 'Count', prefix: '', suffix: '+' }, style: {} },
-      { id: 'test-testimonial', type: 'testimonial', content: { quote: 'Great service!', author: 'John Doe', role: 'CEO', avatar: 'https://randomuser.me/api/portraits/men/1.jpg' }, style: {} },
-      { id: 'test-review-carousel', type: 'review-carousel', content: { reviews: [{ rating: 5, text: 'Excellent!', author: 'Jane' }] }, style: {} },
-      { id: 'test-alert-box', type: 'alert-box', content: { message: 'This is an alert message', type: 'info' }, style: {} },
-      { id: 'test-pricing-table', type: 'pricing-table', content: { plans: [{ name: 'Basic', price: '$9', features: ['Feature 1', 'Feature 2'] }] }, style: {} },
-      { id: 'test-flip-box', type: 'flip-box', content: { frontTitle: 'Front', backTitle: 'Back', frontContent: 'Front content', backContent: 'Back content' }, style: {} },
-      { id: 'test-call-to-action', type: 'call-to-action', content: { text: 'Get Started', subText: 'Start your free trial today' }, style: {} },
-      { id: 'test-countdown-timer', type: 'countdown-timer', content: { targetDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), text: 'Offer Ends In' }, style: {} },
+      { id: 'canvas-starter-heading', type: 'heading', content: { text: 'Your heading', htmlTag: 'h2' }, style: { fontWeight: '700', fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)', textAlign: 'left' } },
+      { id: 'canvas-starter-text', type: 'text', content: { text: 'Add your text here. Use "Add element" to drop in headings, images, buttons and more.', textSize: 'base' }, style: { textAlign: 'left', lineHeight: '1.7' } },
     ],
     styles: {
-      paddingTop: 'py-24',
-      paddingBottom: 'py-24',
+      paddingTop: 'pt-14 lg:pt-20',
+      paddingBottom: 'pb-14 lg:pb-20',
       paddingX: 'px-6',
-      textAlign: 'center',
-      titleSize: 'text-4xl',
-      variant: 'AllElementsTest'
-    }
+      textAlign: 'left',
+      variant: 'CanvasFreeform',
+    },
+  },
+  // Canvas showcase: a Canvas section pre-filled with EVERY element type,
+  // all individually editable (the CanvasShowcase variant seeds the elements).
+  canvasShowcase: {
+    type: 'canvas',
+    content: { title: 'All Elements' },
+    elements: [],
+    styles: {
+      paddingTop: 'pt-14 lg:pt-20',
+      paddingBottom: 'pb-14 lg:pb-20',
+      paddingX: 'px-6',
+      textAlign: 'left',
+      variant: 'CanvasShowcase',
+    },
   },
   elements: {
       type: 'elements',

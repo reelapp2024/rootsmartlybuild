@@ -2,6 +2,7 @@ import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -42,6 +43,10 @@ export const HeroEditorial: React.FC<Props> = ({
   const btnBg      = tc?.buttonBackgroundColor || accent;
   const btnText    = tc?.buttonTextColor || '#FFFFFF';
   const bg         = s.backgroundColor || tc?.backgroundColor || '#0A0C10';
+  // Section background: honor user color / gradient / image (image-only overlay); default = dark bg.
+  const sectionBg = resolveSectionBackground(s, { defaultSurface: bg });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
   const line       = tc?.navBorderColor || 'rgba(255,255,255,0.10)';
   const surface    = tc?.surface || 'rgba(255,255,255,0.03)';
   const mutedColor = tc?.textColorMuted || (tc as any)?.muted || 'rgba(255,255,255,0.55)';
@@ -157,7 +162,8 @@ export const HeroEditorial: React.FC<Props> = ({
   };
 
   return (
-    <header className={`${uid} relative isolate overflow-hidden w-full`} style={{ backgroundColor: bg, borderBottom: `1px solid ${line}` }}>
+    <header className={`${uid} relative isolate overflow-hidden w-full`} style={{ ...sectionBg, borderBottom: `1px solid ${line}` }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none z-[1]" style={bgOverlay} />}
       <style>{`
         .${uid} .he-glow { position:absolute; border-radius:9999px; filter:blur(120px); pointer-events:none; }
         .${uid} .he-grid { background-image:linear-gradient(to right, ${textColor}0A 1px, transparent 1px), linear-gradient(to bottom, ${textColor}0A 1px, transparent 1px); background-size:56px 56px; -webkit-mask-image:radial-gradient(ellipse 70% 60% at 30% 30%, #000 20%, transparent 75%); mask-image:radial-gradient(ellipse 70% 60% at 30% 30%, #000 20%, transparent 75%); }

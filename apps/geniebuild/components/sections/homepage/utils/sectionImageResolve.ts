@@ -10,12 +10,19 @@ function pushUrl(urls: string[], raw: unknown) {
 }
 
 /**
- * Collects ordered image URLs from `content.images`, then from `styles.background.image.images`.
+ * Collects ordered image URLs from `content.images`, then (unless excluded) from
+ * `styles.background.image.images`.
  * Accepts `{ url }` entries or plain strings.
+ *
+ * `excludeBackground`: when a section's IMAGE is the *content* image (a left/side/
+ * card photo), pass true so a section-level BACKGROUND image is NOT pulled in as the
+ * content image. Otherwise setting the section background to an image would also
+ * fill the content image with the same picture.
  */
 export function collectSectionImageUrls(
   content?: Record<string, unknown> | null,
-  styles?: Record<string, unknown> | null
+  styles?: Record<string, unknown> | null,
+  excludeBackground = false
 ): string[] {
   const urls: string[] = [];
   const c = content && typeof content === 'object' ? content : null;
@@ -30,7 +37,7 @@ export function collectSectionImageUrls(
     }
   };
   if (c) fromArray((c as { images?: unknown }).images);
-  if (urls.length === 0) {
+  if (urls.length === 0 && !excludeBackground) {
     const bg = styles?.background as { image?: { images?: unknown } } | undefined;
     if (bg?.image?.images) fromArray(bg.image.images);
   }
@@ -72,6 +79,10 @@ export function resolveSectionImageUrl(
     index?: number;
     /** Saved or virtual element `imageUrl` / `src` (e.g. hero `content.imageUrl`) */
     elementImageUrl?: string | null | undefined;
+    /** When true, a section-level BACKGROUND image is NOT used as this content
+     *  image — so a variant's left/side/card photo stays independent of the
+     *  section background image the user may have set. */
+    excludeBackground?: boolean;
   } = {}
 ): string {
   const content = section.content as unknown as Record<string, unknown> | undefined;
@@ -87,7 +98,7 @@ export function resolveSectionImageUrl(
   const list =
     options.elementId && !shouldPreferSectionImages(options.elementId)
       ? []
-      : collectSectionImageUrls(content, styles);
+      : collectSectionImageUrls(content, styles, options.excludeBackground);
 
   const fromList = list[index] || list[0] || '';
 

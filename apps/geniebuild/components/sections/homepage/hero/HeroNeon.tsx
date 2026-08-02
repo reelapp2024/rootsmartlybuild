@@ -1,6 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 import {
   preferSavedElement,
@@ -61,6 +62,10 @@ export const HeroNeon: React.FC<Props> = ({
   const btnBg      = tc?.buttonBackgroundColor || accent;
   const btnText    = tc?.buttonTextColor || '#05070A';
   const bg         = s.backgroundColor || tc?.backgroundColor || '#0A0A0B';
+  // Section background: honor user color / gradient / image (image-only overlay); default = dark bg.
+  const sectionBg = resolveSectionBackground(s, { defaultSurface: bg });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
   const surface    = tc?.surface || 'rgba(255,255,255,0.02)';
   const line       = tc?.navBorderColor || 'rgba(255,255,255,0.10)';
   const mutedColor = tc?.textColorMuted || (tc as any)?.muted || 'rgba(255,255,255,0.55)';
@@ -240,7 +245,8 @@ export const HeroNeon: React.FC<Props> = ({
   };
 
   return (
-    <header className={`${uid} relative isolate overflow-hidden w-full`} style={{ backgroundColor: bg, borderBottom: `1px solid ${line}` }}>
+    <header className={`${uid} relative isolate overflow-hidden w-full`} style={{ ...sectionBg, borderBottom: `1px solid ${line}` }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none z-[1]" style={bgOverlay} />}
       {/* Scoped styles — self-contained, no globals.css dependency */}
       <style>{`
         .${uid} { --mx: 50%; --my: 30%; }

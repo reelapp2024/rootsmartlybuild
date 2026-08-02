@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
-import { PRESET_THEMES } from '../../../../constants';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -79,17 +79,10 @@ export const ServicesCardsNext: React.FC<Props> = ({
   const surface    = '#FAFAF9';
   const learnMoreText: string = String((content as any).learnMoreText || '').trim() || 'Learn more';
 
-  const savedBg = s.backgroundColor;
-  const isThemeSurface = (() => {
-    if (!savedBg || typeof savedBg !== 'string') return true;
-    const norm = savedBg.trim().toLowerCase();
-    return PRESET_THEMES.some(t => {
-      const dark = (t.elements?.surface || '').toLowerCase();
-      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
-      return norm === dark || norm === light;
-    });
-  })();
-  const bg = isThemeSurface ? surface : savedBg;
+  const defaultSurface = (lc as any).surface || lc.cardBackgroundColor || surface;
+  const sectionBg = resolveSectionBackground(s, { defaultSurface });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop  ?? 'pt-16 lg:pt-24';
@@ -202,7 +195,8 @@ export const ServicesCardsNext: React.FC<Props> = ({
   const uid = `sc-${String(section.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
   return (
-    <div className={`w-full ${uid}`} style={{ backgroundColor: bg }}>
+    <div className={`w-full relative ${uid}`} style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgOverlay} />}
       {/* Card hover: neutral border + subtle lift (restrained palette) */}
       <style>{`
         .${uid} .sc-card { position:relative; transition:border-color .3s, transform .3s, box-shadow .3s; }
@@ -222,7 +216,7 @@ export const ServicesCardsNext: React.FC<Props> = ({
           </div>
         </div>
       )}
-      <div className={innerClass} style={innerStyle}>
+      <div className={`relative z-10 ${innerClass}`} style={innerStyle}>
 
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }} className="max-w-[720px]">

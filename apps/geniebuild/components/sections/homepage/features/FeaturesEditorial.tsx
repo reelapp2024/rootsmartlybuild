@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
-import { PRESET_THEMES } from '../../../../constants';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -57,46 +57,10 @@ export const FeaturesEditorial: React.FC<Props> = ({
   const cardBorder = fb.border      || lc.cardBorderColor     || 'rgba(0,0,0,0.08)';
   const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
 
-  const savedBg = s.backgroundColor;
-  const isThemeSurface = (() => {
-    if (!savedBg || typeof savedBg !== 'string') return true;
-    const norm = savedBg.trim().toLowerCase();
-    return PRESET_THEMES.some(t => {
-      const dark  = (t.elements?.surface || '').toLowerCase();
-      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
-      return norm === dark || norm === light;
-    });
-  })();
-  const bg = isThemeSurface ? '#FFFFFF' : savedBg;
-
-  const sectionBg = (() => {
-    const out: React.CSSProperties = {};
-    const b = s.background;
-    if (b && typeof b === 'object') {
-      if (b.type === 'gradient' && b.gradient) {
-        const stops = (b.gradient.stops || []).map((st: any) => `${st.color} ${st.position}%`).join(', ');
-        if (stops) out.backgroundImage = b.gradient.type === 'radial' ? `radial-gradient(circle, ${stops})` : `linear-gradient(${b.gradient.direction || 90}deg, ${stops})`;
-      } else if (b.type === 'image') {
-        const url = b.image?.url || (Array.isArray(b.image?.images) ? b.image.images[0]?.url : '');
-        if (url) { out.backgroundImage = `url(${url})`; out.backgroundPosition = b.image?.position || 'center'; out.backgroundSize = b.image?.size || 'cover'; out.backgroundRepeat = b.image?.repeat || 'no-repeat'; }
-        else out.backgroundColor = bg;
-      } else if (b.type === 'color') { out.backgroundColor = b.color || bg; }
-      else out.backgroundColor = bg;
-    } else if (typeof s.backgroundImage === 'string' && s.backgroundImage.trim()) {
-      out.backgroundImage = /^url\(|gradient/i.test(s.backgroundImage) ? s.backgroundImage : `url(${s.backgroundImage})`;
-      out.backgroundSize = s.backgroundSize || 'cover'; out.backgroundPosition = s.backgroundPosition || 'center'; out.backgroundRepeat = s.backgroundRepeat || 'no-repeat';
-    } else out.backgroundColor = bg;
-    return out;
-  })();
-  const bgOverlay = (() => {
-    const b = s.background;
-    const color = b?.image?.overlay?.color || b?.overlay?.color || s.overlayColor;
-    const opacityRaw = b?.image?.overlay?.opacity ?? b?.overlay?.opacity ?? s.overlayOpacityValue;
-    const opacity = typeof opacityRaw === 'number' ? opacityRaw : (opacityRaw !== undefined ? parseFloat(opacityRaw) : NaN);
-    if (color && Number.isFinite(opacity) && opacity > 0) return { backgroundColor: color, opacity } as React.CSSProperties;
-    return null;
-  })();
-  const hasBgImage = !!(sectionBg.backgroundImage);
+  const defaultSurface = lc.surface || (lc as any).cardBackgroundColor || '#FFFFFF';
+  const sectionBg = resolveSectionBackground(s, { defaultSurface });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop  ?? 'pt-16 lg:pt-24';

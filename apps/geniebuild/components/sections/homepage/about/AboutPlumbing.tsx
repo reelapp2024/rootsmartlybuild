@@ -2,7 +2,7 @@ import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl } from '../utils/sectionImageResolve';
-import { PRESET_THEMES } from '../../../../constants';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface AboutProps {
@@ -33,17 +33,11 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
   const iconBg     = fb.iconBg     || lc.iconBgColor || `${accent}15`;
 
   // Background: always white on theme switch; user custom (non-theme-surface) wins
-  const savedBg = s.backgroundColor;
-  const isThemeSurface = (() => {
-    if (!savedBg || typeof savedBg !== 'string') return true;
-    const norm = savedBg.trim().toLowerCase();
-    return PRESET_THEMES.some(t => {
-      const dark  = (t.elements?.surface || '').toLowerCase();
-      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
-      return norm === dark || norm === light;
-    });
-  })();
-  const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  // Section background: color / gradient / image (image-only overlay) via shared resolver.
+  const defaultSurface = lc.surface || (lc as any).cardBackgroundColor || '#FFFFFF';
+  const sectionBg = resolveSectionBackground(s, { defaultSurface });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
 
   // Padding: Tailwind classes OR raw CSS values
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
@@ -247,7 +241,8 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
   };
 
   return (
-    <div className={`relative w-full overflow-hidden ${textAlignClass}`} style={{ backgroundColor: bg }}>
+    <div className={`relative w-full overflow-hidden ${textAlignClass}`} style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgOverlay} />}
       {/* Subtle background accents */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-0 w-full h-full opacity-[0.04]"

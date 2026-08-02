@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatedDiv } from '../motionSafe';
 import { Section, WebsiteElement } from '../../types';
+import { toAbsoluteMediaUrl } from '../../config';
 import { useTheme } from '@ui/blocks';
 import { useGlobalElementStyles } from '../builder/state/GlobalElementStylesContext';
 import { useDefaultSizes } from '../builder/state/DefaultSizesContext';
@@ -349,6 +350,64 @@ const getSafeStyle = (style: any): React.CSSProperties => {
   }
 
   return css as React.CSSProperties;
+};
+
+/**
+ * resolveElementChrome — SHARED "card / box" wrapper style resolver.
+ *
+ * The audit of all element types found the same class of bug in a few of them
+ * (stat-card, and the risk in any new card-like element): the wrapper chrome —
+ * padding, background, border and radius — was HARDCODED (e.g. a fixed
+ * `p-6 rounded-2xl bg-white/5 border border-white/10` class), which ignored the
+ * user's Design/Advance controls.
+ *
+ * Any card/box/panel-style element should build its wrapper style through THIS
+ * helper instead of hardcoding. It always honours a user-set value first, then
+ * falls back to a theme token, then to the caller's default. Nothing is
+ * hard-hardcoded except the caller-supplied defaults. This keeps every card-like
+ * element editable and consistent, and stops the bug from recurring in new ones.
+ *
+ * Usage:
+ *   const chrome = resolveElementChrome(safeStyle, theme, {
+ *     padding: '1.5rem', radius: '1rem', bg: theme?.cardBackgroundColor, ...
+ *   });
+ *   <div style={{ ...safeStyle, ...chrome }} />
+ */
+const resolveElementChrome = (
+  safeStyle: any,
+  theme: any,
+  defaults: {
+    padding?: string;
+    radius?: string;
+    bg?: string;
+    borderWidth?: string;
+    borderStyle?: string;
+    borderColor?: string;
+  } = {}
+): React.CSSProperties => {
+  const s = safeStyle || {};
+  const hasUserPadding = s.padding || s.paddingTop || s.paddingBottom || s.paddingLeft || s.paddingRight;
+  const hasUserBorder = s.borderWidth || s.borderTopWidth || s.borderBottomWidth || s.borderLeftWidth || s.borderRightWidth || s.borderColor || s.borderStyle;
+  return {
+    // Padding: per-side keys come through the ...safeStyle spread; only set the
+    // shorthand when the user gave one, else the caller default.
+    padding: s.padding ?? (hasUserPadding ? undefined : defaults.padding),
+    backgroundColor: s.backgroundColor || defaults.bg || theme?.cardBackgroundColor || undefined,
+    borderRadius: s.borderRadius ?? defaults.radius,
+    ...(hasUserBorder
+      ? {
+          borderWidth: s.borderWidth ?? defaults.borderWidth ?? '1px',
+          borderStyle: s.borderStyle || defaults.borderStyle || 'solid',
+          borderColor: s.borderColor || defaults.borderColor || theme?.cardBorderColor,
+        }
+      : defaults.borderWidth
+      ? {
+          borderWidth: defaults.borderWidth,
+          borderStyle: defaults.borderStyle || 'solid',
+          borderColor: defaults.borderColor || theme?.cardBorderColor,
+        }
+      : {}),
+  };
 };
 
 const getMarqueePxPerSecond = (speed: unknown): number => {
@@ -1156,7 +1215,13 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 // Don't force margin:0 inline — that overrides parent `space-y-*` Tailwind classes
                 // (inline styles win over class selectors). Let parent layout handle spacing.
                 // Only zero browser default margins via reset class on the element below.
-                padding: 0,
+                // Honor a user-set padding (Advance tab). Only fall back to 0 (reset the
+                // browser default) when the user hasn't set any padding.
+                padding: ((safeStyle as any).padding
+                    || (safeStyle as any).paddingTop || (safeStyle as any).paddingBottom
+                    || (safeStyle as any).paddingLeft || (safeStyle as any).paddingRight)
+                    ? (safeStyle as any).padding
+                    : 0,
             };
             // Remove undefined properties
             if (!headingStyle.fontFamily) delete headingStyle.fontFamily;
@@ -2213,10 +2278,12 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             
             // Construct full video URL
             const videoUrl = content.src || '';
-            const fullVideoUrl = videoUrl 
-                ? (videoUrl.startsWith('http') 
+            const fullVideoUrl = videoUrl
+                ? (videoUrl.startsWith('http')
                     ? (isYouTubeUrl(videoUrl) ? convertToEmbedUrl(videoUrl) : videoUrl)
-                    : `http://localhost:1111${videoUrl.startsWith('/') ? '' : '/'}${videoUrl}`)
+                    // Relative media path → resolve against the real media host
+                    // (was hardcoded to http://localhost:1111, wrong in production).
+                    : toAbsoluteMediaUrl(videoUrl))
                 : '';
             
             // Wrapper alignment — wrap the (intrinsically full-width) video player.
@@ -4129,7 +4196,12 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const rating = content.rating !== undefined ? parseFloat(String(content.rating)) : 5;
             const maxRating = content.maxRating !== undefined ? parseInt(String(content.maxRating)) : 5;
             const starColor = safeStyle.color || theme?.accentColor || '#F59E0B';
-            const inactiveColor = 'rgba(255, 255, 255, 0.2)';
+            // Empty-star colour: user override, else a translucent tint of the star
+            // colour (visible on BOTH light and dark surfaces). Was hardcoded to a
+            // white 20% tint, which is invisible on light backgrounds.
+            const inactiveColor = (renderStyle as any).inactiveColor
+                || (renderStyle as any).emptyStarColor
+                || `${starColor}33`;
             const starAlign = resolveTextAlign(renderStyle);
 
             return (
@@ -5785,13 +5857,23 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
         case 'stat-card':
             const statIconColor = renderStyle.iconColor || theme?.iconColor || theme?.accentColor || '#3b82f6';
             const statIconBg = renderStyle.iconBackgroundColor || renderStyle.iconBgColor || theme?.iconBgColor || (statIconColor + '1A');
-            
+            // Card chrome via the shared resolver — honours the user's padding /
+            // background / border / radius controls with theme fallbacks (was
+            // previously hardcoded p-6 / rounded-2xl / bg-white/5 / border-white/10).
+            const statCardStyle: React.CSSProperties = {
+                ...safeStyle,
+                ...resolveElementChrome(safeStyle, theme, {
+                    padding: '1.5rem', radius: '1rem',
+                    bg: theme?.cardBackgroundColor || 'rgba(255,255,255,0.05)',
+                    borderWidth: '1px', borderColor: theme?.cardBorderColor || 'rgba(255,255,255,0.1)',
+                }),
+            };
             return (
                 <div
                     key={id}
-                    className={`p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm hover:bg-white/10 transition-all duration-300 group ${selectedClass}`}
+                    className={`transition-all duration-300 group ${selectedClass}`}
                     onClick={(e) => handleClick(e, el)}
-                    style={style as React.CSSProperties}
+                    style={statCardStyle}
                 >
                     <div className="flex items-center gap-4 mb-3">
                         {content.icon && (

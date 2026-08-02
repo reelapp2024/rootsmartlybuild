@@ -1,8 +1,8 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
-import { PRESET_THEMES } from '../../../../constants';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -100,17 +100,10 @@ export const ServicesPriceList: React.FC<Props> = ({
   const btnBg      = (lc.buttonBackgroundColor as string) || tc?.buttonBackgroundColor || accent;
   const btnText    = (lc.buttonTextColor as string)       || tc?.buttonTextColor       || '#FFFFFF';
 
-  const savedBg = s.backgroundColor;
-  const isThemeSurface = (() => {
-    if (!savedBg || typeof savedBg !== 'string') return true;
-    const norm = savedBg.trim().toLowerCase();
-    return PRESET_THEMES.some(t => {
-      const dark = (t.elements?.surface || '').toLowerCase();
-      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
-      return norm === dark || norm === light;
-    });
-  })();
-  const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const defaultSurface = lc.surface || (lc as any).cardBackgroundColor || '#FFFFFF';
+  const sectionBg = resolveSectionBackground(s, { defaultSurface });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-10 sm:pt-12 lg:pt-16';
@@ -296,7 +289,8 @@ export const ServicesPriceList: React.FC<Props> = ({
   } as const;
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full relative" style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgOverlay} />}
       {svcModal.open && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby={`${section.id}-svc-modal-title`}>
           <button type="button" className="absolute inset-0 bg-black/50 border-0 cursor-default" aria-label="Close dialog backdrop" onClick={() => setSvcModal((m) => ({ ...m, open: false }))} />
@@ -314,7 +308,7 @@ export const ServicesPriceList: React.FC<Props> = ({
           </div>
         </div>
       )}
-      <div className={innerClass} style={innerStyle}>
+      <div className={`relative z-10 ${innerClass}`} style={innerStyle}>
 
         {/* Header — left aligned; shares the same container edge as the rows below */}
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }} className="mb-8 sm:mb-12">

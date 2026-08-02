@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
-import { PRESET_THEMES } from '../../../../constants';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -45,18 +45,13 @@ export const ProcessPlumbing: React.FC<Props> = ({
   const cardBorder = fb.border     || lc.cardBorderColor || 'rgba(0,0,0,0.08)';
   const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
 
-  // Section bg stays white on theme switch
-  const savedBg = s.backgroundColor;
-  const isThemeSurface = (() => {
-    if (!savedBg || typeof savedBg !== 'string') return true;
-    const norm = savedBg.trim().toLowerCase();
-    return PRESET_THEMES.some(t => {
-      const dark  = (t.elements?.surface || '').toLowerCase();
-      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
-      return norm === dark || norm === light;
-    });
-  })();
-  const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  // Section background: honor the user's color / gradient / image choice (with
+  // image-only overlay) via the shared resolver. Default surface = theme light
+  // surface (white fallback) when nothing explicit is set.
+  const defaultSurface = lc.surface || (lc as any).cardBackgroundColor || '#FFFFFF';
+  const sectionBg = resolveSectionBackground(s, { defaultSurface });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
 
   // Padding
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
@@ -236,8 +231,9 @@ export const ProcessPlumbing: React.FC<Props> = ({
   };
 
   return (
-    <div className={`w-full ${textAlignClass}`} style={{ backgroundColor: bg }}>
-      <div className={innerClass} style={innerStyle}>
+    <div className={`w-full relative ${textAlignClass}`} style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgOverlay} />}
+      <div className={`relative z-10 ${innerClass}`} style={innerStyle}>
 
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}

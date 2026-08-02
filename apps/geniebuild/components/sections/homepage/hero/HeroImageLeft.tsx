@@ -2,6 +2,7 @@ import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -40,6 +41,10 @@ export const HeroImageLeft: React.FC<Props> = ({
   const cardBorder = tc?.cardBorder || 'rgba(255,255,255,0.12)';
 
   const bg = s.backgroundColor || tc?.backgroundColor || '#0C1015';
+  // Section background: honor user color / gradient / image (image-only overlay); default = dark bg.
+  const sectionBg = resolveSectionBackground(s, { defaultSurface: bg });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
 
   const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=1200&q=80';
   const heroImage = (() => {
@@ -120,7 +125,8 @@ export const HeroImageLeft: React.FC<Props> = ({
   } as const;
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none z-[1]" style={bgOverlay} />}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute -top-40 -right-32 w-[34rem] h-[34rem] rounded-full blur-[130px]" style={{ backgroundColor: cardBorder }} />
         <div className="absolute top-0 left-0 w-full h-full opacity-[0.04]"

@@ -27,6 +27,10 @@ const MIN_HEIGHT_PRESETS = [
 export const SectionDesignExtrasBlock: React.FC<SectionDesignExtrasBlockProps> = ({
   styles, onUpdate,
 }) => {
+  // Grid Columns only makes sense for card-grid sections. Freeform Canvas (and
+  // any Canvas-based variant, e.g. HeroCanvas) stacks its elements, so hide it.
+  const _variantName = String((styles as any)?.variant || '');
+  const _isCanvasSection = _variantName === 'CanvasFreeform' || /canvas/i.test(_variantName);
   const currentMinHeight = String(styles.minHeight || '').trim();
   const activeMinHeightPreset = MIN_HEIGHT_PRESETS.find(p => p.value === currentMinHeight)?.key
     || (currentMinHeight && currentMinHeight !== '' ? 'custom' : 'auto');
@@ -76,10 +80,44 @@ export const SectionDesignExtrasBlock: React.FC<SectionDesignExtrasBlockProps> =
             unit="px"
             onChange={(v) => onUpdate('minHeight', `${v}px`)}
           />
+
+          {/* Content vertical alignment — where the content sits when the
+              section is taller than its content (works with Minimum Height). */}
+          <div className="pt-2">
+            <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Content Position</label>
+            <p className="text-[10px] text-white/30 leading-relaxed mt-1 mb-2">
+              When the section is taller than its content, place it at the top, middle or bottom.
+            </p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { key: 'flex-start', label: 'Top', icon: 'fa-arrow-up' },
+                { key: 'center', label: 'Center', icon: 'fa-arrows-up-down' },
+                { key: 'flex-end', label: 'Bottom', icon: 'fa-arrow-down' },
+              ] as const).map(a => {
+                const active = (String(styles.contentAlign || 'flex-start') === a.key);
+                return (
+                  <button
+                    key={a.key}
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdate('contentAlign', a.key); }}
+                    className={`py-2.5 text-[9px] font-bold uppercase tracking-widest rounded border transition-all flex flex-col items-center gap-1 ${
+                      active
+                        ? 'bg-blue-500/20 border-blue-500 text-blue-400'
+                        : 'bg-[#151515] border-[#333] text-white/40 hover:border-[#444]'
+                    }`}
+                  >
+                    <i className={`fa-solid ${a.icon} text-sm`} />
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </AccordionGroup>
 
-      {/* ─────────── GRID COLUMNS ─────────── */}
+      {/* ─────────── GRID COLUMNS ─────────── (hidden for freeform Canvas) */}
+      {!_isCanvasSection && (
       <AccordionGroup title="Grid Columns" defaultOpen={false}>
         <div className="space-y-3">
           <p className="text-[10px] text-white/40 leading-relaxed">
@@ -107,6 +145,7 @@ export const SectionDesignExtrasBlock: React.FC<SectionDesignExtrasBlockProps> =
           </div>
         </div>
       </AccordionGroup>
+      )}
 
       {/* ─────────── REVEAL ANIMATION ─────────── */}
       <AccordionGroup title="Reveal Animation" defaultOpen={false}>

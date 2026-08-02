@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
-import { PRESET_THEMES } from '../../../../constants';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -58,17 +58,10 @@ export const WhyChooseEditorial: React.FC<Props> = ({
   const cardBorder = fb.border      || lc.cardBorderColor     || 'rgba(0,0,0,0.08)';
   const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
 
-  const savedBg = s.backgroundColor;
-  const isThemeSurface = (() => {
-    if (!savedBg || typeof savedBg !== 'string') return true;
-    const norm = savedBg.trim().toLowerCase();
-    return PRESET_THEMES.some(t => {
-      const dark  = (t.elements?.surface || '').toLowerCase();
-      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
-      return norm === dark || norm === light;
-    });
-  })();
-  const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const defaultSurface = lc.surface || (lc as any).cardBackgroundColor || '#FFFFFF';
+  const sectionBg = resolveSectionBackground(s, { defaultSurface });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-16 lg:pt-24';
@@ -175,12 +168,13 @@ export const WhyChooseEditorial: React.FC<Props> = ({
   const uid = `wce-${String(section.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
   return (
-    <div className={`w-full ${uid}`} style={{ backgroundColor: bg }}>
+    <div className={`w-full relative ${uid}`} style={{ ...sectionBg }}>
       <style>{`
         .${uid} .wce-row { transition:border-color .3s, background-color .3s; }
         .${uid} .wce-row:hover { border-color:rgba(0,0,0,0.18) !important; background-color:${cardBg} !important; }
       `}</style>
-      <div className={innerClass} style={innerStyle}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgOverlay} />}
+      <div className={`relative z-10 ${innerClass}`} style={innerStyle}>
         <div className="grid grid-cols-1 lg:grid-cols-[0.85fr_1.15fr] gap-12 lg:gap-16">
 
           {/* Left header (sticky on desktop) */}

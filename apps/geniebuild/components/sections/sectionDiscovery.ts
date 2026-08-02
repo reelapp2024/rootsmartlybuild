@@ -34,12 +34,14 @@ const contentPageScopedModules = safeGlob('../contentwebsitesSections/*/*/*.tsx'
 const fallbackModules: GlobModuleMap = {
   './ElementsSection.tsx': () => import('./ElementsSection'),
   './StatCardValue.tsx': () => import('./StatCardValue'),
-  './allelementsTest/AllElementsTest.tsx': () => import('./allelementsTest/AllElementsTest'),
+  './canvas/CanvasFreeform.tsx': () => import('./canvas/CanvasFreeform'),
+  './canvas/CanvasShowcase.tsx': () => import('./canvas/CanvasShowcase'),
   './homepage/about/AboutPlumbing.tsx': () => import('./homepage/about/AboutPlumbing'),
   './homepage/about/AboutModern.tsx': () => import('./homepage/about/AboutModern'),
   './homepage/about/AboutBento.tsx': () => import('./homepage/about/AboutBento'),
   // "Editorial" complete homepage variant set (one per section)
   './homepage/hero/HeroEditorial.tsx': () => import('./homepage/hero/HeroEditorial'),
+  './homepage/hero/HeroCanvas.tsx': () => import('./homepage/hero/HeroCanvas'),
   './homepage/about/AboutEditorial.tsx': () => import('./homepage/about/AboutEditorial'),
   './homepage/features/FeaturesEditorial.tsx': () => import('./homepage/features/FeaturesEditorial'),
   './homepage/services/ServicesEditorial.tsx': () => import('./homepage/services/ServicesEditorial'),

@@ -2,6 +2,7 @@ import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -40,6 +41,10 @@ export const HeroShowcase: React.FC<Props> = ({
   const btnText    = tc?.buttonTextColor || '#FFFFFF';
 
   const bg = s.backgroundColor || tc?.backgroundColor || '#0C1015';
+  // Section background: honor user color / gradient / image (image-only overlay); default = dark bg.
+  const sectionBg = resolveSectionBackground(s, { defaultSurface: bg });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
   const line       = tc?.navBorderColor || 'rgba(255,255,255,0.10)';
   const mutedColor = tc?.textColorMuted || (tc as any)?.muted || 'rgba(255,255,255,0.55)';
 
@@ -119,7 +124,8 @@ export const HeroShowcase: React.FC<Props> = ({
   } as const;
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none z-[1]" style={bgOverlay} />}
       {/* Ambient accent glows */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute -top-48 left-1/2 -translate-x-1/2 w-[42rem] h-[42rem] rounded-full blur-[150px]" style={{ backgroundColor: `${accent}1A` }} />

@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { motion } from 'motion/react';
 import { getCtaPhoneSubText, mapCtaTrustItems } from './ctaTrustStrip';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 
 interface Props {
   section: Section;
@@ -30,6 +31,10 @@ export const CTAPlumbing3: React.FC<Props> = ({
   const s = styles as any;
 
   const bg         = s.backgroundColor || tc?.backgroundColor || '#0A0F14';
+  // Section background: honor user color / gradient / image (image-only overlay); default = dark bg.
+  const sectionBg = resolveSectionBackground(s, { defaultSurface: bg });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
   const titleColor = tc?.titleColor || '#F8FAFC';
   const textColor  = tc?.textColor || '#C7CDD6';
   const accent     = tc?.iconColor || tc?.accentColor || '#E11D48';
@@ -118,7 +123,8 @@ export const CTAPlumbing3: React.FC<Props> = ({
       };
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none z-[1]" style={bgOverlay} />}
       {/* CTA3 background = "blueprint rings" —
           Concentric accent rings radiate from the center + a fine plus-mark grid
           underneath. Reads like a technical/blueprint sheet — completely different

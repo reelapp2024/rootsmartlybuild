@@ -148,30 +148,11 @@ export const BackgroundControl: React.FC<BackgroundControlProps> = ({
     });
   };
 
-  const enableGeometry = (value as any)?.enableGeometry !== undefined ? (value as any).enableGeometry : (value as any)?.variant === 'HeroGeometric';
 
   return (
     <div className="space-y-4">
-      {/* Enable Geometry Toggle */}
-      <div className="flex items-center justify-between p-3 bg-[#1a1a1a] rounded border border-[#333]">
-        <label className="text-xs font-medium text-white/80">Enable Geometry</label>
-        <button
-          type="button"
-          onClick={() => {
-            const newValue = !enableGeometry;
-            onChange({ ...localBackground, enableGeometry: newValue } as any);
-          }}
-          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            enableGeometry ? 'bg-blue-500' : 'bg-gray-600'
-          }`}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              enableGeometry ? 'translate-x-6' : 'translate-x-1'
-            }`}
-          />
-        </button>
-      </div>
+      {/* Enable Geometry toggle removed — decorative background geometry/shapes
+          are rarely useful and clutter the panel. */}
 
       {/* Background Type Selector */}
       <SelectInput
@@ -215,20 +196,8 @@ export const BackgroundControl: React.FC<BackgroundControlProps> = ({
         }}
       />
 
-      {/* Background Pattern Selector */}
-      <SelectInput
-        label="Background Pattern"
-        value={localBackground.pattern || ''}
-        options={[
-          { label: 'None', value: '' },
-          { label: 'Dots Grid', value: 'dots-grid' },
-          { label: 'Diagonal Lines', value: 'diagonal-lines' },
-          { label: 'Plus Signs', value: 'plus-signs' },
-          { label: 'Circuit', value: 'circuit' },
-          { label: 'Topography', value: 'topography' },
-        ]}
-        onChange={(v) => updateBackground({ pattern: v })}
-      />
+      {/* Background Pattern selector removed — decorative pattern overlays
+          (dots/lines/circuit/topography) are rarely useful and clutter the panel. */}
 
       {/* Color Background */}
       {localBackground.type === 'color' && (

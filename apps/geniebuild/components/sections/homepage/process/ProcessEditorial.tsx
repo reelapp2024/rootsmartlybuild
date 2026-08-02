@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
-import { PRESET_THEMES } from '../../../../constants';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -57,17 +57,13 @@ export const ProcessEditorial: React.FC<Props> = ({
   const btnText    = lc.buttonTextColor || tc?.buttonTextColor || '#FFFFFF';
   const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
 
-  const savedBg = s.backgroundColor;
-  const isThemeSurface = (() => {
-    if (!savedBg || typeof savedBg !== 'string') return true;
-    const norm = savedBg.trim().toLowerCase();
-    return PRESET_THEMES.some(t => {
-      const dark  = (t.elements?.surface || '').toLowerCase();
-      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
-      return norm === dark || norm === light;
-    });
-  })();
-  const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  // Section background: honor the user's color / gradient / image choice (with
+  // image-only overlay) via the shared resolver. Default surface = theme light
+  // surface (white fallback) when nothing explicit is set.
+  const defaultSurface = lc.surface || (lc as any).cardBackgroundColor || '#FFFFFF';
+  const sectionBg = resolveSectionBackground(s, { defaultSurface });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-16 lg:pt-24';
@@ -189,8 +185,9 @@ export const ProcessEditorial: React.FC<Props> = ({
   const stepCount = rawSteps.length;
 
   return (
-    <div className={`w-full ${uid}`} style={{ backgroundColor: bg }}>
-      <div className={innerClass} style={innerStyle}>
+    <div className={`w-full relative ${uid}`} style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgOverlay} />}
+      <div className={`relative z-10 ${innerClass}`} style={innerStyle}>
 
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }} className="text-center">
@@ -215,7 +212,7 @@ export const ProcessEditorial: React.FC<Props> = ({
 
                   {/* node */}
                   <div className="absolute md:left-1/2 left-[19px] -translate-x-1/2 top-0 md:top-1/2 md:-translate-y-1/2 z-20">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full shadow-md ring-4" style={{ backgroundColor: accent, ...( { ['--tw-ring-color' as any]: bg } ) }}>
+                    <span className="flex h-10 w-10 items-center justify-center rounded-full shadow-md ring-4" style={{ backgroundColor: accent, ...( { ['--tw-ring-color' as any]: defaultSurface } ) }}>
                       <ElementsSection section={{ ...section, elements: [getStepNumberEl(i)] }} {...pass} />
                     </span>
                   </div>

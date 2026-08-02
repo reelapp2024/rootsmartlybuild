@@ -1,5 +1,5 @@
 
-export type SectionType = 'navbar' | 'header' | 'hero' | 'about' | 'features' | 'services' | 'cta' | 'process' | 'footer' | 'testimonials' | 'pricing' | 'image-banner' | 'elements' | 'allelementsTest' | 'faq' | 'why-choose-us' | 'guarantee' | 'areas' | 'aboutservice' | 'servicehero' | 'abouthero' | 'missionvision' | 'corevalues' | 'usp' | 'promise' | 'relatedservices' | 'contacthero' | 'contactinfo' | 'contactform' | 'blogshero' | 'blogssearch' | 'blogslist' | 'blogarticlehero' | 'blogcontent' | 'blogauthor' | 'blogcomments' | 'blogrelated' | 'legalhero' | 'legalcontent' | 'sublocations' | 'locationmap' | 'areashero' | 'areastestimonials' | 'areasfaq'
+export type SectionType = 'navbar' | 'header' | 'hero' | 'about' | 'features' | 'services' | 'cta' | 'process' | 'footer' | 'testimonials' | 'pricing' | 'image-banner' | 'elements' | 'canvas' | 'canvasShowcase' | 'faq' | 'why-choose-us' | 'guarantee' | 'areas' | 'aboutservice' | 'servicehero' | 'abouthero' | 'missionvision' | 'corevalues' | 'usp' | 'promise' | 'relatedservices' | 'contacthero' | 'contactinfo' | 'contactform' | 'blogshero' | 'blogssearch' | 'blogslist' | 'blogarticlehero' | 'blogcontent' | 'blogauthor' | 'blogcomments' | 'blogrelated' | 'legalhero' | 'legalcontent' | 'sublocations' | 'locationmap' | 'areashero' | 'areastestimonials' | 'areasfaq'
  /** @deprecated Legacy area-detail twins — SectionRouter maps these to homepage types */
  | 'locationhero' | 'locationabout' | 'locationservices' | 'locationwhychoose' | 'locationprocess'
  | 'locationcta' | 'locationguarantee' | 'locationpromise' | 'locationtestimonials' | 'locationareas' | 'locationfaq'
@@ -8,10 +8,12 @@ export type SectionType = 'navbar' | 'header' | 'hero' | 'about' | 'features' | 
  | 'serviceslisthero' | 'serviceslistgrid' | 'serviceslistwhychoose' | 'serviceslistcta' | 'serviceslistguarantee' | 'serviceslistprocess' | 'serviceslistareas' | 'serviceslistfaq'
  | 'servicedetailhero' | 'servicedetailabout' | 'servicedetailservices' | 'servicedetailprocess' | 'servicedetailcta' | 'servicedetailwhychoose' | 'servicedetailguarantee' | 'servicedetailtestimonials' | 'servicedetailfaq';
 
-export type ElementType = 
+export type ElementType =
+  // Layout
+  | 'row'
   // Basic
   | 'card'
-  | 'heading' 
+  | 'heading'
   | 'text' 
   | 'button'
   | 'cta-button'

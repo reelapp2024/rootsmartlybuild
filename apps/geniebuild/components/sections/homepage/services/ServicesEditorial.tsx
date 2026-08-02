@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
-import { PRESET_THEMES } from '../../../../constants';
+import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -77,17 +77,10 @@ export const ServicesEditorial: React.FC<Props> = ({
   const mutedColor = lc.textColorMuted || (lc as any).muted || '#6B7280';
   const learnMoreText: string = String((content as any).learnMoreText || '').trim() || 'Learn more';
 
-  const savedBg = s.backgroundColor;
-  const isThemeSurface = (() => {
-    if (!savedBg || typeof savedBg !== 'string') return true;
-    const norm = savedBg.trim().toLowerCase();
-    return PRESET_THEMES.some(t => {
-      const dark  = (t.elements?.surface || '').toLowerCase();
-      const light = ((t.elements as any)?.light?.surface || '').toLowerCase();
-      return norm === dark || norm === light;
-    });
-  })();
-  const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const defaultSurface = (lc as any).surface || lc.cardBackgroundColor || '#FFFFFF';
+  const sectionBg = resolveSectionBackground(s, { defaultSurface });
+  const bgOverlay = resolveSectionOverlay(s);
+  const hasBgImage = sectionBgHasImage(s);
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop  ?? 'pt-16 lg:pt-24';
@@ -185,7 +178,8 @@ export const ServicesEditorial: React.FC<Props> = ({
   const uid = `se-${String(section.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
   return (
-    <div className={`w-full ${uid}`} style={{ backgroundColor: bg }}>
+    <div className={`w-full relative ${uid}`} style={{ ...sectionBg }}>
+      {hasBgImage && bgOverlay && <div aria-hidden className="absolute inset-0 pointer-events-none" style={bgOverlay} />}
       <style>{`
         .${uid} .se-row { position:relative; transition:border-color .3s; }
         .${uid} .se-row:hover { border-color:${cardBorder} !important; }
@@ -205,7 +199,7 @@ export const ServicesEditorial: React.FC<Props> = ({
           </div>
         </div>
       )}
-      <div className={innerClass} style={innerStyle}>
+      <div className={`relative z-10 ${innerClass}`} style={innerStyle}>
 
         {/* Header — centered */}
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }} className="text-center">

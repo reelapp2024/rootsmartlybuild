@@ -36,6 +36,13 @@ export const SectionBackgroundBlock: React.FC<SectionBackgroundBlockProps> = ({
 }) => {
   const _activeTheme = getActiveGlobalTheme() as any;
   const _isLight = styles.themeMode === 'light';
+  // Canvas (freeform) sections — and any variant built on the Canvas renderer
+  // (e.g. HeroCanvas) — don't use the light/dark theme-mode surface swap, so the
+  // Theme Mode toggle is hidden for them.
+  const _variantName = String((styles as any)?.variant || '');
+  const _isCanvasSection = selectedSection?.type === 'canvas'
+    || _variantName === 'CanvasFreeform'
+    || /canvas/i.test(_variantName);
   const _themeOverlayColor = _isLight
     ? (_activeTheme?.light?.overlay?.color || '#FFFFFF')
     : (_activeTheme?.overlay?.color || PRESET_THEMES[0].elements.overlay.color);
@@ -178,7 +185,8 @@ export const SectionBackgroundBlock: React.FC<SectionBackgroundBlockProps> = ({
         uploadProgress={uploading && !!uploadTarget?.field?.startsWith('backgroundImage') && uploadTarget?.sectionId === sectionId ? uploadProgress : 0}
       />
 
-      {/* --- THEME MODE TOGGLE --- */}
+      {/* --- THEME MODE TOGGLE --- (hidden for freeform Canvas sections) */}
+      {!_isCanvasSection && (
       <div className="space-y-4 pt-4 border-t border-white/10">
         <div className="flex items-center justify-between">
           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Theme Mode</label>
@@ -198,6 +206,7 @@ export const SectionBackgroundBlock: React.FC<SectionBackgroundBlockProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* --- BACKGROUND OVERLAY ---
           Overlay only makes sense on top of an image or vivid gradient
