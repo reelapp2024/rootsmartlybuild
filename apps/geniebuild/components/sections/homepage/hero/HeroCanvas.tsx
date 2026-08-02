@@ -1,6 +1,7 @@
 import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { CanvasFreeform } from '../../canvas/CanvasFreeform';
+import { useCanvasVariantSeed } from '../../canvas/useCanvasVariantSeed';
 
 interface Props {
   section: Section;
@@ -94,27 +95,13 @@ function buildHeroElements(section: Section, tc: any): WebsiteElement[] {
 
 export const HeroCanvas: React.FC<Props> = (props) => {
   const { section, themeColors: tc, onSectionUpdate, readOnly } = props;
-
-  const isEmpty = !section.elements || section.elements.length === 0;
-
-  // Seed the hero design once, only when the section has no elements yet — for display.
-  const seededElements = React.useMemo(
-    () => (isEmpty ? buildHeroElements(section, tc) : section.elements!),
-    [isEmpty, section, tc]
-  );
-  const seededSection: Section = isEmpty ? { ...section, elements: seededElements } : section;
-
-  // CRITICAL: persist the seeded elements into the real section on first mount.
-  // Without this, `section.elements` stays empty in app state, so the first edit
-  // (or delete/reorder) writes against an empty array and wipes the other
-  // elements. Committing the seed once makes every element real + editable.
-  React.useEffect(() => {
-    if (isEmpty && !readOnly && onSectionUpdate) {
-      onSectionUpdate(section.id, { elements: seededElements });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEmpty, section.id]);
-
+  // Seed this variant's design; re-seeds if the section holds a DIFFERENT
+  // Canvas variant's elements (so switching to HeroCanvas shows HeroCanvas).
+  const seededSection = useCanvasVariantSeed(section, {
+    prefix: `hc-${section.id}`,
+    buildElements: (s) => buildHeroElements(s, tc),
+    onSectionUpdate, readOnly,
+  });
   return <CanvasFreeform {...props} section={seededSection} />;
 };
 

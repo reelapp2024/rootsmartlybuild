@@ -156,9 +156,11 @@ export const CanvasFreeform: React.FC<Props> = ({
     onSectionUpdate(section.id, { elements: next });
   };
 
-  // Render a single canvas element. A `row` element lays its children[] out in
-  // N columns (side-by-side); every other element renders normally. Children are
-  // real, individually-editable elements (click to select + edit).
+  // Render a single canvas element. A `row` element lays its children[] out in N
+  // columns (side-by-side). Each child column can be EITHER a single element OR a
+  // `column` group (its own `content.children[]` stacked vertically) — this lets a
+  // column hold several elements (e.g. badge + heading + buttons on one side, an
+  // image on the other). All are real, individually-editable elements.
   const renderOne = (el: WebsiteElement): React.ReactNode => {
     if (el.type === 'row') {
       const cc = (el.content || {}) as any;
@@ -166,19 +168,47 @@ export const CanvasFreeform: React.FC<Props> = ({
       const children: WebsiteElement[] = Array.isArray(cc.children) ? cc.children : [];
       const gap = cc.gap || '1.5rem';
       const align = cc.verticalAlign || 'stretch';
+
+      // Update a (possibly nested) child inside this row and persist.
+      const updateNested = (targetId: string, updates: any) => {
+        const patch = (list: WebsiteElement[]): WebsiteElement[] =>
+          list.map((c) => {
+            if (c.id === targetId) {
+              return { ...c, ...updates, content: { ...(c.content || {}), ...(updates.content || {}) }, style: { ...(c.style || {}), ...(updates.style || {}) } };
+            }
+            const gk = (c.content as any)?.children;
+            if (Array.isArray(gk)) return { ...c, content: { ...(c.content || {}), children: patch(gk) } };
+            return c;
+          });
+        writeRowChildren(el.id, patch(children));
+      };
+
+      const renderColItem = (child: WebsiteElement): React.ReactNode => {
+        // A `column` group stacks its own children vertically.
+        if (child.type === 'column') {
+          const kids: WebsiteElement[] = Array.isArray((child.content as any)?.children) ? (child.content as any).children : [];
+          const colGap = (child.content as any)?.gap || '1rem';
+          const colAlign = (child.style as any)?.alignItems || 'flex-start';
+          return (
+            <div className="flex flex-col min-w-0" style={{ ...(child.style as any), gap: colGap, alignItems: colAlign }}>
+              {kids.map((k) => <React.Fragment key={k.id}>{renderColItem(k)}</React.Fragment>)}
+            </div>
+          );
+        }
+        return (
+          <ElementsSection
+            section={{ ...section, elements: [child] }}
+            {...pass}
+            onElementUpdate={(cid: string, updates: any) => updateNested(cid, updates)}
+          />
+        );
+      };
+
       return (
         <div className="cv-row grid" style={{ ...(el.style as any), gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap, alignItems: align }}>
-          {children.map((child, ci) => (
+          {children.map((child) => (
             <div key={child.id} className="cv-row-col min-w-0">
-              <ElementsSection
-                section={{ ...section, elements: [child] }}
-                {...pass}
-                onElementUpdate={(cid: string, updates: any) => {
-                  // Update the matching child inside this row.
-                  const nextChildren = children.map((c) => (c.id === cid ? { ...c, ...updates, content: { ...(c.content || {}), ...(updates.content || {}) }, style: { ...(c.style || {}), ...(updates.style || {}) } } : c));
-                  writeRowChildren(el.id, nextChildren);
-                }}
-              />
+              {renderColItem(child)}
             </div>
           ))}
         </div>

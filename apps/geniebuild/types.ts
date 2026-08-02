@@ -11,6 +11,7 @@ export type SectionType = 'navbar' | 'header' | 'hero' | 'about' | 'features' | 
 export type ElementType =
   // Layout
   | 'row'
+  | 'column'
   // Basic
   | 'card'
   | 'heading'

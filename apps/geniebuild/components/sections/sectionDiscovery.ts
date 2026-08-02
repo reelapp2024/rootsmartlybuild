@@ -42,6 +42,7 @@ const fallbackModules: GlobModuleMap = {
   // "Editorial" complete homepage variant set (one per section)
   './homepage/hero/HeroEditorial.tsx': () => import('./homepage/hero/HeroEditorial'),
   './homepage/hero/HeroCanvas.tsx': () => import('./homepage/hero/HeroCanvas'),
+  './homepage/hero/HeroCanvasTrust.tsx': () => import('./homepage/hero/HeroCanvasTrust'),
   './homepage/about/AboutEditorial.tsx': () => import('./homepage/about/AboutEditorial'),
   './homepage/features/FeaturesEditorial.tsx': () => import('./homepage/features/FeaturesEditorial'),
   './homepage/services/ServicesEditorial.tsx': () => import('./homepage/services/ServicesEditorial'),
