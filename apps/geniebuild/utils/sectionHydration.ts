@@ -107,7 +107,7 @@ export function mapApiSectionToCanvas(sec: any, index: number): Section | null {
   const apiEls = Array.isArray(sec?.elements) ? sec.elements : [];
   const hasDynamicNav = apiEls.some(
     (e: any) =>
-      String(e?.type || '').toLowerCase() === 'nav-menu' &&
+      ['nav-menu', 'navigation'].includes(String(e?.type || '').toLowerCase()) &&
       Array.isArray(e?.content?.items) &&
       e.content.items.length > 0
   );
@@ -162,6 +162,22 @@ export function mapApiSectionToCanvas(sec: any, index: number): Section | null {
     DEFAULT_SECTION_VARIANTS[type] || getDefaultVariant(type as Section['type']) || '';
   const normalizedContent = normalizeSectionContent(type, mergedContent);
 
+  // Older content-site chrome saved `navigation`; treat as `nav-menu`.
+  const normalizedElements = (elements || []).map((el: any) => {
+    if (String(el?.type || '').toLowerCase() !== 'navigation') return el;
+    const items = Array.isArray(el?.content?.items)
+      ? el.content.items.map((item: any) => ({
+          ...item,
+          link: item?.link || item?.href || item?.url || '#',
+        }))
+      : el?.content?.items;
+    return {
+      ...el,
+      type: 'nav-menu',
+      content: { ...(el.content || {}), items },
+    };
+  });
+
   return {
     id,
     type: type as Section['type'],
@@ -171,7 +187,7 @@ export function mapApiSectionToCanvas(sec: any, index: number): Section | null {
       variant: existingVariant || fallbackVariant,
     },
     content: normalizedContent as Section['content'],
-    elements,
+    elements: normalizedElements,
   } as Section;
 }
 

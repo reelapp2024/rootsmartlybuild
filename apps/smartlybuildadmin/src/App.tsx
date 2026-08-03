@@ -63,6 +63,8 @@ import Deploy from "./pages/admin/Deploy";
 import HeaderFooter from "./pages/admin/HeaderFooter";
 import { PageManagement } from "./components/admin/PageManagement";
 import DangerZone from "./pages/admin/DangerZone";
+import ProjectKeywords from "./pages/admin/ProjectKeywords";
+import ProjectClusters from "./pages/admin/ProjectClusters";
 
 const queryClient = new QueryClient();
 
@@ -108,6 +110,8 @@ const App = () => (
           <Route path="/admin/projects/:projectId/dashboard/deploy" element={<AdminLayout><Deploy /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/pages" element={<AdminLayout><PageManagement /></AdminLayout>} />
           <Route path="/admin/projects/:projectId/dashboard/header-footer" element={<AdminLayout><HeaderFooter /></AdminLayout>} />
+          <Route path="/admin/projects/:projectId/dashboard/keywords" element={<AdminLayout><ProjectKeywords /></AdminLayout>} />
+          <Route path="/admin/projects/:projectId/dashboard/clusters" element={<AdminLayout><ProjectClusters /></AdminLayout>} />
           {/* General project dashboard route - must come after all specific routes */}
           <Route path="/admin/projects/:projectId/dashboard" element={<AdminLayout><ProjectDashboard /></AdminLayout>} />
           <Route path="/admin/create-project" element={<AdminLayout><CreateProject /></AdminLayout>} />

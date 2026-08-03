@@ -1,6 +1,10 @@
 /**
- * Content website wizard — pages & sections (blog/Pinterest style).
- * Similar UX to business/bulk Step 6, but content-site oriented.
+ * Content website wizard — pages & sections (blog / Pinterest niche sites).
+ * IDs map 1:1 to GenieBuild `contentwebsitesSections` Funky variants via
+ * `backend/additional/contentWebsitePagesBootstrap.js`.
+ *
+ * Site chrome (HeaderFunky + FooterFunky) is always injected at bootstrap —
+ * not selectable here, so every page renders with nav + footer.
  */
 
 export type ContentSectionOption = {
@@ -20,6 +24,12 @@ export type ContentPageOption = {
   sections: ContentSectionOption[];
 };
 
+/** Always applied by backend bootstrap (not user-toggled). */
+export const CONTENT_SITE_CHROME = {
+  header: { id: "header", name: "Header", variant: "HeaderFunky" },
+  footer: { id: "footer", name: "Footer", variant: "FooterFunky" },
+} as const;
+
 export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
   {
     id: "home",
@@ -33,10 +43,10 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
       { id: "trending_pins", name: "Trending Pins", description: "Hot pin saves strip", defaultSelected: true },
       { id: "about_teaser", name: "About Teaser", description: "Short brand story", defaultSelected: true },
       { id: "authors", name: "Authors", description: "E-E-A-T author strip", defaultSelected: true },
-      { id: "seasonal_spotlight", name: "Seasonal Spotlight", description: "Trend calendar sprint", defaultSelected: false },
+      { id: "seasonal_spotlight", name: "Seasonal Spotlight", description: "Trend calendar sprint", defaultSelected: true },
       { id: "pin_board_cta", name: "Pin Board CTA", description: "Starter board CTA", defaultSelected: false },
       { id: "newsletter", name: "Newsletter", description: "Email capture", defaultSelected: true },
-      { id: "faq", name: "FAQ", description: "Common niche questions", defaultSelected: false },
+      { id: "faq", name: "FAQ", description: "Common niche questions", defaultSelected: true },
     ],
   },
   {
@@ -48,8 +58,8 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
       { id: "blog_hero", name: "Blog Hero", description: "Listing hero", defaultSelected: true },
       { id: "category_filter", name: "Category Filter", description: "Filter by category", defaultSelected: true },
       { id: "post_grid", name: "Post Grid", description: "Article cards", defaultSelected: true },
-      { id: "popular_posts", name: "Popular Posts", description: "Reader favorites", defaultSelected: false },
-      { id: "newsletter", name: "Newsletter", description: "Email capture on blog", defaultSelected: false },
+      { id: "popular_posts", name: "Popular Posts", description: "Reader favorites", defaultSelected: true },
+      { id: "newsletter", name: "Newsletter", description: "Email capture on blog", defaultSelected: true },
     ],
   },
   {
@@ -61,7 +71,7 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
     sections: [
       { id: "category_hero", name: "Category Hero", description: "Category title + intro", defaultSelected: true },
       { id: "post_grid", name: "Post Grid", description: "Posts in this category", defaultSelected: true },
-      { id: "related_categories", name: "Related Categories", description: "Cross-links", defaultSelected: false },
+      { id: "related_categories", name: "Related Categories", description: "Cross-links", defaultSelected: true },
     ],
   },
   {
@@ -73,11 +83,11 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
     sections: [
       { id: "article_hero", name: "Article Hero", description: "Title, byline, featured image", defaultSelected: true },
       { id: "article_body", name: "Article Body", description: "Main content + TOC", defaultSelected: true },
-      { id: "shop_the_look", name: "Shop the Look", description: "Affiliate product tiles", defaultSelected: false },
+      { id: "shop_the_look", name: "Shop the Look", description: "Affiliate product tiles", defaultSelected: true },
       { id: "author_box", name: "Author Box", description: "E-E-A-T author bio", defaultSelected: true },
       { id: "related_posts", name: "Related Posts", description: "Internal links", defaultSelected: true },
       { id: "pin_cta", name: "Pin / Save CTA", description: "Pinterest save prompt", defaultSelected: true },
-      { id: "faq", name: "FAQ Schema", description: "Article FAQs", defaultSelected: false },
+      { id: "faq", name: "FAQ Schema", description: "Article FAQs", defaultSelected: true },
     ],
   },
   {
@@ -90,7 +100,7 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
       { id: "brand_story", name: "Brand Story", description: "Mission / voice", defaultSelected: true },
       { id: "brand_voice", name: "Brand Voice", description: "Do / don’t writing guide", defaultSelected: true },
       { id: "authors", name: "Team / Authors", description: "Author profiles", defaultSelected: true },
-      { id: "about_cta", name: "CTA", description: "Contact / subscribe", defaultSelected: false },
+      { id: "about_cta", name: "CTA", description: "Contact / subscribe", defaultSelected: true },
     ],
   },
   {
@@ -108,7 +118,7 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
     id: "author",
     name: "Author Profile",
     description: "Per-author E-E-A-T page",
-    defaultSelected: false,
+    defaultSelected: true,
     templateOnly: true,
     sections: [
       { id: "author_hero", name: "Author Hero", description: "Profile header", defaultSelected: true },

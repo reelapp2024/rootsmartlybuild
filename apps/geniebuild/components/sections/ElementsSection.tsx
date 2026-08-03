@@ -1038,7 +1038,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
   };
 
   const renderElement = (el: WebsiteElement) => {
-    const { id, type, content, style } = el;
+    const { id, content, style } = el;
+    // Normalize so aliases like `navigation` (content-site chrome) always match.
+    const type = String(el.type || '').toLowerCase().trim();
     const bindHtml = (elementId: string, html: string) => (node: HTMLElement | null) =>
       bindEditableHtml(node, elementId, html);
     const editHandlers = (
@@ -1053,7 +1055,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
 
     // STEP 1: Merge Global Element Defaults with Element's specific style
     const renderStyle = {
-      ...(ELEMENT_DEFAULTS[el.type] || {}),
+      ...(ELEMENT_DEFAULTS[type === 'navigation' ? 'nav-menu' : type] || ELEMENT_DEFAULTS[el.type] || {}),
       ...(el.style || {})
     };
 
@@ -5460,7 +5462,10 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             );
         }
 
+        case 'navigation':
         case 'nav-menu': {
+            // `navigation` is a content-site alias of `nav-menu` (HeaderFunky / FooterFunky).
+            // Normalize href → link so both shapes render.
             // Single editable navigation menu element. Holds an array of items:
             //   {
             //     label, link, icon?, linkNewTab?, active?,
@@ -5472,9 +5477,14 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             // Visual options:
             //   • orientation, alignment, indicator, mobileBreakpoint
             //   • hover/active colors, item gap, padding, font, weight
-            const items: Array<any> = Array.isArray((content as any).items)
+            const rawItems: Array<any> = Array.isArray((content as any).items)
                 ? (content as any).items
                 : [];
+            const items: Array<any> = rawItems.map((item) => ({
+                ...item,
+                label: item?.label || item?.name || 'Link',
+                link: item?.link || item?.href || item?.url || '#',
+            }));
 
             // Builder-only MOCK for `selectSource` when navSources are empty.
             // Live/published (readOnly) must never show Austin/Dallas-style placeholders.
@@ -6655,6 +6665,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
       'image',
       'feature-box',
       'nav-menu',
+      'navigation',
     ]);
     if (alwaysSelf.has(el.type)) return node;
 

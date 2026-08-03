@@ -85,6 +85,10 @@ router.post("/pinterest/v2/createContentWebsite", authentication, PinterestContr
 router.post("/pinterest/v2/bootstrapContentPages", authentication, PinterestControllerV2.bootstrapContentPages);
 router.post("/pinterest/v2/analyzeNiche", authentication, PinterestControllerV2.analyzeNiche);
 router.post("/pinterest/v2/generateWebsiteBlueprint", authentication, PinterestControllerV2.generateWebsiteBlueprint);
+router.post("/pinterest/v2/runKeywordEngine", authentication, PinterestControllerV2.runKeywordEngine);
+router.post("/pinterest/v2/listProjectKeywords", authentication, PinterestControllerV2.listProjectKeywords);
+router.post("/pinterest/v2/runContentClusters", authentication, PinterestControllerV2.runContentClusters);
+router.post("/pinterest/v2/listProjectClusters", authentication, PinterestControllerV2.listProjectClusters);
 
 router.post("/addBulkCategoriesWithSubs", CategoriesController.addBulkCategoriesWithSubs);
 

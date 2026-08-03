@@ -24,8 +24,10 @@ import {
   Layout,
   LayoutGrid,
   Loader2,
+  Network,
   Palette,
   RefreshCw,
+  Search,
   Sparkles,
   Target,
   Users,
@@ -41,7 +43,7 @@ import {
   type ContentSectionOption,
 } from "./contentWebsiteSteps/contentWebsiteConfig";
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 9;
 
 const QUICK_COUNTRY_NAMES = ["United States", "Canada", "United Kingdom", "Australia"];
 
@@ -218,26 +220,165 @@ type WebsiteBlueprint = {
   }>;
 };
 
+type KeywordRow = {
+  keyword?: string;
+  volume?: string | null;
+  volumeLevel?: string | null;
+  volumeRange?: string | null;
+  searchVolume?: number | null;
+  trend?: string | null;
+  trendDirection?: string | null;
+  rising?: boolean;
+  pinterest?: string | null;
+  pinterestLevel?: string | null;
+  pinterestScore?: number | null;
+  competition?: string | null;
+  seasonality?: string | null;
+  source?: string | null;
+  bucket?: string | null;
+};
+
+type SearchIntent = {
+  primaryKeyword?: string;
+  relatedKeywords?: string[];
+  secondaryKeywords?: string[];
+  faqKeywords?: string[];
+  pinterestKeywords?: string[];
+  seasonalKeywords?: string[];
+  keywordType?: string;
+  searchIntentSlug?: string;
+  intentId?: string;
+  intentLabel?: string;
+  volume?: string | null;
+  volumeLevel?: string | null;
+  volumeRange?: string | null;
+  trend?: string | null;
+  trendDirection?: string | null;
+  pinterest?: string | null;
+  pinterestLevel?: string | null;
+  pinterestDemand?: string | null;
+  competition?: string | null;
+  seasonality?: string | null;
+  primaryData?: KeywordRow;
+};
+
+type KeywordDataset = {
+  nicheName?: string;
+  categoryName?: string;
+  generatedAt?: string;
+  /** Research view (UI only) */
+  mainKeywords?: KeywordRow[];
+  longTailKeywords?: KeywordRow[];
+  questionKeywords?: KeywordRow[];
+  pinterestKeywords?: KeywordRow[];
+  seasonalKeywords?: KeywordRow[];
+  /** Master Keyword Database */
+  searchIntents?: SearchIntent[];
+  mergedKeywords?: SearchIntent[];
+  intents?: SearchIntent[];
+  primaryKeywords?: string[];
+  rawKeywordsFound?: number;
+  uniqueSearchIntents?: number;
+  duplicatesMerged?: number;
+  totalKeywords?: number;
+  seed?: {
+    keyword?: string;
+    volumeLevel?: string;
+    volumeRange?: string;
+    competition?: string;
+    mode?: string;
+  };
+  buckets?: {
+    mainKeywords?: KeywordRow[];
+    longTailKeywords?: KeywordRow[];
+    questionKeywords?: KeywordRow[];
+    pinterestKeywords?: KeywordRow[];
+    seasonalKeywords?: KeywordRow[];
+  };
+  stats?: {
+    rawKeywordsFound?: number;
+    uniqueSearchIntents?: number;
+    duplicatesMerged?: number;
+    totalKeywords?: number;
+    intentCount?: number;
+    primaryArticleCount?: number;
+    enrichedDeepCount?: number;
+    enrichedBatchCount?: number;
+    persisted?: number;
+    elapsedMs?: number;
+  };
+};
+
+type ClusterInternalLink = {
+  from?: string;
+  to?: string;
+  relation?: string;
+};
+
+type ClusterSupporting = {
+  primaryKeyword?: string;
+};
+
+type ContentCluster = {
+  clusterName?: string;
+  clusterSlug?: string;
+  pillarKeyword?: string;
+  supportingKeywords?: Array<string | ClusterSupporting>;
+  publishOrder?: string[];
+  internalLinks?: ClusterInternalLink[];
+  approved?: boolean;
+};
+
+type ClusterDataset = {
+  clusters?: ContentCluster[];
+  unassigned?: string[];
+  nicheName?: string;
+  categoryName?: string;
+  generatedAt?: string;
+  stats?: {
+    intentCount?: number;
+    clusterCount?: number;
+    assigned?: number;
+    unassigned?: number;
+    elapsedMs?: number;
+  };
+};
+
 const STEP_META = [
-  { title: "Choose Goal", icon: Target, hint: "Wizard 1/7 · What is this project for?" },
-  { title: "Country", icon: Globe, hint: "Wizard 2/7 · Primary market" },
-  { title: "Language", icon: Languages, hint: "Wizard 3/7 · Site language" },
-  { title: "Category", icon: LayoutGrid, hint: "Wizard 4/7 · Content category" },
-  { title: "Niche", icon: Sparkles, hint: "Wizard 5/7 · Focus niche" },
-  { title: "Niche Analysis", icon: BarChart3, hint: "Wizard 6/7 · Demand & opportunity signals" },
-  { title: "Website Blueprint", icon: Palette, hint: "Wizard 7/7 · Pages, brand, Approve → create" },
+  { title: "Choose Goal", icon: Target, hint: "Wizard 1/9 · What is this project for?" },
+  { title: "Country", icon: Globe, hint: "Wizard 2/9 · Primary market" },
+  { title: "Language", icon: Languages, hint: "Wizard 3/9 · Site language" },
+  { title: "Category", icon: LayoutGrid, hint: "Wizard 4/9 · Content category" },
+  { title: "Niche", icon: Sparkles, hint: "Wizard 5/9 · Focus niche" },
+  { title: "Niche Validation", icon: BarChart3, hint: "Wizard 6/9 · Is this niche worth building?" },
+  { title: "Website Blueprint", icon: Palette, hint: "Wizard 7/9 · Pages, brand, approve" },
+  { title: "Keyword Engine", icon: Search, hint: "Wizard 8/9 · Master keyword DB for Content Clusters" },
+  { title: "Content Clusters", icon: Network, hint: "Wizard 9/9 · Silo map · pillar + supporting · approve" },
 ] as const;
 
 const ANALYSIS_CARDS: Array<{ key: keyof NonNullable<NicheAnalysisResult["analysis"]>; label: string }> = [
-  { key: "searches", label: "Search demand" },
-  { key: "competition", label: "Competition" },
-  { key: "pinterestPotential", label: "Pinterest potential" },
-  { key: "affiliatePotential", label: "Affiliate potential" },
-  { key: "adsPotential", label: "Ads potential" },
-  { key: "digitalProductPotential", label: "Digital products" },
-  { key: "difficulty", label: "Difficulty" },
+  { key: "searches", label: "Search Demand" },
+  { key: "competition", label: "Competition (AI Estimate)" },
+  { key: "pinterestPotential", label: "Pinterest Potential" },
+  { key: "affiliatePotential", label: "Affiliate Potential" },
+  { key: "adsPotential", label: "Ads Potential" },
+  { key: "digitalProductPotential", label: "Digital Product Potential" },
   { key: "seasonality", label: "Seasonality" },
 ];
+
+function recommendationFromVerdict(verdict?: string): { label: string; className: string } {
+  const v = String(verdict || "").toLowerCase();
+  if (v.includes("avoid")) {
+    return { label: "Avoid", className: "bg-red-100 text-red-800 border-red-200" };
+  }
+  if (v.includes("caution") || v.includes("maybe") || v.includes("weak")) {
+    return { label: "Caution", className: "bg-amber-100 text-amber-900 border-amber-200" };
+  }
+  if (v.includes("go") || v.includes("recommend") || v.includes("strong") || v.includes("worth")) {
+    return { label: "Recommended", className: "bg-emerald-100 text-emerald-800 border-emerald-200" };
+  }
+  return { label: "Caution", className: "bg-slate-100 text-slate-800 border-slate-200" };
+}
 
 function levelBadgeClass(level?: string) {
   const l = String(level || "").toLowerCase();
@@ -275,6 +416,13 @@ export function ContentWebsiteCreate() {
 
   const [nicheAnalysis, setNicheAnalysis] = useState<NicheAnalysisResult | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+
+  const [keywordDataset, setKeywordDataset] = useState<KeywordDataset | null>(null);
+  const [keywordLoading, setKeywordLoading] = useState(false);
+
+  const [clusterDataset, setClusterDataset] = useState<ClusterDataset | null>(null);
+  const [clusterLoading, setClusterLoading] = useState(false);
+  const [clustersApproved, setClustersApproved] = useState(false);
 
   const [selectedPages, setSelectedPages] = useState<ContentPageOption[]>(() =>
     buildDefaultSelectedPages()
@@ -517,10 +665,8 @@ export function ContentWebsiteCreate() {
         console.groupEnd();
       }
       toast({
-        title: "Analysis ready",
-        description: data?.sourcesUsed
-          ? `Pin: ${data.sourcesUsed.pinterest} · Amazon: ${data.sourcesUsed.amazon}`
-          : "Review signals, then continue to Blueprint.",
+        title: "Validation ready",
+        description: "Review scores and recommendation, then continue to Blueprint.",
       });
     } catch (err: any) {
       toast({
@@ -579,7 +725,7 @@ export function ContentWebsiteCreate() {
       if (bp?.websiteName && !projectName.trim()) {
         setProjectName(bp.websiteName);
       }
-      toast({ title: "Blueprint ready", description: "Review and approve to create the website." });
+      toast({ title: "Blueprint ready", description: "Approve, then continue to Keyword Engine." });
     } catch (err: any) {
       toast({
         title: "Error",
@@ -591,8 +737,70 @@ export function ContentWebsiteCreate() {
     }
   };
 
+  const runKeywordPlanner = async () => {
+    if (!selectedGoal || !selectedCountry || !selectedLanguage || !selectedCategoryId || !selectedNicheId) {
+      return;
+    }
+    setKeywordLoading(true);
+    try {
+      // Keyword engine enriches many terms (Ads/Trends/Pinterest/AI) — often 45–120s.
+      // Default http timeout is 30s and aborts while backend keeps running.
+      const res = await http.post(
+        "/pinterest/v2/runKeywordEngine",
+        {
+          contentGoal: selectedGoal,
+          country: selectedCountry.name,
+          language: selectedLanguage,
+          categoryId: selectedCategoryId,
+          nicheId: selectedNicheId,
+        },
+        {
+          headers: { Authorization: `Bearer ${token()}` },
+          timeout: 240000,
+        }
+      );
+      const data = (res.data?.data || null) as KeywordDataset | null;
+      const intents =
+        data?.searchIntents?.length ||
+        data?.mergedKeywords?.length ||
+        data?.intents?.length ||
+        data?.uniqueSearchIntents ||
+        0;
+      const raw =
+        data?.rawKeywordsFound ?? data?.totalKeywords ?? data?.stats?.rawKeywordsFound ?? 0;
+      if (!data || !intents) {
+        throw new Error("Keyword engine returned an empty master database");
+      }
+      setKeywordDataset(data);
+      setClusterDataset(null);
+      setClustersApproved(false);
+      toast({
+        title: "Master keyword database ready",
+        description: `${raw} raw · ${
+          data.uniqueSearchIntents || intents
+        } unique intents · ${data.duplicatesMerged ?? data.stats?.duplicatesMerged ?? 0} duplicates merged`,
+      });
+    } catch (err: any) {
+      const timedOut =
+        err?.code === "ECONNABORTED" ||
+        /timeout/i.test(String(err?.message || ""));
+      toast({
+        title: "Error",
+        description: timedOut
+          ? "Keyword Engine timed out. Try again — building the master DB can take 2–4 minutes."
+          : err?.response?.data?.message || err?.message || "Failed to run keyword engine",
+        variant: "destructive",
+      });
+    } finally {
+      setKeywordLoading(false);
+    }
+  };
+
   useEffect(() => {
     setNicheAnalysis(null);
+    setKeywordDataset(null);
+    setClusterDataset(null);
+    setClustersApproved(false);
     setBlueprint(null);
     setBlueprintApproved(false);
   }, [selectedCategoryId, selectedNicheId, selectedGoal, selectedLanguage, selectedCountry?.countryId]);
@@ -611,6 +819,179 @@ export function ContentWebsiteCreate() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
+  useEffect(() => {
+    if (step === 8 && blueprintApproved && !keywordDataset && !keywordLoading) {
+      runKeywordPlanner();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  useEffect(() => {
+    if (step === 9 && keywordDataset && !clusterDataset && !clusterLoading) {
+      runContentClusters();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  const supportingPhrase = (s: string | ClusterSupporting) =>
+    typeof s === "string" ? s : String(s?.primaryKeyword || "").trim();
+
+  const rebuildClusterLinks = (pillar: string, supporting: string[]): ClusterInternalLink[] => {
+    const links: ClusterInternalLink[] = [];
+    for (const s of supporting) {
+      links.push({ from: pillar, to: s, relation: "pillar_to_supporting" });
+      links.push({ from: s, to: pillar, relation: "supporting_to_pillar" });
+    }
+    for (let i = 0; i < supporting.length - 1; i += 1) {
+      links.push({
+        from: supporting[i],
+        to: supporting[i + 1],
+        relation: "supporting_to_supporting",
+      });
+    }
+    return links;
+  };
+
+  const patchClusterDataset = (updater: (prev: ClusterDataset) => ClusterDataset) => {
+    setClustersApproved(false);
+    setClusterDataset((prev) => (prev ? updater(prev) : prev));
+  };
+
+  const renameCluster = (index: number, name: string) => {
+    patchClusterDataset((prev) => {
+      const clusters = [...(prev.clusters || [])];
+      if (!clusters[index]) return prev;
+      clusters[index] = { ...clusters[index], clusterName: name };
+      return { ...prev, clusters };
+    });
+  };
+
+  const makePillar = (clusterIndex: number, newPillar: string) => {
+    patchClusterDataset((prev) => {
+      const clusters = [...(prev.clusters || [])];
+      const cluster = clusters[clusterIndex];
+      if (!cluster) return prev;
+      const oldPillar = cluster.pillarKeyword || "";
+      const supporting = (cluster.supportingKeywords || [])
+        .map(supportingPhrase)
+        .filter((p) => p && p !== newPillar);
+      if (oldPillar && oldPillar !== newPillar) supporting.unshift(oldPillar);
+      const nextSupporting = supporting.map((primaryKeyword) => ({ primaryKeyword }));
+      clusters[clusterIndex] = {
+        ...cluster,
+        pillarKeyword: newPillar,
+        supportingKeywords: nextSupporting,
+        publishOrder: [newPillar, ...supporting],
+        internalLinks: rebuildClusterLinks(newPillar, supporting),
+      };
+      return { ...prev, clusters };
+    });
+  };
+
+  const removeSupporting = (clusterIndex: number, phrase: string) => {
+    patchClusterDataset((prev) => {
+      const clusters = [...(prev.clusters || [])];
+      const cluster = clusters[clusterIndex];
+      if (!cluster) return prev;
+      const supporting = (cluster.supportingKeywords || [])
+        .map(supportingPhrase)
+        .filter((p) => p && p !== phrase);
+      const pillar = cluster.pillarKeyword || "";
+      clusters[clusterIndex] = {
+        ...cluster,
+        supportingKeywords: supporting.map((primaryKeyword) => ({ primaryKeyword })),
+        publishOrder: [pillar, ...supporting].filter(Boolean),
+        internalLinks: rebuildClusterLinks(pillar, supporting),
+      };
+      const unassigned = [...(prev.unassigned || [])];
+      if (phrase && !unassigned.includes(phrase)) unassigned.push(phrase);
+      return {
+        ...prev,
+        clusters,
+        unassigned,
+        stats: {
+          ...prev.stats,
+          assigned: (prev.stats?.assigned || 1) - 1,
+          unassigned: unassigned.length,
+          clusterCount: clusters.length,
+        },
+      };
+    });
+  };
+
+  const assignUnassignedToCluster = (clusterIndex: number, phrase: string) => {
+    patchClusterDataset((prev) => {
+      const clusters = [...(prev.clusters || [])];
+      const cluster = clusters[clusterIndex];
+      if (!cluster || !phrase) return prev;
+      const supporting = (cluster.supportingKeywords || []).map(supportingPhrase);
+      if (supporting.includes(phrase) || cluster.pillarKeyword === phrase) return prev;
+      supporting.push(phrase);
+      const pillar = cluster.pillarKeyword || "";
+      clusters[clusterIndex] = {
+        ...cluster,
+        supportingKeywords: supporting.map((primaryKeyword) => ({ primaryKeyword })),
+        publishOrder: [pillar, ...supporting].filter(Boolean),
+        internalLinks: rebuildClusterLinks(pillar, supporting),
+      };
+      const unassigned = (prev.unassigned || []).filter((u) => u !== phrase);
+      return {
+        ...prev,
+        clusters,
+        unassigned,
+        stats: {
+          ...prev.stats,
+          assigned: (prev.stats?.assigned || 0) + 1,
+          unassigned: unassigned.length,
+          clusterCount: clusters.length,
+        },
+      };
+    });
+  };
+
+  const runContentClusters = async () => {
+    if (!keywordDataset) return;
+    setClusterLoading(true);
+    setClustersApproved(false);
+    try {
+      const res = await http.post(
+        "/pinterest/v2/runContentClusters",
+        {
+          contentGoal: selectedGoal,
+          country: selectedCountry?.name,
+          language: selectedLanguage,
+          categoryId: selectedCategoryId,
+          nicheId: selectedNicheId,
+          keywordDataset,
+        },
+        {
+          headers: { Authorization: `Bearer ${token()}` },
+          timeout: 120000,
+        }
+      );
+      const data = (res.data?.data || null) as ClusterDataset | null;
+      if (!data?.clusters?.length) {
+        throw new Error("Content Cluster engine returned no silos");
+      }
+      setClusterDataset(data);
+      toast({
+        title: "Content clusters ready",
+        description: `${data.stats?.clusterCount || data.clusters.length} silos · ${
+          data.stats?.assigned || 0
+        } assigned · ${data.stats?.unassigned || data.unassigned?.length || 0} unassigned`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description:
+          err?.response?.data?.message || err?.message || "Failed to generate content clusters",
+        variant: "destructive",
+      });
+    } finally {
+      setClusterLoading(false);
+    }
+  };
+
   const canContinue = () => {
     if (step === 1) return !!selectedGoal;
     if (step === 2) return !!selectedCountry;
@@ -625,6 +1006,23 @@ export function ContentWebsiteCreate() {
         blueprintApproved &&
         !blueprintLoading
       );
+    if (step === 8) {
+      const intents =
+        keywordDataset?.searchIntents?.length ||
+        keywordDataset?.mergedKeywords?.length ||
+        keywordDataset?.intents?.length ||
+        keywordDataset?.uniqueSearchIntents ||
+        0;
+      return !!keywordDataset && intents > 0 && !keywordLoading;
+    }
+    if (step === 9) {
+      return (
+        !!clusterDataset &&
+        (clusterDataset.clusters?.length || 0) > 0 &&
+        clustersApproved &&
+        !clusterLoading
+      );
+    }
     return false;
   };
 
@@ -636,6 +1034,22 @@ export function ContentWebsiteCreate() {
       toast({
         title: "Blueprint required",
         description: "Generate and approve the website blueprint first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!keywordDataset) {
+      toast({
+        title: "Keyword plan required",
+        description: "Run Keyword Engine before creating the website.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!clusterDataset?.clusters?.length || !clustersApproved) {
+      toast({
+        title: "Content clusters required",
+        description: "Generate and approve Content Clusters before creating the website.",
         variant: "destructive",
       });
       return;
@@ -669,6 +1083,10 @@ export function ContentWebsiteCreate() {
           categoryId: selectedCategoryId,
           nicheId: selectedNicheId,
           nicheAnalysis: nicheAnalysis || undefined,
+          keywordDataset: keywordDataset || undefined,
+          clusterDataset: clusterDataset || undefined,
+          contentClusters: clusterDataset || undefined,
+          clustersApproved: true,
           selectedPages: selectedPagesPayload,
           blueprint: {
             ...blueprint,
@@ -767,7 +1185,7 @@ export function ContentWebsiteCreate() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Create Content Website</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Goal → Country → Language → Category → Niche → Analysis → Blueprint (Approve creates the site).
+          Goal → Country → Language → Category → Niche → Validation → Blueprint → Keyword Engine → Content Clusters → Create.
         </p>
       </div>
 
@@ -1093,7 +1511,7 @@ export function ContentWebsiteCreate() {
               {analysisLoading && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-10 justify-center">
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  Analyzing niche demand (Ads / OpenAI + Trends)…
+                  Validating niche opportunity…
                 </div>
               )}
 
@@ -1102,22 +1520,21 @@ export function ContentWebsiteCreate() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline">
-                        Score {analysis?.overallScore ?? "—"}/100
+                        Overall Score {analysis?.overallScore ?? "—"}/100
                       </Badge>
-                      <Badge variant="secondary">
-                        Ads: {nicheAnalysis.signals?.ads?.mode || "—"} (
-                        {nicheAnalysis.labels?.volume || "estimate"})
-                      </Badge>
-                      <Badge variant="secondary">
-                        Trends: {nicheAnalysis.signals?.trends?.mode || "—"}
-                      </Badge>
-                      {nicheAnalysis.sourcesUsed && (
-                        <Badge variant="outline" className="max-w-full whitespace-normal text-left">
-                          Using: {nicheAnalysis.sourcesUsed.volume} ·{" "}
-                          {nicheAnalysis.sourcesUsed.trends} · {nicheAnalysis.sourcesUsed.pinterest} ·{" "}
-                          {nicheAnalysis.sourcesUsed.amazon} · {nicheAnalysis.sourcesUsed.scoring}
-                        </Badge>
-                      )}
+                      {(() => {
+                        const rec = recommendationFromVerdict(analysis?.verdict);
+                        return (
+                          <span
+                            className={cn(
+                              "text-xs px-2.5 py-1 rounded-full border font-semibold",
+                              rec.className
+                            )}
+                          >
+                            Recommendation: {rec.label}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <Button
                       type="button"
@@ -1127,135 +1544,24 @@ export function ContentWebsiteCreate() {
                       disabled={analysisLoading}
                     >
                       <RefreshCw className="h-4 w-4 mr-1" />
-                      Re-analyze
+                      Re-validate
                     </Button>
                   </div>
 
-                  <div className="rounded-xl border p-4 bg-muted/20">
-                    <p className="text-sm font-medium mb-1">
+                  <div className="rounded-xl border p-4 bg-muted/20 space-y-2">
+                    <p className="text-sm font-medium">
                       {selectedNiche?.nicheName} · {selectedCategory?.categoryName}
                     </p>
                     <p className="text-sm text-muted-foreground">{analysis?.verdict || "—"}</p>
-                    {(adsPrimary || trendSummary) && (
-                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                        {adsPrimary && (
-                          <span>
-                            Volume: {adsPrimary.volumeLevel} ({adsPrimary.volumeRange}) · Competition:{" "}
-                            {adsPrimary.competition}
-                          </span>
-                        )}
-                        {trendSummary && (
-                          <span>
-                            Trend: {trendSummary.trendDirection || "—"} · Seasonality:{" "}
-                            {trendSummary.seasonality || "—"}
-                            {trendSummary.rising ? " · Rising" : ""}
-                            {typeof trendSummary.averageInterest === "number"
-                              ? ` · Interest ${trendSummary.averageInterest}`
-                              : ""}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {nicheAnalysis.score && (
-                      <div className="mt-3 rounded-lg border bg-background/80 p-3 space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                          <span className="font-medium text-foreground">
-                            Score engine · {nicheAnalysis.score.method || "—"}
-                          </span>
-                          <span className="text-muted-foreground">
-                            Signal {nicheAnalysis.score.signalScore ?? "—"}
-                            {nicheAnalysis.score.aiScore != null && nicheAnalysis.score.aiScore !== 0
-                              ? ` + AI ${nicheAnalysis.score.aiScore}`
-                              : " (AI score ignored if 0)"}
-                            {" → "}
-                            <strong className="text-foreground">{nicheAnalysis.score.overall}</strong>
-                          </span>
-                        </div>
-                        {nicheAnalysis.score.breakdown && (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                            {Object.entries(nicheAnalysis.score.breakdown).map(([key, row]) => (
-                              <div
-                                key={key}
-                                className="rounded border px-2 py-1.5 text-[11px] bg-muted/40"
-                              >
-                                <div className="flex justify-between gap-1 font-medium capitalize">
-                                  <span>{key.replace(/([A-Z])/g, " $1")}</span>
-                                  <span>
-                                    {row.points}/{row.max}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {nicheAnalysis.score.note && (
-                          <p className="text-[11px] text-muted-foreground">{nicheAnalysis.score.note}</p>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-lg border p-3 space-y-1.5 text-sm">
-                        <p className="font-medium">
-                          Pinterest{" "}
-                          <Badge variant="outline" className="ml-1 text-[10px]">
-                            {nicheAnalysis.signals?.pinterest?.mode || "—"}
-                          </Badge>
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Score {nicheAnalysis.signals?.pinterest?.score ?? "—"} ·{" "}
-                          {nicheAnalysis.signals?.pinterest?.level || "—"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {nicheAnalysis.signals?.pinterest?.summary ||
-                            nicheAnalysis.signals?.pinterest?.note ||
-                            "—"}
-                        </p>
-                        {!!nicheAnalysis.signals?.pinterest?.pinAngles?.length && (
-                          <div className="flex flex-wrap gap-1 pt-1">
-                            {nicheAnalysis.signals.pinterest.pinAngles.map((a) => (
-                              <Badge key={a} variant="secondary" className="text-[10px]">
-                                {a}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="rounded-lg border p-3 space-y-1.5 text-sm">
-                        <p className="font-medium">
-                          Amazon{" "}
-                          <Badge variant="outline" className="ml-1 text-[10px]">
-                            {nicheAnalysis.signals?.amazon?.mode || "—"}
-                          </Badge>
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Score {nicheAnalysis.signals?.amazon?.score ?? "—"} ·{" "}
-                          {nicheAnalysis.signals?.amazon?.level || "—"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {nicheAnalysis.signals?.amazon?.summary ||
-                            nicheAnalysis.signals?.amazon?.note ||
-                            "—"}
-                        </p>
-                        {!!nicheAnalysis.signals?.amazon?.suggestions?.length && (
-                          <div className="flex flex-wrap gap-1 pt-1">
-                            {nicheAnalysis.signals.amazon.suggestions.slice(0, 6).map((s) => (
-                              <Badge key={s} variant="outline" className="text-[10px]">
-                                {s}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Validation only — keyword research runs in Keyword Engine after Blueprint.
+                    </p>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     {ANALYSIS_CARDS.map(({ key, label }) => {
                       const card = analysis?.[key] as AnalysisLevel | undefined;
-                      if (!card || typeof card !== "object" || !("level" in card || "summary" in card)) {
-                        return null;
-                      }
+                      if (!card || typeof card !== "object") return null;
                       return (
                         <div key={key} className="rounded-lg border p-3 space-y-1.5">
                           <div className="flex items-center justify-between gap-2">
@@ -1274,42 +1580,14 @@ export function ContentWebsiteCreate() {
                       );
                     })}
                   </div>
-
-                  {!!analysis?.recommendedNextSteps?.length && (
-                    <div className="rounded-lg border p-3">
-                      <p className="text-sm font-medium mb-2">Recommended next steps</p>
-                      <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-                        {analysis.recommendedNextSteps.map((s) => (
-                          <li key={s}>{s}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {!!nicheAnalysis.signals?.ads?.related?.length && (
-                    <div className="rounded-lg border p-3">
-                      <p className="text-sm font-medium mb-2">Related keywords</p>
-                      <div className="flex flex-wrap gap-1">
-                        {nicheAnalysis.signals.ads.related.map((r, i) => (
-                          <Badge key={`${r.keyword}-${i}`} variant="outline">
-                            {r.keyword}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {nicheAnalysis.labels?.note && (
-                    <p className="text-xs text-muted-foreground">{nicheAnalysis.labels.note}</p>
-                  )}
                 </>
               )}
 
               {!analysisLoading && !nicheAnalysis && (
                 <div className="text-center py-8 space-y-3">
-                  <p className="text-sm text-muted-foreground">No analysis yet.</p>
+                  <p className="text-sm text-muted-foreground">No validation yet.</p>
                   <Button type="button" onClick={runNicheAnalysis}>
-                    Run niche analysis
+                    Run niche validation
                   </Button>
                 </div>
               )}
@@ -1326,8 +1604,17 @@ export function ContentWebsiteCreate() {
                       Select Pages ({selectedPages.length}/{DEFAULT_CONTENT_PAGES.length})
                     </Label>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Content-site pages (Home, Blog, templates, About, legal). Header/footer are shared.
+                      Real content-site catalog (Home, Blog, Category/Article templates, About,
+                      Contact, Author, legal). Each section maps to a GenieBuild Funky component.
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Badge variant="secondary" className="text-[10px]">
+                        Header · HeaderFunky (auto)
+                      </Badge>
+                      <Badge variant="secondary" className="text-[10px]">
+                        Footer · FooterFunky (auto)
+                      </Badge>
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -1646,7 +1933,7 @@ export function ContentWebsiteCreate() {
                     </Button>
                     {!blueprintApproved && (
                       <p className="text-xs text-muted-foreground self-center">
-                        Approve to enable Create website
+                        Approve, then continue to Keyword Engine
                       </p>
                     )}
                   </div>
@@ -1665,13 +1952,473 @@ export function ContentWebsiteCreate() {
               )}
             </div>
           )}
+
+          {step === 8 && (
+            <div className="space-y-4">
+              {keywordLoading && (
+                <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground py-10 justify-center">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Building Master Keyword Database…
+                  </div>
+                  <p className="text-xs text-center max-w-md">
+                    Research buckets → enrich metadata → normalize into unique search intents
+                    (questions & Pinterest tags attach to parents; one primary = one future article).
+                    Often 1–3 minutes.
+                  </p>
+                </div>
+              )}
+
+              {!keywordLoading && keywordDataset && (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">
+                        Raw Keywords Found:{" "}
+                        {keywordDataset.rawKeywordsFound ??
+                          keywordDataset.stats?.rawKeywordsFound ??
+                          keywordDataset.totalKeywords ??
+                          0}
+                      </Badge>
+                      <Badge variant="secondary">
+                        Unique Search Intents:{" "}
+                        {keywordDataset.uniqueSearchIntents ??
+                          keywordDataset.stats?.uniqueSearchIntents ??
+                          keywordDataset.searchIntents?.length ??
+                          keywordDataset.mergedKeywords?.length ??
+                          0}
+                      </Badge>
+                      <Badge variant="outline">
+                        Duplicates Merged:{" "}
+                        {keywordDataset.duplicatesMerged ??
+                          keywordDataset.stats?.duplicatesMerged ??
+                          0}
+                      </Badge>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={runKeywordPlanner}
+                      disabled={keywordLoading}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-1" />
+                      Re-run engine
+                    </Button>
+                  </div>
+
+                  <div className="rounded-xl border p-4 bg-muted/20 text-sm space-y-1">
+                    <p className="font-medium">
+                      {keywordDataset.nicheName} · {keywordDataset.categoryName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Source of truth = unique search intents. Content Clusters will read{" "}
+                      <span className="font-medium text-foreground">primary keywords only</span>.
+                      FAQs / Pinterest tags / related stay attached as metadata — not separate articles.
+                      Saved to ProjectKeywords on Create.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold">Normalized search intents</p>
+                    <div className="max-h-[28rem] overflow-y-auto rounded-lg border">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/50 sticky top-0">
+                          <tr className="text-left">
+                            <th className="p-2 font-medium">Primary</th>
+                            <th className="p-2 font-medium">Related</th>
+                            <th className="p-2 font-medium">FAQs</th>
+                            <th className="p-2 font-medium">Pinterest tags</th>
+                            <th className="p-2 font-medium">Seasonal</th>
+                            <th className="p-2 font-medium">Type</th>
+                            <th className="p-2 font-medium">Vol</th>
+                            <th className="p-2 font-medium">Trend</th>
+                            <th className="p-2 font-medium">Pin</th>
+                            <th className="p-2 font-medium">Comp</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {(
+                            keywordDataset.searchIntents ||
+                            keywordDataset.mergedKeywords ||
+                            keywordDataset.intents ||
+                            []
+                          ).map((intent) => {
+                            const related =
+                              intent.relatedKeywords || intent.secondaryKeywords || [];
+                            const faqs = intent.faqKeywords || [];
+                            const pins = intent.pinterestKeywords || [];
+                            const seasonal = intent.seasonalKeywords || [];
+                            const vol =
+                              intent.volume ||
+                              intent.volumeRange ||
+                              intent.volumeLevel ||
+                              "—";
+                            const trend = intent.trend || intent.trendDirection || "—";
+                            const pinDemand =
+                              intent.pinterestDemand ||
+                              intent.pinterest ||
+                              intent.pinterestLevel ||
+                              "—";
+                            return (
+                              <tr
+                                key={intent.intentId || intent.searchIntentSlug || intent.primaryKeyword}
+                                className="align-top"
+                              >
+                                <td className="p-2 font-medium">{intent.primaryKeyword}</td>
+                                <td className="p-2 text-muted-foreground">
+                                  {related.length ? related.join(", ") : "—"}
+                                </td>
+                                <td className="p-2 text-muted-foreground">
+                                  {faqs.length ? faqs.join(", ") : "—"}
+                                </td>
+                                <td className="p-2 text-muted-foreground">
+                                  {pins.length ? pins.join(", ") : "—"}
+                                </td>
+                                <td className="p-2 text-muted-foreground">
+                                  {seasonal.length ? seasonal.join(", ") : "—"}
+                                </td>
+                                <td className="p-2 whitespace-nowrap">
+                                  {intent.keywordType || "main"}
+                                </td>
+                                <td className="p-2 whitespace-nowrap">{vol}</td>
+                                <td className="p-2 whitespace-nowrap">{trend}</td>
+                                <td className="p-2 whitespace-nowrap">{pinDemand}</td>
+                                <td className="p-2 whitespace-nowrap">
+                                  {intent.competition || "—"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    Research buckets below are for review only — they are normalized into the intents above
+                    before save.
+                  </p>
+
+                  {(
+                    [
+                      [
+                        "Main Keywords",
+                        keywordDataset.mainKeywords || keywordDataset.buckets?.mainKeywords,
+                      ],
+                      [
+                        "Long-tail Keywords",
+                        keywordDataset.longTailKeywords ||
+                          keywordDataset.buckets?.longTailKeywords,
+                      ],
+                      [
+                        "Question Keywords",
+                        keywordDataset.questionKeywords ||
+                          keywordDataset.buckets?.questionKeywords,
+                      ],
+                      [
+                        "Pinterest Keywords",
+                        keywordDataset.pinterestKeywords ||
+                          keywordDataset.buckets?.pinterestKeywords,
+                      ],
+                      [
+                        "Seasonal Keywords",
+                        keywordDataset.seasonalKeywords ||
+                          keywordDataset.buckets?.seasonalKeywords,
+                      ],
+                    ] as Array<[string, KeywordRow[] | undefined]>
+                  ).map(([label, rows]) => (
+                    <div key={label} className="rounded-lg border overflow-hidden">
+                      <div className="px-3 py-2 border-b bg-muted/30">
+                        <p className="text-sm font-medium">
+                          {label}{" "}
+                          <span className="text-muted-foreground font-normal">
+                            ({rows?.length || 0})
+                          </span>
+                        </p>
+                      </div>
+                      <div className="max-h-40 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/20 sticky top-0">
+                            <tr className="text-left">
+                              <th className="p-2 font-medium">Keyword</th>
+                              <th className="p-2 font-medium">Volume</th>
+                              <th className="p-2 font-medium">Trend</th>
+                              <th className="p-2 font-medium">Pinterest</th>
+                              <th className="p-2 font-medium">Competition</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {(rows || []).map((r) => (
+                              <tr key={`${label}-${r.keyword}`}>
+                                <td className="p-2">{r.keyword}</td>
+                                <td className="p-2 whitespace-nowrap">
+                                  {r.volume || r.volumeRange || r.volumeLevel || "—"}
+                                </td>
+                                <td className="p-2 whitespace-nowrap">
+                                  {r.trend || r.trendDirection || "—"}
+                                </td>
+                                <td className="p-2 whitespace-nowrap">
+                                  {r.pinterest || r.pinterestLevel || "—"}
+                                </td>
+                                <td className="p-2 whitespace-nowrap">{r.competition || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {!keywordLoading && !keywordDataset && (
+                <div className="text-center py-8 space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    No master keyword database yet — required before Content Clusters.
+                  </p>
+                  <Button type="button" onClick={runKeywordPlanner}>
+                    Run Keyword Engine
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 9 && (
+            <div className="space-y-4">
+              {clusterLoading && (
+                <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground py-10 justify-center">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Building content silos (pillar + supporting)…
+                  </div>
+                  <p className="text-xs text-center max-w-md">
+                    Depth over count: 1 deep pillar + few strong supporting articles per cluster,
+                    with pillar↔supporting internal links.
+                  </p>
+                </div>
+              )}
+
+              {!clusterLoading && clusterDataset && (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">
+                        Intents: {clusterDataset.stats?.intentCount ?? "—"}
+                      </Badge>
+                      <Badge variant="secondary">
+                        Clusters:{" "}
+                        {clusterDataset.stats?.clusterCount ??
+                          clusterDataset.clusters?.length ??
+                          0}
+                      </Badge>
+                      <Badge variant="outline">
+                        Assigned: {clusterDataset.stats?.assigned ?? "—"}
+                      </Badge>
+                      <Badge variant="outline">
+                        Unassigned:{" "}
+                        {clusterDataset.stats?.unassigned ??
+                          clusterDataset.unassigned?.length ??
+                          0}
+                      </Badge>
+                      {clustersApproved && (
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
+                          Approved
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={runContentClusters}
+                        disabled={clusterLoading}
+                      >
+                        <RefreshCw className="h-4 w-4 mr-1" />
+                        Re-run silos
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={clustersApproved ? "default" : "outline"}
+                        onClick={() => setClustersApproved(true)}
+                        disabled={!clusterDataset.clusters?.length}
+                      >
+                        <Check className="h-4 w-4 mr-1" />
+                        {clustersApproved ? "Approved" : "Approve clusters"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border p-4 bg-muted/20 text-sm space-y-1">
+                    <p className="font-medium">
+                      {clusterDataset.nicheName || selectedNiche?.nicheName} ·{" "}
+                      {clusterDataset.categoryName || selectedCategory?.categoryName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Website architecture for Calendar → Articles → Pinterest. Clusters use{" "}
+                      <span className="font-medium text-foreground">primary keywords only</span>.
+                      Edit freely, then approve before Create.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {(clusterDataset.clusters || []).map((cluster, ci) => {
+                      const supporting = (cluster.supportingKeywords || [])
+                        .map(supportingPhrase)
+                        .filter(Boolean);
+                      return (
+                        <div key={cluster.clusterSlug || `${cluster.clusterName}-${ci}`} className="rounded-lg border p-4 space-y-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="space-y-1 flex-1 min-w-[200px]">
+                              <Label className="text-xs text-muted-foreground">Cluster name</Label>
+                              <Input
+                                value={cluster.clusterName || ""}
+                                onChange={(e) => renameCluster(ci, e.target.value)}
+                                className="h-8"
+                              />
+                            </div>
+                            <Badge variant="secondary" className="mt-5">
+                              {1 + supporting.length} articles
+                            </Badge>
+                          </div>
+
+                          <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Pillar
+                            </p>
+                            <p className="text-sm font-medium">{cluster.pillarKeyword}</p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Supporting
+                            </p>
+                            {supporting.length === 0 && (
+                              <p className="text-xs text-muted-foreground">No supporting articles yet.</p>
+                            )}
+                            <div className="flex flex-wrap gap-2">
+                              {supporting.map((phrase) => (
+                                <div
+                                  key={phrase}
+                                  className="flex items-center gap-1 rounded-full border px-2 py-1 text-xs bg-background"
+                                >
+                                  <span>{phrase}</span>
+                                  <button
+                                    type="button"
+                                    className="underline text-muted-foreground hover:text-foreground"
+                                    onClick={() => makePillar(ci, phrase)}
+                                    title="Make pillar"
+                                  >
+                                    pillar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="text-muted-foreground hover:text-destructive"
+                                    onClick={() => removeSupporting(ci, phrase)}
+                                    title="Move to unassigned"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <p className="text-xs font-semibold text-muted-foreground mb-1">
+                                Publish order
+                              </p>
+                              <ol className="list-decimal list-inside text-xs space-y-0.5 text-muted-foreground">
+                                {(cluster.publishOrder || [cluster.pillarKeyword, ...supporting])
+                                  .filter(Boolean)
+                                  .map((p) => (
+                                    <li key={`order-${ci}-${p}`}>{p}</li>
+                                  ))}
+                              </ol>
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-muted-foreground mb-1">
+                                Internal links ({cluster.internalLinks?.length || 0})
+                              </p>
+                              <div className="max-h-28 overflow-y-auto text-[11px] text-muted-foreground space-y-0.5">
+                                {(cluster.internalLinks || []).slice(0, 12).map((link, li) => (
+                                  <div key={`${ci}-link-${li}`}>
+                                    {link.from} → {link.to}{" "}
+                                    <span className="opacity-60">({link.relation})</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {(clusterDataset.unassigned || []).length > 0 && (
+                    <div className="rounded-lg border p-4 space-y-2">
+                      <p className="text-sm font-semibold">Unassigned primaries</p>
+                      <p className="text-xs text-muted-foreground">
+                        Assign to a cluster or leave excluded from the silo map.
+                      </p>
+                      <div className="space-y-2">
+                        {(clusterDataset.unassigned || []).map((phrase) => (
+                          <div
+                            key={`un-${phrase}`}
+                            className="flex flex-wrap items-center gap-2 text-xs border rounded-md p-2"
+                          >
+                            <span className="font-medium flex-1 min-w-[140px]">{phrase}</span>
+                            {(clusterDataset.clusters || []).map((c, ci) => (
+                              <Button
+                                key={`assign-${phrase}-${ci}`}
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-[10px]"
+                                onClick={() => assignUnassignedToCluster(ci, phrase)}
+                              >
+                                → {c.clusterName || `Cluster ${ci + 1}`}
+                              </Button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!clustersApproved && (
+                    <p className="text-xs text-amber-700">
+                      Approve the silo map to enable Create website.
+                    </p>
+                  )}
+                </>
+              )}
+
+              {!clusterLoading && !clusterDataset && (
+                <div className="text-center py-8 space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    No content clusters yet — run after Keyword Engine.
+                  </p>
+                  <Button type="button" onClick={runContentClusters} disabled={!keywordDataset}>
+                    Run Content Clusters
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
         <CardFooter className="flex justify-between">
           <Button
             type="button"
             variant="outline"
             onClick={goBack}
-            disabled={step === 1 || saving || blueprintLoading || analysisLoading}
+            disabled={
+              step === 1 || saving || blueprintLoading || analysisLoading || keywordLoading || clusterLoading
+            }
           >
             <ChevronLeft className="h-4 w-4 mr-1" />
             Back
@@ -1679,7 +2426,14 @@ export function ContentWebsiteCreate() {
           <Button
             type="button"
             onClick={goNext}
-            disabled={!canContinue() || saving || blueprintLoading || analysisLoading}
+            disabled={
+              !canContinue() ||
+              saving ||
+              blueprintLoading ||
+              analysisLoading ||
+              keywordLoading ||
+              clusterLoading
+            }
           >
             {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             {step === TOTAL_STEPS ? "Create website" : "Continue"}

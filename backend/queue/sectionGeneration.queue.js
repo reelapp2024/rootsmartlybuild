@@ -591,9 +591,12 @@ const SECTION_GENERATION_QUEUE = bullQueueName("section-generation");
 
 const redisConfig = getBullRedisConfig();
 
-const ensureHeaderFooterComponents = (componentIds = []) => {
+const ensureHeaderFooterComponents = (componentIds = [], options = {}) => {
   const list = Array.isArray(componentIds) ? [...componentIds] : [];
   const normalized = list.filter(Boolean);
+  const isContentSite = Number(options.projectType) === 2;
+  const headerVariant = isContentSite ? "HeaderFunky" : "HeaderPlumbing";
+  const footerVariant = isContentSite ? "FooterFunky" : "FooterPlumbing";
 
   const isHeader = (comp) => {
     const t = String(comp?.sectionData?.type || "").toLowerCase();
@@ -608,9 +611,13 @@ const ensureHeaderFooterComponents = (componentIds = []) => {
 
   if (!headerComp) {
     headerComp = {
-      variant_uniqueId: "HeaderPlumbing",
+      variant_uniqueId: headerVariant,
       componentId: null,
-      sectionData: { type: "header", content: {}, styles: { variant: "HeaderPlumbing" } },
+      sectionData: {
+        type: "header",
+        content: {},
+        styles: { variant: headerVariant },
+      },
     };
   } else if (String(headerComp.sectionData?.type || "").toLowerCase() === "navbar") {
     headerComp = {
@@ -621,9 +628,13 @@ const ensureHeaderFooterComponents = (componentIds = []) => {
 
   if (!footerComp) {
     footerComp = {
-      variant_uniqueId: "FooterPlumbing",
+      variant_uniqueId: footerVariant,
       componentId: null,
-      sectionData: { type: "footer", content: {}, styles: { variant: "FooterPlumbing" } },
+      sectionData: {
+        type: "footer",
+        content: {},
+        styles: { variant: footerVariant },
+      },
     };
   }
 
@@ -637,8 +648,8 @@ const getPageSections = (page = {}) => {
   return [];
 };
 
-const assignPageSections = (page = {}, sections = []) => {
-  page.sections = ensureHeaderFooterComponents(sections || []);
+const assignPageSections = (page = {}, sections = [], options = {}) => {
+  page.sections = ensureHeaderFooterComponents(sections || [], options);
   if (Object.prototype.hasOwnProperty.call(page, "componentIds")) {
     delete page.componentIds;
   }
@@ -2759,8 +2770,10 @@ runSectionGenerationJob = async (job) => {
   const plannedUnits = [];
 
   if (!servicesWizardOnly) for (const page of designData.pages) {
-    const normalizedSections = ensureHeaderFooterComponents(getPageSections(page));
-    assignPageSections(page, normalizedSections);
+    const normalizedSections = ensureHeaderFooterComponents(getPageSections(page), {
+      projectType,
+    });
+    assignPageSections(page, normalizedSections, { projectType });
     const pageId =
       page?.pageId?._id?.toString() ||
       page?.pageId?.toString() ||

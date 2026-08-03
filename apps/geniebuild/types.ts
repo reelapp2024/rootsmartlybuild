@@ -50,6 +50,8 @@ export type ElementType =
   | 'pricing-item'
   | 'trust-strip'
   | 'nav-menu'
+  /** @deprecated Alias of `nav-menu` used by older content-site header/footer payloads. */
+  | 'navigation'
   // Layout helpers
   | 'divider'
   | 'spacer';

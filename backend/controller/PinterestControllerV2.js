@@ -9,6 +9,13 @@ const Users = require('../models/users');
 const Notification = require('../models/notification');
 const CONTENT_CATEGORY_SEED = require('../data/contentWebsiteCategorySeed');
 const { collectNicheSignals } = require('../nicheengines');
+const { runKeywordEngine, saveProjectKeywords } = require('../nicheengines/keywordEngine');
+const {
+  runContentClusterEngine,
+  saveProjectClusters,
+} = require('../nicheengines/contentClusterEngine');
+const ProjectKeywords = require('../models/projectKeywords');
+const ProjectClusters = require('../models/projectClusters');
 const {
   computeSignalScore,
   mergeOverallScore,
@@ -17,6 +24,7 @@ const {
 const { fetchJSONFromOpenAI } = require('../additional/openaiHelpers');
 const {
   bootstrapContentWebsitePages,
+  ensureContentChromeOnProject,
 } = require('../additional/contentWebsitePagesBootstrap');
 
 const DEFAULT_GOALS = [
@@ -1512,6 +1520,310 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
     }
   },
 
+  // ==================== KEYWORD ENGINE (after Blueprint) ====================
+
+  /**
+   * Full keyword research → Master Keyword Database (unique search intents).
+   * Research buckets remain for UI; searchIntents are the source of truth.
+   * If projectId is provided, intents are persisted to ProjectKeywords.
+   */
+  runKeywordEngine: async (req, res) => {
+    try {
+      const userId = req.user?.userId;
+      const {
+        categoryId,
+        nicheId,
+        country,
+        language,
+        categoryName: bodyCategoryName,
+        nicheName: bodyNicheName,
+        contentGoal,
+        projectId,
+      } = req.body || {};
+
+      let categoryName = bodyCategoryName ? String(bodyCategoryName).trim() : '';
+      let nicheName = bodyNicheName ? String(bodyNicheName).trim() : '';
+
+      if (categoryId) {
+        if (!mongoose.isValidObjectId(categoryId)) {
+          return helper.sendError(res, 400, 'Valid category ID is required.');
+        }
+        const category = await PinterestCategory.findById(categoryId).lean();
+        if (!category) return helper.sendError(res, 404, 'Category not found.');
+        categoryName = category.categoryName;
+      }
+
+      if (nicheId) {
+        if (!mongoose.isValidObjectId(nicheId)) {
+          return helper.sendError(res, 400, 'Valid niche ID is required.');
+        }
+        const niche = await PinterestNiche.findById(nicheId).lean();
+        if (!niche) return helper.sendError(res, 404, 'Niche not found.');
+        nicheName = niche.nicheName;
+        if (!categoryName && niche.categoryId) {
+          const cat = await PinterestCategory.findById(niche.categoryId).lean();
+          if (cat) categoryName = cat.categoryName;
+        }
+      }
+
+      if (!nicheName) {
+        return helper.sendError(res, 400, 'nicheId or nicheName is required.');
+      }
+      if (!categoryName) {
+        return helper.sendError(res, 400, 'categoryId or categoryName is required.');
+      }
+
+      let resolvedProjectId = null;
+      if (projectId) {
+        if (!mongoose.isValidObjectId(projectId)) {
+          return helper.sendError(res, 400, 'Valid projectId is required.');
+        }
+        const project = await UserProject.findById(projectId).select('_id userId projectType').lean();
+        if (!project) return helper.sendError(res, 404, 'Project not found.');
+        if (Number(project.projectType) !== 2) {
+          return helper.sendError(res, 400, 'Not a content website project.');
+        }
+        resolvedProjectId = project._id;
+      }
+
+      const dataset = await runKeywordEngine({
+        nicheName,
+        categoryName,
+        country: String(country || 'US').trim() || 'US',
+        language: String(language || 'EN').trim().toUpperCase() || 'EN',
+        contentGoal: contentGoal ? String(contentGoal).trim() : '',
+        userId,
+        projectId: resolvedProjectId,
+      });
+
+      // Keep project.keywordDataset snapshot when re-running against an existing project
+      if (resolvedProjectId) {
+        await UserProject.findByIdAndUpdate(resolvedProjectId, {
+          $set: {
+            keywordDataset: dataset,
+            projectKeywordsText: (dataset.primaryKeywords || []).slice(0, 80).join(', '),
+          },
+        });
+      }
+
+      return helper.sendSuccess(res, 200, 'Keyword engine completed.', {
+        ...dataset,
+        primaryKeywords: dataset.primaryKeywords || [],
+      });
+    } catch (error) {
+      console.error('[KeywordEngine] runKeywordEngine error:', error);
+      return helper.sendError(res, 500, error.message || 'Failed to run keyword engine.');
+    }
+  },
+
+  /**
+   * Read Master Keyword Database for a content website.
+   * Content Clusters should use primaryKeyword only.
+   */
+  listProjectKeywords: async (req, res) => {
+    try {
+      const userId = req.user?.userId;
+      const { projectId, status = 'active', primariesOnly = false } = req.body || {};
+      if (!userId) return helper.sendError(res, 401, 'Unauthorized.');
+      if (!projectId || !mongoose.isValidObjectId(projectId)) {
+        return helper.sendError(res, 400, 'Valid projectId is required.');
+      }
+
+      const project = await UserProject.findById(projectId).select('_id userId projectType').lean();
+      if (!project) return helper.sendError(res, 404, 'Project not found.');
+      if (Number(project.projectType) !== 2) {
+        return helper.sendError(res, 400, 'Not a content website project.');
+      }
+
+      const query = { projectId, status };
+      const rows = await ProjectKeywords.find(query).sort({ createdAt: 1 }).lean();
+
+      if (primariesOnly) {
+        return helper.sendSuccess(res, 200, 'Primary keywords loaded.', {
+          projectId,
+          total: rows.length,
+          primaryKeywords: rows.map((r) => ({
+            _id: r._id,
+            primaryKeyword: r.primaryKeyword,
+            searchIntentSlug: r.searchIntentSlug,
+            keywordType: r.keywordType,
+            volume: r.volume,
+            trend: r.trend,
+            pinterestDemand: r.pinterestDemand,
+            competition: r.competition,
+            clusterId: r.clusterId,
+            articleCreated: r.articleCreated,
+          })),
+        });
+      }
+
+      return helper.sendSuccess(res, 200, 'Project keywords loaded.', {
+        projectId,
+        total: rows.length,
+        keywords: rows,
+      });
+    } catch (error) {
+      console.error('[KeywordEngine] listProjectKeywords error:', error);
+      return helper.sendError(res, 500, error.message || 'Failed to list project keywords.');
+    }
+  },
+
+  // ==================== CONTENT CLUSTERS (SILO) ====================
+
+  /**
+   * Group Master Keyword Database primaries into depth-first content silos.
+   * Wizard: pass keywordDataset / searchIntents (no project yet).
+   * Re-run: pass projectId to load ProjectKeywords + optionally persist.
+   */
+  runContentClusters: async (req, res) => {
+    try {
+      const userId = req.user?.userId;
+      const {
+        projectId,
+        categoryId,
+        nicheId,
+        country,
+        language,
+        categoryName: bodyCategoryName,
+        nicheName: bodyNicheName,
+        keywordDataset,
+        searchIntents,
+        primaryKeywords,
+        persist = false,
+        approved = false,
+      } = req.body || {};
+
+      let categoryName = bodyCategoryName ? String(bodyCategoryName).trim() : '';
+      let nicheName = bodyNicheName ? String(bodyNicheName).trim() : '';
+      let intents = Array.isArray(searchIntents) ? searchIntents : null;
+      let primaries = Array.isArray(primaryKeywords) ? primaryKeywords : null;
+      let datasetIn = keywordDataset && typeof keywordDataset === 'object' ? keywordDataset : null;
+
+      if (categoryId && mongoose.isValidObjectId(categoryId)) {
+        const category = await PinterestCategory.findById(categoryId).lean();
+        if (category) categoryName = category.categoryName;
+      }
+      if (nicheId && mongoose.isValidObjectId(nicheId)) {
+        const niche = await PinterestNiche.findById(nicheId).lean();
+        if (niche) {
+          nicheName = niche.nicheName;
+          if (!categoryName && niche.categoryId) {
+            const cat = await PinterestCategory.findById(niche.categoryId).lean();
+            if (cat) categoryName = cat.categoryName;
+          }
+        }
+      }
+
+      let resolvedProjectId = null;
+      if (projectId) {
+        if (!mongoose.isValidObjectId(projectId)) {
+          return helper.sendError(res, 400, 'Valid projectId is required.');
+        }
+        const project = await UserProject.findById(projectId)
+          .select('_id userId projectType contentClusters keywordDataset')
+          .lean();
+        if (!project) return helper.sendError(res, 404, 'Project not found.');
+        if (Number(project.projectType) !== 2) {
+          return helper.sendError(res, 400, 'Not a content website project.');
+        }
+        resolvedProjectId = project._id;
+
+        if (!intents?.length && !primaries?.length && !datasetIn) {
+          const rows = await ProjectKeywords.find({
+            projectId: resolvedProjectId,
+            status: 'active',
+          })
+            .select('primaryKeyword')
+            .lean();
+          primaries = rows.map((r) => r.primaryKeyword).filter(Boolean);
+          if (!primaries.length && project.keywordDataset) {
+            datasetIn = project.keywordDataset;
+          }
+        }
+
+        if (!nicheName || !categoryName) {
+          // soft fill from keyword rows
+          const sample = await ProjectKeywords.findOne({ projectId: resolvedProjectId })
+            .select('nicheName categoryName')
+            .lean();
+          if (sample) {
+            nicheName = nicheName || sample.nicheName || '';
+            categoryName = categoryName || sample.categoryName || '';
+          }
+        }
+      }
+
+      if (!nicheName && !datasetIn?.nicheName) {
+        return helper.sendError(res, 400, 'nicheName or nicheId is required.');
+      }
+
+      const clusterDataset = await runContentClusterEngine({
+        nicheName: nicheName || datasetIn?.nicheName || '',
+        categoryName: categoryName || datasetIn?.categoryName || '',
+        searchIntents: intents || undefined,
+        primaryKeywords: primaries || undefined,
+        keywordDataset: datasetIn || undefined,
+        userId,
+      });
+
+      let persistResult = null;
+      if (resolvedProjectId && (persist || approved)) {
+        persistResult = await saveProjectClusters({
+          projectId: resolvedProjectId,
+          userId,
+          clusters: clusterDataset.clusters || [],
+          nicheName: clusterDataset.nicheName,
+          categoryName: clusterDataset.categoryName,
+          approved: Boolean(approved),
+        });
+        await UserProject.findByIdAndUpdate(resolvedProjectId, {
+          $set: {
+            contentClusters: clusterDataset,
+            clustersApproved: Boolean(approved),
+          },
+        });
+      }
+
+      return helper.sendSuccess(res, 200, 'Content clusters generated.', {
+        ...clusterDataset,
+        persist: persistResult,
+      });
+    } catch (error) {
+      console.error('[ContentClusters] runContentClusters error:', error);
+      return helper.sendError(res, 500, error.message || 'Failed to generate content clusters.');
+    }
+  },
+
+  /**
+   * List saved ProjectClusters for Calendar / Article Gen.
+   */
+  listProjectClusters: async (req, res) => {
+    try {
+      const userId = req.user?.userId;
+      const { projectId, status = 'active' } = req.body || {};
+      if (!userId) return helper.sendError(res, 401, 'Unauthorized.');
+      if (!projectId || !mongoose.isValidObjectId(projectId)) {
+        return helper.sendError(res, 400, 'Valid projectId is required.');
+      }
+
+      const project = await UserProject.findById(projectId).select('_id projectType').lean();
+      if (!project) return helper.sendError(res, 404, 'Project not found.');
+      if (Number(project.projectType) !== 2) {
+        return helper.sendError(res, 400, 'Not a content website project.');
+      }
+
+      const rows = await ProjectClusters.find({ projectId, status }).sort({ createdAt: 1 }).lean();
+      return helper.sendSuccess(res, 200, 'Project clusters loaded.', {
+        projectId,
+        total: rows.length,
+        clusters: rows,
+      });
+    } catch (error) {
+      console.error('[ContentClusters] listProjectClusters error:', error);
+      return helper.sendError(res, 500, error.message || 'Failed to list project clusters.');
+    }
+  },
+
   // ==================== CONTENT WEBSITE PROJECT ====================
 
   createContentWebsite: async (req, res) => {
@@ -1525,6 +1837,10 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         nicheId,
         blueprint,
         nicheAnalysis,
+        keywordDataset,
+        clusterDataset,
+        contentClusters,
+        clustersApproved,
         selectedPages: bodySelectedPages,
       } = req.body || {};
 
@@ -1607,11 +1923,74 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         status: 1,
         wantImages: 1,
         focusKeyword: niche.nicheName,
-        projectKeywordsText: `${niche.nicheName}, ${category.categoryName}, ${goalName}`,
+        projectKeywordsText:
+          keywordDataset &&
+          ((Array.isArray(keywordDataset.searchIntents) && keywordDataset.searchIntents.length) ||
+            (Array.isArray(keywordDataset.primaryKeywords) && keywordDataset.primaryKeywords.length) ||
+            (Array.isArray(keywordDataset.mergedKeywords) && keywordDataset.mergedKeywords.length) ||
+            (Array.isArray(keywordDataset.intents) && keywordDataset.intents.length))
+            ? (
+                keywordDataset.primaryKeywords ||
+                (keywordDataset.searchIntents || keywordDataset.mergedKeywords || keywordDataset.intents).map(
+                  (i) => (typeof i === 'string' ? i : i.primaryKeyword)
+                )
+              )
+                .filter(Boolean)
+                .slice(0, 80)
+                .join(', ')
+            : `${niche.nicheName}, ${category.categoryName}, ${goalName}`,
         contentBlueprint: blueprint && typeof blueprint === 'object' ? blueprint : null,
         blueprintApproved: Boolean(blueprint && typeof blueprint === 'object'),
         nicheAnalysis: nicheAnalysis && typeof nicheAnalysis === 'object' ? nicheAnalysis : null,
+        keywordDataset: keywordDataset && typeof keywordDataset === 'object' ? keywordDataset : null,
+        contentClusters:
+          (clusterDataset && typeof clusterDataset === 'object' ? clusterDataset : null) ||
+          (contentClusters && typeof contentClusters === 'object' ? contentClusters : null),
+        clustersApproved: Boolean(clustersApproved),
       });
+
+      // Persist Master Keyword Database (one doc = one search intent)
+      let keywordsPersist = null;
+      try {
+        const intents =
+          (keywordDataset &&
+            (keywordDataset.searchIntents || keywordDataset.mergedKeywords || keywordDataset.intents)) ||
+          [];
+        if (Array.isArray(intents) && intents.length) {
+          keywordsPersist = await saveProjectKeywords({
+            projectId: project._id,
+            userId,
+            searchIntents: intents,
+            nicheName: niche.nicheName,
+            categoryName: category.categoryName,
+            country: null,
+            language: lang,
+          });
+        }
+      } catch (kwErr) {
+        console.error('[PinterestV2] ProjectKeywords persist failed:', kwErr);
+      }
+
+      // Persist Content Clusters (silos) + backfill ProjectKeywords.clusterId
+      let clustersPersist = null;
+      try {
+        const clusterPayload =
+          (clusterDataset && typeof clusterDataset === 'object' ? clusterDataset : null) ||
+          (contentClusters && typeof contentClusters === 'object' ? contentClusters : null);
+        const clustersList = clusterPayload?.clusters || [];
+        if (Array.isArray(clustersList) && clustersList.length) {
+          clustersPersist = await saveProjectClusters({
+            projectId: project._id,
+            userId,
+            clusters: clustersList,
+            nicheName: niche.nicheName,
+            categoryName: category.categoryName,
+            approved: Boolean(clustersApproved || clusterPayload?.approved),
+          });
+        }
+      } catch (clErr) {
+        console.error('[PinterestV2] ProjectClusters persist failed:', clErr);
+      }
 
       // Same persistence path as business/bulk design step:
       // WebsitePage rows (pages list) + WebsiteDesignsData (dummy GenieBuild sections).
@@ -1647,6 +2026,8 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
       return helper.sendSuccess(res, 201, 'Content website created successfully.', {
         ...projectPayload,
         pagesBootstrap,
+        keywordsPersist,
+        clustersPersist,
       });
     } catch (error) {
       console.error('[PinterestV2] createContentWebsite error:', error);
@@ -1688,7 +2069,18 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         selectedPages,
       });
 
-      return helper.sendSuccess(res, 200, 'Content website pages bootstrapped.', result);
+      // If caller only wants chrome repair and bootstrap already ran, still ensure Funky chrome
+      let chromeRepair = null;
+      try {
+        chromeRepair = await ensureContentChromeOnProject(project._id, blueprint);
+      } catch (chromeErr) {
+        console.warn('[PinterestV2] ensureContentChromeOnProject:', chromeErr?.message || chromeErr);
+      }
+
+      return helper.sendSuccess(res, 200, 'Content website pages bootstrapped.', {
+        ...result,
+        chromeRepair,
+      });
     } catch (error) {
       console.error('[PinterestV2] bootstrapContentPages error:', error);
       return helper.sendError(res, 500, error.message || 'Failed to bootstrap pages.');

@@ -39,6 +39,8 @@ import {
   CheckCircle,
   AlertTriangle,
   Sparkles,
+  Search,
+  Network,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
@@ -272,8 +274,21 @@ export function AdminSidebar({ activeSection, setActiveSection, onCollapseChange
       // On project dashboard - show TOP KPIs menu items only if plugin active
       const isTopKpisActive = localStorage.getItem("top-kpis-plugin-active") === "true";
       
-      // Start with Dashboard (always at top)
+      // Start with project identity + Dashboard
+      const projectLabel =
+        projectData?.projectName ||
+        projectData?.websiteName ||
+        projectData?.domainName ||
+        "Project";
+      const isContentWebsite = Number(projectData?.projectType) === 2;
       const projectItems: any[] = [
+        {
+          id: "project-identity",
+          label: isContentWebsite ? `Content · ${projectLabel}` : projectLabel,
+          icon: isContentWebsite ? Sparkles : FolderOpen,
+          route: `/admin/projects/${projectId}/dashboard/overview`,
+          isProjectTitle: true,
+        },
         { id: "project-overview", label: "Dashboard", icon: LayoutDashboard, route: `/admin/projects/${projectId}/dashboard/overview` },
       ];
       
@@ -300,45 +315,93 @@ export function AdminSidebar({ activeSection, setActiveSection, onCollapseChange
         { id: "project-pages", label: "Pages", icon: Layout, route: `/admin/projects/${projectId}/dashboard/pages` },
         { id: "project-header-footer", label: "Header/Footer", icon: FileText, route: `/admin/projects/${projectId}/dashboard/header-footer` }
       );
-      
-      // Services, Locations, Forms, Blog, Reviews, Deploy - Core Features
-      projectItems.push(
-        { id: "project-services", label: "Services", icon: Wrench, route: `/admin/projects/${projectId}/dashboard/services` },
-        { id: "project-locations", label: "Locations", icon: MapPin, route: `/admin/projects/${projectId}/dashboard/locations` },
-        { id: "project-contact", label: "Contact Information", icon: Contact, route: `/admin/projects/${projectId}/dashboard/contact` },
-        { id: "project-design", label: "Design", icon: Palette, route: `/admin/projects/${projectId}/dashboard/design` },
-        { id: "project-additional-css", label: "Additional CSS", icon: Code2, route: `/admin/projects/${projectId}/dashboard/additional-css` },
-        { 
-          id: "project-forms", 
-          label: "Forms", 
-          icon: FileText, 
-          submenu: [
-            { id: "create-form", label: "Create Form", icon: Plus, route: `/admin/projects/${projectId}/dashboard/forms/create` },
-            { id: "forms-list", label: "List", icon: FileText, route: `/admin/projects/${projectId}/dashboard/forms/list` },
-            { id: "forms-responses", label: "Responses", icon: MessageSquare, route: `/admin/projects/${projectId}/dashboard/forms/responses` },
-          ],
-        },
-        {
-          id: "project-blog",
-          label: "Blogs",
-          icon: Newspaper,
-          submenu: [
-            { id: "project-blog-posts", label: "Blog Posts", icon: Newspaper, route: `/admin/projects/${projectId}/dashboard/blog-posts` },
-            { id: "project-create-post", label: "Create Post", icon: Plus, route: `/admin/projects/${projectId}/dashboard/create-post` },
-            { id: "project-create-post-ai", label: "Create with AI", icon: Sparkles, route: `/admin/projects/${projectId}/dashboard/create-post-ai` },
-          ],
-        },
-        {
-          id: "project-reviews",
-          label: "Reviews",
-          icon: MessageSquare,
-          submenu: [
-            { id: "project-reviews-approval", label: "Approval", icon: MessageSquare, route: `/admin/projects/${projectId}/dashboard/reviews` },
-            { id: "project-generate-reviews", label: "Generate Reviews", icon: Tags, route: `/admin/projects/${projectId}/dashboard/fake-reviews` },
-          ],
-        },
-        { id: "project-deploy", label: "Deploy", icon: Rocket, route: `/admin/projects/${projectId}/dashboard/deploy` }
-      );
+
+      if (isContentWebsite) {
+        // Content website: Keywords + Clusters instead of Services/Locations
+        projectItems.push(
+          {
+            id: "project-content-planning",
+            label: "Content Planning",
+            icon: Network,
+            submenu: [
+              {
+                id: "project-keywords",
+                label: "Keywords",
+                icon: Search,
+                route: `/admin/projects/${projectId}/dashboard/keywords`,
+              },
+              {
+                id: "project-clusters",
+                label: "Clusters",
+                icon: Network,
+                route: `/admin/projects/${projectId}/dashboard/clusters`,
+              },
+            ],
+          },
+          { id: "project-design", label: "Design", icon: Palette, route: `/admin/projects/${projectId}/dashboard/design` },
+          { id: "project-additional-css", label: "Additional CSS", icon: Code2, route: `/admin/projects/${projectId}/dashboard/additional-css` },
+          {
+            id: "project-forms",
+            label: "Forms",
+            icon: FileText,
+            submenu: [
+              { id: "create-form", label: "Create Form", icon: Plus, route: `/admin/projects/${projectId}/dashboard/forms/create` },
+              { id: "forms-list", label: "List", icon: FileText, route: `/admin/projects/${projectId}/dashboard/forms/list` },
+              { id: "forms-responses", label: "Responses", icon: MessageSquare, route: `/admin/projects/${projectId}/dashboard/forms/responses` },
+            ],
+          },
+          {
+            id: "project-blog",
+            label: "Blogs",
+            icon: Newspaper,
+            submenu: [
+              { id: "project-blog-posts", label: "Blog Posts", icon: Newspaper, route: `/admin/projects/${projectId}/dashboard/blog-posts` },
+              { id: "project-create-post", label: "Create Post", icon: Plus, route: `/admin/projects/${projectId}/dashboard/create-post` },
+              { id: "project-create-post-ai", label: "Create with AI", icon: Sparkles, route: `/admin/projects/${projectId}/dashboard/create-post-ai` },
+            ],
+          },
+          { id: "project-deploy", label: "Deploy", icon: Rocket, route: `/admin/projects/${projectId}/dashboard/deploy` }
+        );
+      } else {
+        // Business / bulk: Services, Locations, Forms, Blog, Reviews, Deploy
+        projectItems.push(
+          { id: "project-services", label: "Services", icon: Wrench, route: `/admin/projects/${projectId}/dashboard/services` },
+          { id: "project-locations", label: "Locations", icon: MapPin, route: `/admin/projects/${projectId}/dashboard/locations` },
+          { id: "project-contact", label: "Contact Information", icon: Contact, route: `/admin/projects/${projectId}/dashboard/contact` },
+          { id: "project-design", label: "Design", icon: Palette, route: `/admin/projects/${projectId}/dashboard/design` },
+          { id: "project-additional-css", label: "Additional CSS", icon: Code2, route: `/admin/projects/${projectId}/dashboard/additional-css` },
+          {
+            id: "project-forms",
+            label: "Forms",
+            icon: FileText,
+            submenu: [
+              { id: "create-form", label: "Create Form", icon: Plus, route: `/admin/projects/${projectId}/dashboard/forms/create` },
+              { id: "forms-list", label: "List", icon: FileText, route: `/admin/projects/${projectId}/dashboard/forms/list` },
+              { id: "forms-responses", label: "Responses", icon: MessageSquare, route: `/admin/projects/${projectId}/dashboard/forms/responses` },
+            ],
+          },
+          {
+            id: "project-blog",
+            label: "Blogs",
+            icon: Newspaper,
+            submenu: [
+              { id: "project-blog-posts", label: "Blog Posts", icon: Newspaper, route: `/admin/projects/${projectId}/dashboard/blog-posts` },
+              { id: "project-create-post", label: "Create Post", icon: Plus, route: `/admin/projects/${projectId}/dashboard/create-post` },
+              { id: "project-create-post-ai", label: "Create with AI", icon: Sparkles, route: `/admin/projects/${projectId}/dashboard/create-post-ai` },
+            ],
+          },
+          {
+            id: "project-reviews",
+            label: "Reviews",
+            icon: MessageSquare,
+            submenu: [
+              { id: "project-reviews-approval", label: "Approval", icon: MessageSquare, route: `/admin/projects/${projectId}/dashboard/reviews` },
+              { id: "project-generate-reviews", label: "Generate Reviews", icon: Tags, route: `/admin/projects/${projectId}/dashboard/fake-reviews` },
+            ],
+          },
+          { id: "project-deploy", label: "Deploy", icon: Rocket, route: `/admin/projects/${projectId}/dashboard/deploy` }
+        );
+      }
       
       // Verify and Visit - External Actions
       projectItems.push(
@@ -423,7 +486,7 @@ export function AdminSidebar({ activeSection, setActiveSection, onCollapseChange
   // Check plugin status on component mount and route change
   useEffect(() => {
     updateSidebarItems();
-  }, [location.pathname]);
+  }, [location.pathname, projectData?.projectType, projectData?.domainName, projectData?.projectName]);
 
     // Listen for storage events from other components
     useEffect(() => {
@@ -560,7 +623,22 @@ export function AdminSidebar({ activeSection, setActiveSection, onCollapseChange
 
           return (
             <div key={item.id} className="space-y-1">
-              {item.route && !hasSubmenu && !(item as any).comingSoon && !(item as any).action ? (
+              {(item as any).isProjectTitle ? (
+                !isCollapsed ? (
+                  <div className="px-3 py-2 mb-1 border-b border-gray-700/80">
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">
+                      {Number(projectData?.projectType) === 2 ? "Content Website" : "Project"}
+                    </p>
+                    <p className="text-sm font-semibold text-white truncate" title={item.label}>
+                      {String(item.label || "").replace(/^Content ·\s*/, "")}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex justify-center py-2" title={String(item.label || "").replace(/^Content ·\s*/, "")}>
+                    <Icon className="h-5 w-5 text-blue-400" />
+                  </div>
+                )
+              ) : item.route && !hasSubmenu && !(item as any).comingSoon && !(item as any).action ? (
                 <a
                   href={item.route}
                   onClick={(e) => {

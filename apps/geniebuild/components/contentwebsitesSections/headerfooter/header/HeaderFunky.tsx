@@ -9,7 +9,6 @@ import {
   resolveFunkyIsLight,
   funkySurfaceColors
 } from '../../funkyTheme';
-import { motion } from 'motion/react';
 
 interface Props {
   section: Section;
@@ -22,16 +21,24 @@ interface Props {
   themeColors?: any;
 }
 
+function normalizeNavItems(items: any[] | undefined, fallback: Array<{ label: string; link: string }>) {
+  const raw = Array.isArray(items) && items.length ? items : fallback;
+  return raw.map((item) => ({
+    ...item,
+    label: item?.label || item?.name || 'Link',
+    link: item?.link || item?.href || item?.url || '#',
+  }));
+}
+
 export const HeaderFunky: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
   selectedElementId, readOnly = false, themeColors: tc,
 }) => {
   const { content, styles } = section;
-  const s = styles as any;
   const c = content as any;
   const f = funkyFromTheme(tc);
   const isLight = resolveFunkyIsLight(section, tc);
-  const { titleColor, textColor, themeMode: funkyThemeMode, themeColors: funkyThemeBag } = funkyTextColors(tc, isLight);
+  const { titleColor, textColor, themeMode: funkyThemeMode } = funkyTextColors(tc, isLight);
   const surface = funkySurfaceColors(isLight, (styles as any)?.backgroundColor);
   const bg = surface.bg;
 
@@ -41,10 +48,35 @@ export const HeaderFunky: React.FC<Props> = ({
     style: { fontFamily: FUNKY.fonts.display, fontWeight: '800', fontSize: '1.4rem', color: f.ink },
   };
   const brandElPainted: WebsiteElement = { ...brandEl, style: { ...withFunkyTextStyle(brandEl.style as any, titleColor, isLight) } };
-  const navEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cw-hdr-nav`) || {
-    id: `${section.id}-cw-hdr-nav`, type: 'navigation',
-    content: { items: c.links || [{ label: 'Home', href: '/' }, { label: 'Blog', href: '/blog' }, { label: 'About', href: '/about' }, { label: 'Contact', href: '/contact' }] },
-    style: {},
+
+  const existingNav = section.elements?.find(e => e.id === `${section.id}-cw-hdr-nav`);
+  const navItems = normalizeNavItems(
+    (existingNav?.content as any)?.items || c.links,
+    [
+      { label: 'Home', link: '/' },
+      { label: 'Blog', link: '/blog' },
+      { label: 'About', link: '/about' },
+      { label: 'Contact', link: '/contact' },
+    ]
+  );
+  const navEl: WebsiteElement = {
+    ...(existingNav || {
+      id: `${section.id}-cw-hdr-nav`,
+      type: 'nav-menu',
+      style: {},
+    }),
+    type: 'nav-menu',
+    content: { ...(existingNav?.content || {}), items: navItems },
+    style: {
+      ...(existingNav?.style || {}),
+      orientation: 'horizontal',
+      color: f.ink,
+      hoverColor: f.primary,
+      activeColor: f.primary,
+      fontWeight: '700',
+      fontSize: '0.9rem',
+      itemGap: '1.25rem',
+    },
   };
 
   const themeColors = { ...tc, titleColor: f.ink, textColor: f.ink };
@@ -57,8 +89,16 @@ export const HeaderFunky: React.FC<Props> = ({
     <header className="w-full sticky top-0 z-40" style={{ backgroundColor: bg, borderBottom: `2.5px solid ${f.ink}` }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div style={{ transform: 'rotate(-2deg)' }}><ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [brandElPainted] }} {...passThrough} /></div>
-        <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [navEl] }} {...passThrough} />
+        <div style={{ transform: 'rotate(-2deg)' }}>
+          <ElementsSection
+            section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [brandElPainted] }}
+            {...passThrough}
+          />
+        </div>
+        <ElementsSection
+          section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [navEl] }}
+          {...passThrough}
+        />
       </div>
     </header>
   );

@@ -129,6 +129,22 @@ const userProjectsSchema = new mongoose.Schema(
       required: false,
       default: null,
     },
+    /** Keyword Engine output — intents + buckets for clusters */
+    keywordDataset: {
+      type: mongoose.Schema.Types.Mixed,
+      required: false,
+      default: null,
+    },
+    /** Content Cluster / silo map snapshot (wizard + post-create) */
+    contentClusters: {
+      type: mongoose.Schema.Types.Mixed,
+      required: false,
+      default: null,
+    },
+    clustersApproved: {
+      type: Boolean,
+      default: false,
+    },
     googleSiteVerification: {
       type: String,
       required: false,
