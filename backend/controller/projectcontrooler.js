@@ -3448,7 +3448,9 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
       if (!project) {
         return res.status(404).json({ message: "Project not found" });
       }
-      const isBusinessProject = Number(project?.projectType || 0) === 1;
+      const projectTypeNum = Number(project?.projectType || 0);
+      const isBusinessProject = projectTypeNum === 1;
+      const isContentProject = projectTypeNum === 2;
       const primaryParentLocation = resolveMainParentLocation(formattedLocations, {
         isBusinessProject,
       });
@@ -3462,8 +3464,8 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
 
       const job = await enqueueSectionGeneration({
         projectId,
-        locations: Array.isArray(locations) ? locations : [],
-        includeDefaultHomepage: !isBusinessProject && !isServicesWizardJob,
+        locations: isContentProject ? [] : Array.isArray(locations) ? locations : [],
+        includeDefaultHomepage: (!isBusinessProject || isContentProject) && !isServicesWizardJob,
         homepageLocationId: isBusinessProject ? (primaryParentLocation?._id || null) : null,
         selectedSectionIds: Array.isArray(selectedSectionIds)
           ? selectedSectionIds

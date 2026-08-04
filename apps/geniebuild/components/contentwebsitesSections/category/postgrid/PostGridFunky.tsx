@@ -42,7 +42,12 @@ export const CategoryPostGridFunky: React.FC<Props> = ({
 
   const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cw-catposts-title`) || {
     id: `${section.id}-cw-catposts-title`, type: 'heading',
-    content: { text: c.title || "In this category", htmlTag: 'h2' },
+    content: {
+      text:
+        c.title ||
+        (c.gridMode === 'subcategories' ? 'Subcategories' : 'In this category'),
+      htmlTag: 'h2',
+    },
     style: { color: titleColor, fontSize: 'clamp(1.6rem, 3.5vw, 2.6rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
   };
   const titleElPainted: WebsiteElement = { ...titleEl, style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) } };
@@ -83,9 +88,21 @@ export const CategoryPostGridFunky: React.FC<Props> = ({
             return (
               <motion.div key={i} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
                 style={{ background: colors[i % colors.length], border: `2.5px solid ${f.ink}`, borderRadius: 22, boxShadow: FUNKY.shadow, transform: i % 2 ? 'rotate(1.2deg)' : 'rotate(-1.2deg)', overflow: 'hidden', padding: 16 }}>
-                {item.image ? <img src={item.image} alt="" className="w-full h-40 object-cover rounded-xl mb-3" style={{ border: `2px solid ${f.ink}` }} /> : null}
-                <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [itemTitlePainted] }} {...passThrough} />
-                <div className="mt-2"><ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [itemDescPainted] }} {...passThrough} /></div>
+                {(() => {
+                  const href = String(item.link || item.href || '').trim();
+                  const lightStyles = { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor };
+                  const inner = (
+                    <>
+                      {item.image ? <img src={item.image} alt="" className="w-full h-40 object-cover rounded-xl mb-3" style={{ border: `2px solid ${f.ink}` }} /> : null}
+                      <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemTitlePainted] }} {...passThrough} />
+                      <div className="mt-2"><ElementsSection section={{ ...section, styles: lightStyles, elements: [itemDescPainted] }} {...passThrough} /></div>
+                    </>
+                  );
+                  if (href && readOnly) {
+                    return <a href={href} className="block no-underline text-inherit">{inner}</a>;
+                  }
+                  return inner;
+                })()}
               </motion.div>
             );
           })}

@@ -9,6 +9,8 @@ router.post("/website_page", SiteNextJsController.website_page);
 router.post("/slug_to_page_details", SiteNextJsController.slug_to_page_details);
 router.post("/resolve_slug", SiteNextJsController.resolve_slug);
 router.get("/resolve_slug", SiteNextJsController.resolve_slug);
+router.post("/content_taxonomy", SiteNextJsController.content_taxonomy);
+router.get("/content_taxonomy", SiteNextJsController.content_taxonomy);
 router.get("/listPublishedBlogs", BlogsController.list_published_blogs);
 router.post("/listPublishedBlogs", BlogsController.list_published_blogs);
 router.get("/getPublishedBlog", BlogsController.get_published_blog);

@@ -1,16 +1,15 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import {
   FUNKY,
   funkyFromTheme,
   funkyTextColors,
-  mergeFunkyElement,
   withFunkyTextStyle,
   resolveFunkyIsLight,
   funkySurfaceColors
 } from '../../funkyTheme';
-import { motion } from 'motion/react';
+import { fetchBlogAuthor } from '../../../../lib/authorApi';
 
 interface Props {
   section: Section;
@@ -21,11 +20,16 @@ interface Props {
   selectedElementId?: string | null;
   readOnly?: boolean;
   themeColors?: any;
+  projectId?: string;
 }
 
+/**
+ * Single author card — same Author collection as business blogs.
+ * Live hydrate via /get_blog_author when authorId / blogId present.
+ */
 export const AuthorBoxFunky: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
-  selectedElementId, readOnly = false, themeColors: tc,
+  selectedElementId, readOnly = false, themeColors: tc, projectId,
 }) => {
   const { content, styles } = section;
   const s = styles as any;
@@ -38,16 +42,61 @@ export const AuthorBoxFunky: React.FC<Props> = ({
   const padT = s.paddingTop ?? 'pt-12 sm:pt-16';
   const padB = s.paddingBottom ?? 'pb-12 sm:pb-16';
   const padX = s.paddingX ?? 'px-4 sm:px-6';
-  const colors = surface.cardAlts;
+
+  const seedName = c.name || c.items?.[0]?.title || c.items?.[0]?.name || 'Blake';
+  const seedJob = c.jobTitle || c.items?.[0]?.role || 'Blogger & Creative Designer';
+  const seedBio =
+    c.bio ||
+    c.items?.[0]?.description ||
+    'Hey, I’m a writer and creative designer sharing practical guides and authentic niche insights.';
+  const seedImage = c.image || c.items?.[0]?.image || '';
+
+  const [live, setLive] = useState({
+    name: seedName,
+    jobTitle: seedJob,
+    bio: seedBio,
+    image: seedImage,
+  });
+
+  useEffect(() => {
+    if (!readOnly) return;
+    const authorId = String(c.authorId || c.contentRef?.authorId || '').trim();
+    const blogId = String(c.blogId || c.contentRef?.blogId || '').trim();
+    const slug = String(c.slug || c.contentRef?.slug || '').trim();
+    if (!authorId && !blogId && !(projectId && slug)) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchBlogAuthor(
+          authorId
+            ? { authorId }
+            : blogId
+              ? { blogId }
+              : { projectId: projectId || '', slug }
+        );
+        if (cancelled || !data) return;
+        setLive({
+          name: data.name || seedName,
+          jobTitle: data.jobTitle || seedJob,
+          bio: data.bio || seedBio,
+          image: data.image || data.avatar || seedImage,
+        });
+      } catch {
+        /* keep seed */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [readOnly, c.authorId, c.blogId, c.slug, projectId, seedName, seedJob, seedBio, seedImage]);
 
   const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cw-authorbox-title`) || {
     id: `${section.id}-cw-authorbox-title`, type: 'heading',
-    content: { text: c.title || "Written by", htmlTag: 'h2' },
-    style: { color: titleColor, fontSize: 'clamp(1.6rem, 3.5vw, 2.6rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
+    content: { text: c.title || 'Written by', htmlTag: 'h2' },
+    style: { color: titleColor, fontSize: 'clamp(1.4rem, 3vw, 2rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
   };
   const titleElPainted: WebsiteElement = { ...titleEl, style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) } };
-
-  const items: any[] = Array.isArray(c.items) && c.items.length ? c.items : [{"title":"Alex Rivera","description":"Founder & Editor — research-backed niche guides with a visual-first mindset.","image":"https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&q=80"}];
 
   const themeColors = { ...tc, ...funkyThemeBag, titleColor, textColor };
   const passThrough = {
@@ -58,37 +107,48 @@ export const AuthorBoxFunky: React.FC<Props> = ({
   return (
     <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
-      <div className={`max-w-7xl mx-auto ${padX} ${padT} ${padB}`}>
-        <div className="mb-8"><ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [titleElPainted] }} {...passThrough} /></div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {items.map((item, i) => {
-            const itemTitle = mergeFunkyElement(section, `${section.id}-cw-authorbox-item-${i}-title`, {
-              id: `${section.id}-cw-authorbox-item-${i}-title`, type: 'heading',
-              content: { text: item.title || item.name || 'Item', htmlTag: 'h3' },
-              style: { color: titleColor, fontSize: '1.15rem', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-            });
-            const itemDesc = mergeFunkyElement(section, `${section.id}-cw-authorbox-item-${i}-desc`, {
-              id: `${section.id}-cw-authorbox-item-${i}-desc`, type: 'text',
-              content: { text: item.description || item.subtitle || item.tag || '' },
-              style: { color: textColor, fontFamily: FUNKY.fonts.body },
-            });
-            const itemTitlePainted: WebsiteElement = {
-              ...itemTitle,
-              style: { ...withFunkyTextStyle(itemTitle.style as any, titleColor, isLight) },
-            };
-            const itemDescPainted: WebsiteElement = {
-              ...itemDesc,
-              style: { ...withFunkyTextStyle(itemDesc.style as any, textColor, isLight) },
-            };
-            return (
-              <motion.div key={i} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-                style={{ background: colors[i % colors.length], border: `2.5px solid ${f.ink}`, borderRadius: 22, boxShadow: FUNKY.shadow, transform: i % 2 ? 'rotate(1.2deg)' : 'rotate(-1.2deg)', overflow: 'hidden', padding: 16 }}>
-                {item.image ? <img src={item.image} alt="" className="w-full h-40 object-cover rounded-xl mb-3" style={{ border: `2px solid ${f.ink}` }} /> : null}
-                <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [itemTitlePainted] }} {...passThrough} />
-                <div className="mt-2"><ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [itemDescPainted] }} {...passThrough} /></div>
-              </motion.div>
-            );
-          })}
+      <div className={`max-w-3xl mx-auto ${padX} ${padT} ${padB}`}>
+        <div className="mb-5">
+          <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [titleElPainted] }} {...passThrough} />
+        </div>
+        <div
+          style={{
+            background: surface.cardAlts?.[0] || f.cream || '#FFF8F0',
+            border: `2.5px solid ${f.ink}`,
+            borderRadius: 22,
+            boxShadow: FUNKY.shadow,
+            padding: 20,
+            display: 'flex',
+            gap: 16,
+            alignItems: 'flex-start',
+          }}
+        >
+          {live.image ? (
+            <img
+              src={live.image}
+              alt=""
+              className="w-16 h-16 rounded-full object-cover flex-shrink-0"
+              style={{ border: `2px solid ${f.ink}` }}
+            />
+          ) : (
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 font-bold"
+              style={{ border: `2px solid ${f.ink}`, background: f.accent, color: f.ink }}
+            >
+              {String(live.name || 'A').charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0">
+            <p style={{ color: titleColor, fontFamily: FUNKY.fonts.display, fontWeight: 800, fontSize: '1.15rem' }}>
+              {live.name}
+            </p>
+            <p style={{ color: textColor, opacity: 0.75, fontSize: '0.9rem', marginTop: 2 }}>
+              {live.jobTitle}
+            </p>
+            <p style={{ color: textColor, fontFamily: FUNKY.fonts.body, marginTop: 10, lineHeight: 1.6, fontSize: '0.95rem' }}>
+              {live.bio}
+            </p>
+          </div>
         </div>
       </div>
     </div>

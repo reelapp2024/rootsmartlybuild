@@ -6641,6 +6641,78 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             );
         }
 
+        case 'table': {
+            const headers: string[] = Array.isArray((content as any).headers)
+                ? (content as any).headers
+                : ['Column 1', 'Column 2'];
+            const rows: string[][] = Array.isArray((content as any).rows)
+                ? (content as any).rows
+                : [['—', '—']];
+            const caption = String((content as any).caption || '').trim();
+            const borderColor =
+                (renderStyle as any).borderColor ||
+                theme?.cardBorderColor ||
+                'rgba(15,23,42,0.12)';
+            const headerBg =
+                (renderStyle as any).backgroundColor ||
+                theme?.cardBackgroundColor ||
+                'rgba(15,23,42,0.04)';
+            return (
+                <div
+                    key={id}
+                    className={`w-full overflow-x-auto ${selectedClass}`}
+                    onClick={(e) => handleClick(e, el)}
+                >
+                    <table
+                        className="gb-data-table w-full text-left text-sm"
+                        style={{
+                            borderCollapse: 'collapse',
+                            width: '100%',
+                            color: renderStyle.color || theme?.textColor || '#111827',
+                            fontFamily: renderStyle.fontFamily || theme?.descriptionFontFamily,
+                        }}
+                    >
+                        {caption ? (
+                            <caption className="caption-top text-left text-xs opacity-70 mb-2">
+                                {caption}
+                            </caption>
+                        ) : null}
+                        <thead>
+                            <tr>
+                                {headers.map((h, i) => (
+                                    <th
+                                        key={i}
+                                        className="px-3 py-2 font-semibold"
+                                        style={{
+                                            border: `1px solid ${borderColor}`,
+                                            backgroundColor: headerBg,
+                                        }}
+                                    >
+                                        {h}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((row, ri) => (
+                                <tr key={ri}>
+                                    {headers.map((_, ci) => (
+                                        <td
+                                            key={ci}
+                                            className="px-3 py-2 align-top"
+                                            style={{ border: `1px solid ${borderColor}` }}
+                                        >
+                                            {row?.[ci] ?? ''}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+
         default:
              return (
                  <div key={id} className={`${selectedClass} opacity-50`} onClick={(e) => handleClick(e, el)}>
@@ -6666,6 +6738,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
       'feature-box',
       'nav-menu',
       'navigation',
+      'table',
     ]);
     if (alwaysSelf.has(el.type)) return node;
 

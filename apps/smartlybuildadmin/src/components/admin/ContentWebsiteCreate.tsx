@@ -963,6 +963,7 @@ export function ContentWebsiteCreate() {
           categoryId: selectedCategoryId,
           nicheId: selectedNicheId,
           keywordDataset,
+          mode: "starter",
         },
         {
           headers: { Authorization: `Bearer ${token()}` },
@@ -1104,14 +1105,17 @@ export function ContentWebsiteCreate() {
       }
 
       const pagesBoot = project?.pagesBootstrap;
+      let sectionQueued = Boolean(project?.sectionGeneration?.queued);
       if (!pagesBoot?.pagesTotal) {
         // Fallback: ensure pages exist even if bootstrap was skipped
         try {
-          await http.post(
+          const bootRes = await http.post(
             "/pinterest/v2/bootstrapContentPages",
-            { projectId, selectedPages: selectedPagesPayload },
+            { projectId, selectedPages: selectedPagesPayload, enqueueSections: true },
             { headers: { Authorization: `Bearer ${token()}` } }
           );
+          sectionQueued =
+            sectionQueued || Boolean(bootRes?.data?.data?.sectionGeneration?.queued);
         } catch (bootErr) {
           console.warn("[ContentWebsiteCreate] pages bootstrap fallback failed", bootErr);
         }
@@ -1145,11 +1149,14 @@ export function ContentWebsiteCreate() {
       );
 
       const pageCount = pagesBoot?.pagesTotal || selectedPagesPayload.length;
+      const blogQueued = Boolean(project?.blogsEnqueue?.queued) || Number(project?.blogsEnqueue?.count || 0) > 0;
       toast({
         title: "Website created",
-        description: `"${finalName}" ready with ${pageCount} page(s). Opening Pages…`,
+        description: sectionQueued
+          ? `"${finalName}" is generating sections${blogQueued ? " and starter articles" : ""} in the background. Track progress on the list.`
+          : `"${finalName}" ready with ${pageCount} page(s).`,
       });
-      navigate(`/admin/projects/${projectId}/dashboard/pages`);
+      navigate("/admin/content-websites/list");
     } catch (err: any) {
       toast({
         title: "Error",
@@ -2191,11 +2198,11 @@ export function ContentWebsiteCreate() {
                 <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground py-10 justify-center">
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    Building content silos (pillar + supporting)…
+                    Building your starter category (1 silo · 4–5 free articles)…
                   </div>
                   <p className="text-xs text-center max-w-md">
-                    Depth over count: 1 deep pillar + few strong supporting articles per cluster,
-                    with pillar↔supporting internal links.
+                    Starter plan: 1 site category (your niche) with 4–5 free articles.
+                    Extra intents stay unassigned for later. Subcategories can nest under a category when you expand.
                   </p>
                 </div>
               )}

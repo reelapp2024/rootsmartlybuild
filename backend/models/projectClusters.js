@@ -60,6 +60,25 @@ const projectClusterSchema = new Schema(
       index: true,
     },
 
+    /**
+     * Site browse tree:
+     *   parentClusterId = null  → top CATEGORY (shown on homepage grid)
+     *   parentClusterId set     → SUBCATEGORY under that category
+     * Articles (ProjectKeywords) hang off the leaf cluster via clusterId.
+     */
+    parentClusterId: {
+      type: Schema.Types.ObjectId,
+      ref: 'ProjectClusters',
+      default: null,
+      index: true,
+    },
+    nodeType: {
+      type: String,
+      enum: ['category', 'subcategory'],
+      default: 'category',
+      index: true,
+    },
+
     pillarKeywordId: {
       type: Schema.Types.ObjectId,
       ref: 'ProjectKeywords',
@@ -116,5 +135,6 @@ const projectClusterSchema = new Schema(
 
 projectClusterSchema.index({ projectId: 1, clusterSlug: 1 }, { unique: true });
 projectClusterSchema.index({ projectId: 1, status: 1 });
+projectClusterSchema.index({ projectId: 1, parentClusterId: 1, status: 1 });
 
 module.exports = mongoose.model('ProjectClusters', projectClusterSchema);

@@ -72,6 +72,13 @@ async function resolveProjectContext(projectId) {
     /* optional */
   }
 
+  // Content sites: prefer niche / focus keyword over empty service rows
+  if (Number(project.projectType) === 2) {
+    serviceType =
+      String(project.focusKeyword || project.serviceType || serviceType || "").trim() ||
+      String(project.projectName || "content niche").trim();
+  }
+
   return {
     project,
     projectName: String(project.projectName || project.name || "Business").trim(),
@@ -180,19 +187,20 @@ console.log(
 );
 
 aiblogsQueue.process(WORKERS, async (job) => {
-  const {
-    userId,
-    projectId,
-    type,
-    authorId,
-    status,
-    title,
-    slug: requestedSlug,
-    isSchedule,
-    scheduleTime,
-    locations,
-    seoMode: jobSeoMode,
-  } = job.data || {};
+    const {
+      userId,
+      projectId,
+      type,
+      authorId,
+      status,
+      title,
+      slug: requestedSlug,
+      isSchedule,
+      scheduleTime,
+      locations,
+      seoMode: jobSeoMode,
+      projectKeywordId,
+    } = job.data || {};
 
   const jobId = String(job.id);
   const normTitle = String(title || "").replace(/\s+/g, " ").trim();
@@ -326,6 +334,28 @@ aiblogsQueue.process(WORKERS, async (job) => {
 
     if (!saved?._id) throw new Error("Blog save returned no document");
     log(jobId, `saved blogId=${saved._id} slug=${finalSlug} status=${finalStatus}`);
+
+    // Link starter keyword → blog for content websites
+    if (projectKeywordId && mongoose.isValidObjectId(String(projectKeywordId))) {
+      try {
+        const ProjectKeywords = require("../models/projectKeywords");
+        await ProjectKeywords.updateOne(
+          { _id: projectKeywordId, projectId },
+          {
+            $set: {
+              articleCreated: true,
+              articleId: saved._id,
+            },
+          }
+        );
+        log(jobId, `linked ProjectKeywords ${projectKeywordId} → blog ${saved._id}`);
+      } catch (kwErr) {
+        console.warn(
+          `[aiblogsQueue:${jobId}] keyword link skipped:`,
+          kwErr?.message || kwErr
+        );
+      }
+    }
 
     // Optional review seed (slow second OpenAI call) — disabled by default
     if (SEED_REVIEWS) {

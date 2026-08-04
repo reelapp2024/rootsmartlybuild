@@ -5095,10 +5095,23 @@ Example format:
     fetch_authors: async (req, res) => {
         try {
             const userId = req.user.userId; // Get logged-in user ID from req.user.userId
+            const projectId = req.query?.projectId || req.body?.projectId;
 
-            // Find authors for this user
-            const authors = await Author.find({ userId }).exec();
-
+            const filter = { userId };
+            // Optional: prefer authors linked to this content site, still include global ones
+            let authors = await Author.find(filter).sort({ createdAt: -1 }).lean();
+            if (projectId && mongoose.isValidObjectId(projectId)) {
+                const projectScoped = authors.filter(
+                    (a) => a.projectId && String(a.projectId) === String(projectId)
+                );
+                if (projectScoped.length) {
+                    // Put project authors first
+                    const rest = authors.filter(
+                        (a) => !a.projectId || String(a.projectId) !== String(projectId)
+                    );
+                    authors = [...projectScoped, ...rest];
+                }
+            }
 
             if (!authors || authors.length === 0) {
                 return res.status(404).json({ message: 'No authors found for this user' });
@@ -9624,6 +9637,24 @@ Example format:
                     pageKeyForCanonicalOrder,
                     sectionsWithDynamics
                 );
+            }
+
+            // Content websites: inject Category → Subcategory → Article tree into grids
+            if (projectType === 2 && Array.isArray(sectionsWithDynamics) && sectionsWithDynamics.length) {
+                try {
+                    const {
+                        getContentTaxonomy,
+                        applyContentTaxonomyToSections,
+                    } = require('../services/contentTaxonomyService');
+                    const taxonomy = await getContentTaxonomy(projectId);
+                    sectionsWithDynamics = applyContentTaxonomyToSections(
+                        sectionsWithDynamics,
+                        taxonomy,
+                        pageMeta || {}
+                    );
+                } catch (taxErr) {
+                    console.warn('[getWebsiteDesignData] content taxonomy inject failed:', taxErr?.message || taxErr);
+                }
             }
 
             const pageSeoEntry = pageMeta ? await getSeoForWebsitePage(pageMeta) : null;

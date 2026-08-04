@@ -145,6 +145,14 @@ const userProjectsSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    /** Default Author for content-site blogs/articles (Author collection) */
+    defaultAuthorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Author',
+      required: false,
+      default: null,
+      index: true,
+    },
     googleSiteVerification: {
       type: String,
       required: false,

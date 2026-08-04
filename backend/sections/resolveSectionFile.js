@@ -21,6 +21,20 @@ const PAGE_FOLDERS = [
   "blog",
   "legal",
   "allareas",
+  /** Content websites (projectType 2) live under contentsites/{page}/… */
+  "contentsites",
+];
+
+const CONTENT_SITE_PAGE_FOLDERS = [
+  "homepage",
+  "blog",
+  "category",
+  "article",
+  "about",
+  "contact",
+  "author",
+  "legal",
+  "headerfooter",
 ];
 
 const SECTION_ID_ALIASES = {
@@ -50,7 +64,7 @@ const SECTION_ID_ALIASES = {
 const PAGE_TYPE_TO_FOLDER = {
   home: "homepage",
   homepage: "homepage",
-  default: "homepage",
+  // "default" is intentionally NOT mapped — resolve via page name (content sites use it)
   about: "about",
   contact: "contact",
   service: "service",
@@ -71,12 +85,17 @@ const PAGE_TYPE_TO_FOLDER = {
   /** All Areas listing (`/areas`) — prompts under sections/allareas/ */
   areas: "allareas",
   allareas: "allareas",
+  /** Content website page types */
+  article: "article",
+  category: "category",
+  author: "author",
 };
 
 function resolvePageFolder(pageType = "", pageName = "") {
   const pt = String(pageType || "").toLowerCase().trim();
   const pn = String(pageName || "").toLowerCase().trim();
-  if (PAGE_TYPE_TO_FOLDER[pt]) return PAGE_TYPE_TO_FOLDER[pt];
+  // Prefer explicit pageType, but never let "default" short-circuit name-based folders
+  if (pt && pt !== "default" && PAGE_TYPE_TO_FOLDER[pt]) return PAGE_TYPE_TO_FOLDER[pt];
   if (pn === "about" || pn === "about us") return "about";
   if (pn === "contact" || pn === "contact us") return "contact";
   if (
@@ -90,6 +109,9 @@ function resolvePageFolder(pageType = "", pageName = "") {
   if (pn === "service") return "service";
   if (pn === "home") return "homepage";
   if (pn === "blog" || pn === "blogs" || pn.startsWith("blog-")) return "blog";
+  if (pn === "article" || pn.startsWith("article") || pn.startsWith("blog/")) return "article";
+  if (pn === "category" || pn.startsWith("category")) return "category";
+  if (pn === "author" || pn.startsWith("author")) return "author";
   // All Areas listing: name areas / allareas
   if (pn === "areas" || pn === "allareas" || pn === "all-areas") return "allareas";
   // Location landings: name like location-<id> — reuse homepage section modules
@@ -106,7 +128,9 @@ function resolvePageFolder(pageType = "", pageName = "") {
   ) {
     return "legal";
   }
-  return pn || pt || "";
+  // Bare "default" with no useful name → homepage (legacy business pages)
+  if (pt === "default" && !pn) return "homepage";
+  return pn || (pt === "default" ? "homepage" : pt) || "";
 }
 
 function trySectionPath(pageFolder, sectionId) {
@@ -119,9 +143,23 @@ function trySectionPath(pageFolder, sectionId) {
   return fs.existsSync(filePath) ? filePath : null;
 }
 
+/** Content websites: sections/contentsites/{pageFolder}/{sectionId}/… */
+function tryContentSiteSectionPath(pageFolder, sectionId) {
+  const folder = String(pageFolder || "").toLowerCase().trim();
+  if (!folder || folder === "contentsites") return null;
+  const filePath = path.join(
+    SECTIONS_ROOT,
+    "contentsites",
+    folder,
+    sectionId,
+    `${sectionId}Section.js`
+  );
+  return fs.existsSync(filePath) ? filePath : null;
+}
+
 /**
  * @param {string} sectionId
- * @param {{ pageType?: string, pageFolder?: string, scope?: string }} [options]
+ * @param {{ pageType?: string, pageFolder?: string, scope?: string, projectType?: number }} [options]
  */
 function resolveSectionFile(sectionId, options = {}) {
   let normalized = String(sectionId || "").trim().toLowerCase();
@@ -140,6 +178,44 @@ function resolveSectionFile(sectionId, options = {}) {
   for (const folder of SITE_WIDE_FOLDERS) {
     const hit = trySectionPath(folder, normalized);
     if (hit) return hit;
+  }
+
+  const preferContentSites =
+    Number(options.projectType) === 2 ||
+    String(options.scope || "").toLowerCase() === "contentsites";
+
+  // Content websites (projectType 2) ONLY — prefer contentsites/{page}/…
+  // Must not run for business/bulk or overlapping folders (homepage/about/…) steal prompts.
+  if (preferContentSites) {
+    const contentPageHint =
+      pageFolder && CONTENT_SITE_PAGE_FOLDERS.includes(pageFolder)
+        ? pageFolder
+        : CONTENT_SITE_PAGE_FOLDERS.includes(pageType)
+          ? pageType
+          : "";
+    if (contentPageHint) {
+      const contentHit = tryContentSiteSectionPath(contentPageHint, normalized);
+      if (contentHit) return contentHit;
+    }
+    if (normalized === "header" || normalized === "footer") {
+      const chromeHit = tryContentSiteSectionPath("headerfooter", normalized);
+      if (chromeHit) return chromeHit;
+    }
+    // Fuzzy scan across content page folders for content-native / unresolved ids
+    for (const folder of CONTENT_SITE_PAGE_FOLDERS) {
+      const hit = tryContentSiteSectionPath(folder, normalized);
+      if (hit) return hit;
+    }
+  } else if (
+    // Non-content projects: still allow uniquely content-native section ids
+    /^(article|category|author|featured|trending|pin|newsletter|brand|shop|postgrid|categoriesgrid|aboutteaser|seasonalspotlight|pinboardcta)/i.test(
+      normalized
+    )
+  ) {
+    for (const folder of CONTENT_SITE_PAGE_FOLDERS) {
+      const hit = tryContentSiteSectionPath(folder, normalized);
+      if (hit) return hit;
+    }
   }
 
   if (pageFolder) {

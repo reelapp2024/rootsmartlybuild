@@ -99,20 +99,47 @@ export default function CreateBlogPost() {
     setSlug(slugify(title));
   }, [title]);
 
-  // Load authors (httpFile.get)
+  // Load authors (httpFile.get) — prefer this project's defaultAuthorId when set
   useEffect(() => {
     (async () => {
       try {
         const token = localStorage.getItem("token");
         const res = await httpFile.get<{ data: AuthorItem[] }>("/fetch_authors", {
           headers: { Authorization: `Bearer ${token}` },
+          params: projectId ? { projectId } : undefined,
         });
-
-        console.log(res, "res of the authors list");
 
         const list = Array.isArray(res.data?.data) ? res.data.data : [];
         setAuthors(list);
-        if (list.length) setAuthorId(String(list[0]._id)); // default selected
+
+        let preferred: string | undefined;
+        if (projectId) {
+          try {
+            const projRes = await httpFile.post(
+              "getUserProjects",
+              {},
+              {
+                headers: { Authorization: `Bearer ${token}` },
+                params: { projectId },
+              }
+            );
+            const projects = projRes.data?.data || [];
+            const project = Array.isArray(projects)
+              ? projects.find((p: any) => String(p._id) === String(projectId))
+              : null;
+            if (project?.defaultAuthorId) {
+              preferred = String(project.defaultAuthorId);
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+
+        if (preferred && list.some((a) => String(a._id) === preferred)) {
+          setAuthorId(preferred);
+        } else if (list.length) {
+          setAuthorId(String(list[0]._id));
+        }
       } catch (error: any) {
         console.error("Failed to load authors:", error);
         if (error?.response?.status === 401) {
@@ -124,7 +151,7 @@ export default function CreateBlogPost() {
         }
       }
     })();
-  }, [navigate]);
+  }, [navigate, projectId]);
 
   /** Upload cover image (httpFile.post); set URL */
   const onUploadCover = async (file: File) => {

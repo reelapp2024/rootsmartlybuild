@@ -1,7 +1,8 @@
 /**
  * Bootstrap WebsitePage rows + WebsiteDesignsData for content websites (projectType 2).
  * Mirrors business/bulk design-step persistence so /dashboard/pages lists selected pages.
- * Content generation is skipped — sections get dummy GenieBuild structure (Funky variants).
+ * Sections get dummy GenieBuild structure (Funky variants); AI content is enqueued separately
+ * via sectionGeneration.queue (same Redis/Bull path as bulk/business).
  *
  * Always injects HeaderFunky + FooterFunky on every page so SiteNextJS / GenieBuild chrome
  * is present (business sites use HeaderPlumbing via ensureHeaderFooterComponents).
@@ -62,6 +63,20 @@ const DEFAULT_PAGE_SLUGS = {
   author: 'author',
 };
 
+/** Wizard page id → WebsitePage.pageType (drives section prompt folders) */
+const CONTENT_PAGE_TYPE_BY_ID = {
+  home: 'home',
+  blog: 'blog',
+  category: 'category',
+  article: 'article',
+  about: 'about',
+  contact: 'contact',
+  author: 'author',
+  privacy: 'legal',
+  terms: 'legal',
+  disclaimer: 'legal',
+};
+
 /** Legal page id → section type folder + Funky variant file */
 const LEGAL_BY_PAGE = {
   privacy: { type: 'privacybody', variant: 'PrivacyBodyFunky' },
@@ -100,6 +115,7 @@ const FALLBACK_CONTENT_PAGES = [
       { id: 'post_grid', name: 'Post Grid' },
       { id: 'popular_posts', name: 'Popular Posts' },
       { id: 'newsletter', name: 'Newsletter' },
+      { id: 'faq', name: 'FAQ' },
     ],
   },
   {
@@ -111,6 +127,7 @@ const FALLBACK_CONTENT_PAGES = [
       { id: 'category_hero', name: 'Category Hero' },
       { id: 'post_grid', name: 'Post Grid' },
       { id: 'related_categories', name: 'Related Categories' },
+      { id: 'faq', name: 'FAQ' },
     ],
   },
   {
@@ -148,6 +165,7 @@ const FALLBACK_CONTENT_PAGES = [
       { id: 'contact_hero', name: 'Contact Hero' },
       { id: 'contact_form', name: 'Contact Form' },
       { id: 'contact_info', name: 'Contact Info' },
+      { id: 'faq', name: 'FAQ' },
     ],
   },
   {
@@ -515,6 +533,7 @@ async function bootstrapContentWebsitePages({
   for (const page of selectedPages) {
     const name = page.id;
     const slug = resolveSlug(page.id, urlStructure);
+    const pageType = CONTENT_PAGE_TYPE_BY_ID[String(page.id || '').toLowerCase()] || 'default';
     let doc = await WebsitePage.findOne({ projectId, name });
     if (!doc) {
       doc = await WebsitePage.create({
@@ -523,7 +542,7 @@ async function bootstrapContentWebsitePages({
         slug,
         displayName: page.name || name,
         description: page.description || `${page.name} page`,
-        pageType: 'default',
+        pageType,
         isPublished: true,
         componentIds: [],
       });
@@ -531,6 +550,7 @@ async function bootstrapContentWebsitePages({
     } else {
       doc.displayName = page.name || doc.displayName;
       doc.slug = slug || doc.slug;
+      doc.pageType = pageType || doc.pageType;
       doc.isPublished = true;
       await doc.save();
     }

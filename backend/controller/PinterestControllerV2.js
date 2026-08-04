@@ -26,6 +26,8 @@ const {
   bootstrapContentWebsitePages,
   ensureContentChromeOnProject,
 } = require('../additional/contentWebsitePagesBootstrap');
+const WebsiteDesignsData = require('../models/WebsiteDesignsData');
+const { enqueueSectionGeneration } = require('../queue/sectionGeneration.queue');
 
 const DEFAULT_GOALS = [
   'Pinterest Traffic',
@@ -69,6 +71,61 @@ function statusQuery(status) {
 
 function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Queue AI section generation for a content website (projectType 2)
+ * using the shared section-generation Bull/Redis worker.
+ */
+async function enqueueContentWebsiteSectionGeneration({ projectId, userId }) {
+  const design = await WebsiteDesignsData.findOne({ projectId }).select('pages').lean();
+  const selectedSectionIds = [
+    ...new Set(
+      (design?.pages || [])
+        .flatMap((p) => (Array.isArray(p.sections) ? p.sections : []))
+        .map((comp) => String(comp?.sectionData?.type || '').toLowerCase().trim())
+        .filter((s) => s && s !== 'header' && s !== 'navbar' && s !== 'footer')
+    ),
+  ];
+
+  if (!selectedSectionIds.length) {
+    return { queued: false, reason: 'no_body_sections', selectedSectionsCount: 0 };
+  }
+
+  await UserProject.updateOne(
+    { _id: projectId },
+    {
+      $set: {
+        contentGeneration: {
+          status: 'generating',
+          total: 0,
+          done: 0,
+          failed: 0,
+          skipped: 0,
+          pending: 0,
+          percent: 0,
+          message: 'Section generation queued…',
+          startedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    }
+  );
+
+  const job = await enqueueSectionGeneration({
+    projectId: String(projectId),
+    selectedSectionIds,
+    locations: [],
+    includeDefaultHomepage: true,
+    homepageLocationId: null,
+    userId: userId ? String(userId) : null,
+  });
+
+  return {
+    queued: true,
+    jobId: job?.id || null,
+    selectedSectionsCount: selectedSectionIds.length,
+  };
 }
 
 /**
@@ -222,7 +279,9 @@ const PinterestControllerV2 = {
         goal.slug = slug;
       }
 
-      if (status === 0 || status === 1) goal.status = status;
+      if (status === 0 || status === 1 || status === "0" || status === "1") {
+        goal.status = Number(status);
+      }
 
       await goal.save();
       return helper.sendSuccess(res, 200, 'Goal updated successfully.', goal);
@@ -359,7 +418,9 @@ const PinterestControllerV2 = {
       }
 
       if (name && String(name).trim()) language.name = String(name).trim();
-      if (status === 0 || status === 1) language.status = status;
+      if (status === 0 || status === 1 || status === "0" || status === "1") {
+        language.status = Number(status);
+      }
 
       await language.save();
       return helper.sendSuccess(res, 200, 'Language updated successfully.', language);
@@ -463,7 +524,9 @@ const PinterestControllerV2 = {
         category.categoryName = name;
       }
 
-      if (status === 0 || status === 1) category.status = status;
+      if (status === 0 || status === 1 || status === "0" || status === "1") {
+        category.status = Number(status);
+      }
 
       await category.save();
       return helper.sendSuccess(res, 200, 'Category updated successfully.', category);
@@ -861,7 +924,9 @@ const PinterestControllerV2 = {
         niche.nicheName = name;
       }
 
-      if (status === 0 || status === 1) niche.status = status;
+      if (status === 0 || status === 1 || status === "0" || status === "1") {
+        niche.status = Number(status);
+      }
 
       await niche.save();
       return helper.sendSuccess(res, 200, 'Niche updated successfully.', niche);
@@ -1691,6 +1756,7 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         primaryKeywords,
         persist = false,
         approved = false,
+        mode = 'starter',
       } = req.body || {};
 
       let categoryName = bodyCategoryName ? String(bodyCategoryName).trim() : '';
@@ -1764,6 +1830,7 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         primaryKeywords: primaries || undefined,
         keywordDataset: datasetIn || undefined,
         userId,
+        mode: mode === 'full' ? 'full' : 'starter',
       });
 
       let persistResult = null;
@@ -1782,6 +1849,12 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
             clustersApproved: Boolean(approved),
           },
         });
+        try {
+          const { syncContentCategoryPages } = require('../services/contentTaxonomyService');
+          await syncContentCategoryPages({ projectId: resolvedProjectId, userId });
+        } catch (syncErr) {
+          console.warn('[ContentClusters] category page sync failed:', syncErr?.message || syncErr);
+        }
       }
 
       return helper.sendSuccess(res, 200, 'Content clusters generated.', {
@@ -1813,14 +1886,48 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
       }
 
       const rows = await ProjectClusters.find({ projectId, status }).sort({ createdAt: 1 }).lean();
+      let taxonomy = null;
+      try {
+        const { getContentTaxonomy } = require('../services/contentTaxonomyService');
+        taxonomy = await getContentTaxonomy(projectId);
+      } catch (_) {
+        /* optional */
+      }
       return helper.sendSuccess(res, 200, 'Project clusters loaded.', {
         projectId,
         total: rows.length,
         clusters: rows,
+        taxonomy,
       });
     } catch (error) {
       console.error('[ContentClusters] listProjectClusters error:', error);
       return helper.sendError(res, 500, error.message || 'Failed to list project clusters.');
+    }
+  },
+
+  /**
+   * Category → Subcategory → Article tree for content websites (admin + site).
+   */
+  getContentTaxonomy: async (req, res) => {
+    try {
+      const { projectId } = req.body || req.query || {};
+      if (!projectId || !mongoose.isValidObjectId(projectId)) {
+        return helper.sendError(res, 400, 'Valid projectId is required.');
+      }
+      const project = await UserProject.findById(projectId).select('_id projectType').lean();
+      if (!project) return helper.sendError(res, 404, 'Project not found.');
+      if (Number(project.projectType) !== 2) {
+        return helper.sendError(res, 400, 'Not a content website project.');
+      }
+      const { getContentTaxonomy } = require('../services/contentTaxonomyService');
+      const taxonomy = await getContentTaxonomy(projectId);
+      return helper.sendSuccess(res, 200, 'Content taxonomy loaded.', {
+        projectId,
+        ...taxonomy,
+      });
+    } catch (error) {
+      console.error('[ContentTaxonomy] getContentTaxonomy error:', error);
+      return helper.sendError(res, 500, error.message || 'Failed to load taxonomy.');
     }
   },
 
@@ -2007,6 +2114,113 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         // Project exists; pages can be repaired later — don't fail the whole create.
       }
 
+      // Live category pages from cluster tree (Category → Subcategory → Articles)
+      let taxonomySync = null;
+      try {
+        const { syncContentCategoryPages } = require('../services/contentTaxonomyService');
+        taxonomySync = await syncContentCategoryPages({
+          projectId: project._id,
+          userId,
+        });
+      } catch (taxErr) {
+        console.warn('[PinterestV2] taxonomy page sync failed:', taxErr?.message || taxErr);
+      }
+
+      // Default Author for this content site (shared Author collection → blogs.authorId)
+      let authorBootstrap = null;
+      try {
+        const { ensureContentWebsiteAuthor } = require('../additional/ensureContentWebsiteAuthor');
+        authorBootstrap = await ensureContentWebsiteAuthor({
+          projectId: project._id,
+          userId,
+          blueprint: blueprint && typeof blueprint === 'object' ? blueprint : {},
+          nicheName: niche.nicheName,
+          projectName: name,
+        });
+      } catch (authorErr) {
+        console.warn('[PinterestV2] default author bootstrap failed:', authorErr?.message || authorErr);
+      }
+
+      // Default enabled contact form → Contact page ContactFormFunky
+      let formBootstrap = null;
+      try {
+        const {
+          ensureContentWebsiteContactForm,
+        } = require('../additional/ensureContentWebsiteContactForm');
+        formBootstrap = await ensureContentWebsiteContactForm({
+          projectId: project._id,
+          userId,
+          projectName: name,
+        });
+      } catch (formErr) {
+        console.warn('[PinterestV2] default contact form failed:', formErr?.message || formErr);
+      }
+
+      // Starter cluster keywords → real AI blogs (aiblogsQueue), not dummy placeholders
+      let blogsEnqueue = null;
+      try {
+        const authorId =
+          authorBootstrap?.author?._id ||
+          project.defaultAuthorId ||
+          null;
+        if (authorId) {
+          const {
+            enqueueContentWebsiteStarterBlogs,
+          } = require('../additional/enqueueContentWebsiteStarterBlogs');
+          blogsEnqueue = await enqueueContentWebsiteStarterBlogs({
+            projectId: project._id,
+            userId,
+            authorId: String(authorId),
+          });
+        } else {
+          blogsEnqueue = { queued: false, count: 0, jobIds: [], reason: 'no_author' };
+        }
+      } catch (blogErr) {
+        console.warn(
+          '[PinterestV2] starter blogs enqueue failed:',
+          blogErr?.message || blogErr
+        );
+        blogsEnqueue = {
+          queued: false,
+          count: 0,
+          jobIds: [],
+          error: blogErr?.message || 'enqueue_failed',
+        };
+      }
+
+      // Same Redis/Bull queue as bulk + business — content prompts via resolveSectionFile(projectType: 2)
+      let sectionGeneration = null;
+      if (pagesBootstrap?.designSaved) {
+        try {
+          sectionGeneration = await enqueueContentWebsiteSectionGeneration({
+            projectId: project._id,
+            userId,
+          });
+          if (sectionGeneration?.queued) {
+            console.log('[PinterestV2] content site section generation enqueued', {
+              projectId: String(project._id),
+              jobId: sectionGeneration.jobId,
+              sections: sectionGeneration.selectedSectionsCount,
+            });
+          } else {
+            console.warn(
+              '[PinterestV2] skip section enqueue:',
+              sectionGeneration?.reason || 'unknown',
+              String(project._id)
+            );
+          }
+        } catch (enqueueErr) {
+          console.error(
+            '[PinterestV2] section generation enqueue failed:',
+            enqueueErr?.message || enqueueErr
+          );
+          sectionGeneration = {
+            queued: false,
+            error: enqueueErr?.message || 'enqueue_failed',
+          };
+        }
+      }
+
       try {
         const user = await Users.findById(userId).select('email username').lean();
         await Notification.create({
@@ -2021,13 +2235,47 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
       }
 
       const projectPayload =
-        typeof project.toObject === 'function' ? project.toObject() : project;
+        typeof project.toObject === 'function' ? project.toObject() : { ...project };
+      if (authorBootstrap?.author?._id) {
+        projectPayload.defaultAuthorId = authorBootstrap.author._id;
+      }
+      if (sectionGeneration?.queued) {
+        projectPayload.contentGeneration = {
+          status: 'generating',
+          message: 'Section generation queued…',
+        };
+      }
 
       return helper.sendSuccess(res, 201, 'Content website created successfully.', {
         ...projectPayload,
         pagesBootstrap,
         keywordsPersist,
         clustersPersist,
+        taxonomySync,
+        sectionGeneration,
+        formBootstrap: formBootstrap
+          ? {
+              formId: formBootstrap.form?._id
+                ? String(formBootstrap.form._id)
+                : null,
+              name: formBootstrap.form?.name || null,
+              isEnabled: Boolean(formBootstrap.form?.isEnabled),
+              created: Boolean(formBootstrap.created),
+            }
+          : null,
+        blogsEnqueue,
+        authorBootstrap: authorBootstrap
+          ? {
+              authorId: authorBootstrap.author?._id
+                ? String(authorBootstrap.author._id)
+                : null,
+              name: authorBootstrap.author?.name || null,
+              created: Boolean(authorBootstrap.created),
+            }
+          : null,
+        defaultAuthorId: authorBootstrap?.author?._id
+          ? String(authorBootstrap.author._id)
+          : projectPayload.defaultAuthorId || null,
       });
     } catch (error) {
       console.error('[PinterestV2] createContentWebsite error:', error);
@@ -2077,9 +2325,30 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         console.warn('[PinterestV2] ensureContentChromeOnProject:', chromeErr?.message || chromeErr);
       }
 
+      let sectionGeneration = null;
+      // Opt-in only — avoid re-queueing on chrome/page repair. Create flow enqueues itself.
+      if (result?.designSaved && req.body?.enqueueSections === true) {
+        try {
+          sectionGeneration = await enqueueContentWebsiteSectionGeneration({
+            projectId: project._id,
+            userId: project.userId || userId,
+          });
+        } catch (enqueueErr) {
+          console.warn(
+            '[PinterestV2] bootstrapContentPages enqueue failed:',
+            enqueueErr?.message || enqueueErr
+          );
+          sectionGeneration = {
+            queued: false,
+            error: enqueueErr?.message || 'enqueue_failed',
+          };
+        }
+      }
+
       return helper.sendSuccess(res, 200, 'Content website pages bootstrapped.', {
         ...result,
         chromeRepair,
+        sectionGeneration,
       });
     } catch (error) {
       console.error('[PinterestV2] bootstrapContentPages error:', error);

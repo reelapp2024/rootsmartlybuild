@@ -109,18 +109,33 @@ export const CategoriesGridFunky: React.FC<Props> = ({
                   padding: 16,
                 }}
               >
-                {item.image ? (
-                  <img
-                    src={item.image}
-                    alt=""
-                    className="w-full h-40 object-cover rounded-xl mb-3"
-                    style={{ border: `2px solid ${f.ink}` }}
-                  />
-                ) : null}
-                <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemTitlePainted] }} {...passThrough} />
-                <div className="mt-2">
-                  <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemDescPainted] }} {...passThrough} />
-                </div>
+                {(() => {
+                  const href = String(item.link || item.href || '').trim();
+                  const inner = (
+                    <>
+                      {item.image ? (
+                        <img
+                          src={item.image}
+                          alt=""
+                          className="w-full h-40 object-cover rounded-xl mb-3"
+                          style={{ border: `2px solid ${f.ink}` }}
+                        />
+                      ) : null}
+                      <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemTitlePainted] }} {...passThrough} />
+                      <div className="mt-2">
+                        <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemDescPainted] }} {...passThrough} />
+                      </div>
+                    </>
+                  );
+                  if (href && readOnly) {
+                    return (
+                      <a href={href} className="block no-underline text-inherit">
+                        {inner}
+                      </a>
+                    );
+                  }
+                  return inner;
+                })()}
               </motion.div>
             );
           })}

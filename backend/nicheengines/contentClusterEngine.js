@@ -14,10 +14,21 @@ const { fetchJSONFromOpenAI } = require('../additional/openaiHelpers');
 
 const LOG = '[ContentClusterEngine]';
 
+/** Full / expansion mode — multi-silo plans */
 const MIN_SUPPORTING = 2;
 const MAX_SUPPORTING = 6;
 const MIN_CLUSTERS = 2;
 const MAX_CLUSTERS = 10;
+
+/**
+ * Starter mode (default for new content websites):
+ * 1 category/cluster + 4–5 articles total. User adds more later.
+ */
+const STARTER_CLUSTER_COUNT = 1;
+const STARTER_MIN_ARTICLES = 4;
+const STARTER_MAX_ARTICLES = 5;
+const STARTER_MIN_SUPPORTING = STARTER_MIN_ARTICLES - 1; // 3
+const STARTER_MAX_SUPPORTING = STARTER_MAX_ARTICLES - 1; // 4
 
 function normalizePhrase(s) {
   return String(s || '')
@@ -90,7 +101,8 @@ function defaultInternalLinks(pillar, supporting = []) {
   return links;
 }
 
-function targetClusterCount(intentCount) {
+function targetClusterCount(intentCount, { mode = 'starter' } = {}) {
+  if (mode === 'starter') return STARTER_CLUSTER_COUNT;
   if (intentCount <= 6) return Math.max(MIN_CLUSTERS, Math.ceil(intentCount / 3));
   if (intentCount <= 15) return Math.min(6, Math.max(3, Math.round(intentCount / 4)));
   if (intentCount <= 30) return Math.min(8, Math.max(4, Math.round(intentCount / 5)));
@@ -98,9 +110,63 @@ function targetClusterCount(intentCount) {
 }
 
 /**
+ * Starter: keep only the first N primaries for the free silo;
+ * leftovers stay in Master Keyword DB as unassigned (create later).
+ */
+function pickStarterPrimaries(primaries = [], maxArticles = STARTER_MAX_ARTICLES) {
+  const list = Array.isArray(primaries) ? primaries.filter(Boolean) : [];
+  if (list.length <= maxArticles) return { selected: list, deferred: [] };
+  return {
+    selected: list.slice(0, maxArticles),
+    deferred: list.slice(maxArticles),
+  };
+}
+
+/**
+ * Force a single niche-named cluster with 1 pillar + remaining supporting.
+ */
+function buildStarterCluster({ primaries = [], nicheName = '', categoryName = '' } = {}) {
+  const selected = (primaries || []).filter(Boolean);
+  if (!selected.length) return { clusters: [], unassigned: [] };
+
+  const pillar = selected[0];
+  const supporting = selected.slice(1, STARTER_MAX_ARTICLES);
+  const clusterName = String(nicheName || pillar).trim() || pillar;
+  const slug = slugify(clusterName) || slugify(pillar);
+
+  return {
+    clusters: [
+      {
+        clusterName,
+        clusterSlug: slug,
+        pillarKeyword: pillar,
+        supportingKeywords: supporting.map((primaryKeyword) => ({ primaryKeyword })),
+        publishOrder: [pillar, ...supporting],
+        internalLinks: defaultInternalLinks(pillar, supporting),
+        approved: false,
+        parentClusterId: null,
+        nodeType: 'category',
+        metadata: {
+          starter: true,
+          siteRole: 'category',
+          catalogCategory: categoryName || null,
+          catalogNiche: nicheName || null,
+        },
+      },
+    ],
+    unassigned: [],
+  };
+}
+
+/**
  * Validate + normalize AI cluster output against the primary set.
  */
-function validateAndNormalizeClusters(aiClusters = [], primaries = [], unassignedAi = []) {
+function validateAndNormalizeClusters(
+  aiClusters = [],
+  primaries = [],
+  unassignedAi = [],
+  { mode = 'full', maxSupporting = MAX_SUPPORTING, minClusters = MIN_CLUSTERS } = {}
+) {
   const primaryByNorm = new Map();
   for (const p of primaries) {
     primaryByNorm.set(normalizePhrase(p), p);
@@ -109,6 +175,7 @@ function validateAndNormalizeClusters(aiClusters = [], primaries = [], unassigne
   const used = new Set();
   const clusters = [];
   const usedSlugs = new Set();
+  const supportingCap = maxSupporting;
 
   for (const raw of aiClusters || []) {
     const clusterName = String(raw.clusterName || raw.name || '').trim();
@@ -126,7 +193,7 @@ function validateAndNormalizeClusters(aiClusters = [], primaries = [], unassigne
       if (!sn || sn === pillarNorm || used.has(sn) || !primaryByNorm.has(sn)) continue;
       used.add(sn);
       supporting.push(primaryByNorm.get(sn));
-      if (supporting.length >= MAX_SUPPORTING) break;
+      if (supporting.length >= supportingCap) break;
     }
 
     // Skip empty/too-thin clusters unless only 1 primary left overall — keep pillar solo only if needed later
@@ -196,7 +263,11 @@ function validateAndNormalizeClusters(aiClusters = [], primaries = [], unassigne
       publishOrder,
       internalLinks,
       approved: false,
+      parentClusterId: null,
+      nodeType: 'category',
     });
+
+    if (mode === 'starter' && clusters.length >= STARTER_CLUSTER_COUNT) break;
   }
 
   // Unassigned = primaries never used + AI unassigned that still exist
@@ -216,28 +287,35 @@ function validateAndNormalizeClusters(aiClusters = [], primaries = [], unassigne
     unassigned.push(primaryByNorm.get(n));
   }
 
-  // If we have too few clusters and leftover unassigned, greedily form small clusters
-  while (clusters.length < MIN_CLUSTERS && unassigned.length >= MIN_SUPPORTING + 1) {
-    const pillar = unassigned.shift();
-    const supporting = unassigned.splice(0, Math.min(MAX_SUPPORTING, Math.max(MIN_SUPPORTING, unassigned.length)));
-    const clusterName = pillar;
-    let slug = slugify(clusterName);
-    let base = slug;
-    let i = 2;
-    while (usedSlugs.has(slug)) {
-      slug = `${base}-${i}`;
-      i += 1;
+  // Full mode only: if too few clusters and leftover unassigned, greedily form small clusters
+  if (mode !== 'starter') {
+    while (clusters.length < minClusters && unassigned.length >= MIN_SUPPORTING + 1) {
+      const pillar = unassigned.shift();
+      const supporting = unassigned.splice(
+        0,
+        Math.min(MAX_SUPPORTING, Math.max(MIN_SUPPORTING, unassigned.length))
+      );
+      const clusterName = pillar;
+      let slug = slugify(clusterName);
+      let base = slug;
+      let i = 2;
+      while (usedSlugs.has(slug)) {
+        slug = `${base}-${i}`;
+        i += 1;
+      }
+      usedSlugs.add(slug);
+      clusters.push({
+        clusterName,
+        clusterSlug: slug,
+        pillarKeyword: pillar,
+        supportingKeywords: supporting.map((primaryKeyword) => ({ primaryKeyword })),
+        publishOrder: [pillar, ...supporting],
+        internalLinks: defaultInternalLinks(pillar, supporting),
+        approved: false,
+        parentClusterId: null,
+        nodeType: 'category',
+      });
     }
-    usedSlugs.add(slug);
-    clusters.push({
-      clusterName,
-      clusterSlug: slug,
-      pillarKeyword: pillar,
-      supportingKeywords: supporting.map((primaryKeyword) => ({ primaryKeyword })),
-      publishOrder: [pillar, ...supporting],
-      internalLinks: defaultInternalLinks(pillar, supporting),
-      approved: false,
-    });
   }
 
   return { clusters, unassigned };
@@ -245,6 +323,8 @@ function validateAndNormalizeClusters(aiClusters = [], primaries = [], unassigne
 
 /**
  * Run Content Cluster Engine.
+ * @param {object} opts
+ * @param {'starter'|'full'} [opts.mode='starter'] Starter = 1 category + 4–5 articles.
  */
 async function runContentClusterEngine({
   nicheName,
@@ -253,22 +333,26 @@ async function runContentClusterEngine({
   primaryKeywords,
   keywordDataset,
   userId = null,
+  mode = 'starter',
 } = {}) {
   const started = Date.now();
-  const primaries = extractPrimaries({ searchIntents, primaryKeywords, keywordDataset });
+  const clusterMode = mode === 'full' ? 'full' : 'starter';
+  const allPrimaries = extractPrimaries({ searchIntents, primaryKeywords, keywordDataset });
 
   console.log(`\n${LOG} ▶ runContentClusterEngine`, {
     nicheName,
     categoryName,
-    primaryCount: primaries.length,
+    mode: clusterMode,
+    primaryCount: allPrimaries.length,
   });
 
-  if (!primaries.length) {
+  if (!allPrimaries.length) {
     return {
       clusters: [],
       unassigned: [],
       nicheName: nicheName || null,
       categoryName: categoryName || null,
+      mode: clusterMode,
       generatedAt: new Date().toISOString(),
       stats: {
         intentCount: 0,
@@ -280,7 +364,48 @@ async function runContentClusterEngine({
     };
   }
 
-  const targetClusters = targetClusterCount(primaries.length);
+  // Starter: only 4–5 free articles in the first silo; rest stay unassigned for later.
+  let primaries = allPrimaries;
+  let deferredUnassigned = [];
+  if (clusterMode === 'starter') {
+    const picked = pickStarterPrimaries(allPrimaries, STARTER_MAX_ARTICLES);
+    primaries = picked.selected;
+    deferredUnassigned = picked.deferred;
+  }
+
+  // Deterministic starter path — no multi-silo AI sprawl.
+  if (clusterMode === 'starter') {
+    const { clusters, unassigned: leftover } = buildStarterCluster({
+      primaries,
+      nicheName,
+      categoryName,
+    });
+    const unassigned = [...leftover, ...deferredUnassigned];
+    const assigned = clusters.reduce(
+      (n, c) => n + 1 + (c.supportingKeywords?.length || 0),
+      0
+    );
+    const dataset = {
+      clusters,
+      unassigned,
+      nicheName: nicheName || null,
+      categoryName: categoryName || null,
+      mode: clusterMode,
+      generatedAt: new Date().toISOString(),
+      stats: {
+        intentCount: allPrimaries.length,
+        clusterCount: clusters.length,
+        assigned,
+        unassigned: unassigned.length,
+        starterArticles: assigned,
+        elapsedMs: Date.now() - started,
+      },
+    };
+    console.log(`${LOG} ▶ DONE (starter)`, dataset.stats);
+    return dataset;
+  }
+
+  const targetClusters = targetClusterCount(primaries.length, { mode: clusterMode });
   let ai = null;
 
   try {
@@ -288,6 +413,7 @@ async function runContentClusterEngine({
 You are a content architect for a niche CONTENT website (Pinterest / SEO silo structure, 2026).
 
 Convert PRIMARY search intents into CONTENT CLUSTERS (silos).
+Each cluster becomes a browsable SITE CATEGORY (optional child clusters = subcategories later).
 
 DEPTH OVER COUNT:
 - Each cluster = 1 deep PILLAR article + ${MIN_SUPPORTING}–${MAX_SUPPORTING} strong SUPPORTING articles
@@ -304,7 +430,7 @@ Return ONLY valid JSON:
 {
   "clusters": [
     {
-      "clusterName": "short silo name",
+      "clusterName": "short silo / site-category name",
       "pillarKeyword": "exact primary from list — broadest hub article",
       "supportingKeywords": ["exact primaries — ${MIN_SUPPORTING} to ${MAX_SUPPORTING}"],
       "publishOrder": ["pillar first", "then supporting in publish order"],
@@ -339,25 +465,48 @@ RULES:
   const { clusters, unassigned } = validateAndNormalizeClusters(
     ai?.clusters || [],
     primaries,
-    ai?.unassigned || []
+    ai?.unassigned || [],
+    { mode: clusterMode, maxSupporting: MAX_SUPPORTING, minClusters: MIN_CLUSTERS }
   );
 
-  const assigned = clusters.reduce(
+  // Fallback if AI returned nothing
+  let finalClusters = clusters;
+  let finalUnassigned = unassigned;
+  if (!finalClusters.length && primaries.length) {
+    const fallback = buildStarterCluster({
+      primaries: primaries.slice(0, STARTER_MAX_ARTICLES),
+      nicheName,
+      categoryName,
+    });
+    finalClusters = fallback.clusters;
+    finalUnassigned = [
+      ...primaries.slice(STARTER_MAX_ARTICLES),
+      ...unassigned.filter(
+        (u) =>
+          !finalClusters[0]?.publishOrder?.some(
+            (p) => normalizePhrase(p) === normalizePhrase(u)
+          )
+      ),
+    ];
+  }
+
+  const assigned = finalClusters.reduce(
     (n, c) => n + 1 + (c.supportingKeywords?.length || 0),
     0
   );
 
   const dataset = {
-    clusters,
-    unassigned,
+    clusters: finalClusters,
+    unassigned: finalUnassigned,
     nicheName: nicheName || null,
     categoryName: categoryName || null,
+    mode: clusterMode,
     generatedAt: new Date().toISOString(),
     stats: {
-      intentCount: primaries.length,
-      clusterCount: clusters.length,
+      intentCount: allPrimaries.length,
+      clusterCount: finalClusters.length,
       assigned,
-      unassigned: unassigned.length,
+      unassigned: finalUnassigned.length,
       elapsedMs: Date.now() - started,
     },
   };
@@ -433,6 +582,8 @@ async function saveProjectClusters({
       userId: userId || undefined,
       clusterName: cluster.clusterName || pillarKeyword,
       clusterSlug: cluster.clusterSlug || slugify(cluster.clusterName || pillarKeyword),
+      parentClusterId: cluster.parentClusterId || null,
+      nodeType: cluster.parentClusterId ? 'subcategory' : (cluster.nodeType || 'category'),
       pillarKeywordId,
       pillarKeyword,
       supportingKeywordIds,
@@ -443,7 +594,10 @@ async function saveProjectClusters({
       approved: Boolean(approved || cluster.approved),
       nicheName: nicheName || null,
       categoryName: categoryName || null,
-      metadata: {},
+      metadata: {
+        ...(cluster.metadata && typeof cluster.metadata === 'object' ? cluster.metadata : {}),
+        siteRole: cluster.parentClusterId ? 'subcategory' : 'category',
+      },
     });
   }
 
@@ -489,6 +643,11 @@ module.exports = {
   defaultInternalLinks,
   normalizePhrase,
   slugify,
+  buildStarterCluster,
+  pickStarterPrimaries,
   MIN_SUPPORTING,
   MAX_SUPPORTING,
+  STARTER_MAX_ARTICLES,
+  STARTER_MIN_ARTICLES,
+  STARTER_CLUSTER_COUNT,
 };

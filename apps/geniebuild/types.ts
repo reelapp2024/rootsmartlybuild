@@ -52,6 +52,8 @@ export type ElementType =
   | 'nav-menu'
   /** @deprecated Alias of `nav-menu` used by older content-site header/footer payloads. */
   | 'navigation'
+  /** Editable data table (rows/cols) — used in content articles & canvas */
+  | 'table'
   // Layout helpers
   | 'divider'
   | 'spacer';

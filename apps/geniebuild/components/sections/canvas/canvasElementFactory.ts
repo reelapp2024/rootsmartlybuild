@@ -32,6 +32,7 @@ export const PALETTE_ELEMENTS: PaletteItem[] = [
   { type: 'blockquote',    label: 'Quote',        icon: 'fa-quote-right',    group: 'Basic' },
   { type: 'divider',       label: 'Divider',      icon: 'fa-grip-lines',     group: 'Basic' },
   { type: 'spacer',        label: 'Spacer',       icon: 'fa-arrows-up-down', group: 'Basic' },
+  { type: 'table',         label: 'Table',        icon: 'fa-table',          group: 'Content' },
   { type: 'icon',          label: 'Icon',         icon: 'fa-star',           group: 'Basic' },
   // Media
   { type: 'image',         label: 'Image',        icon: 'fa-image',          group: 'Media' },
@@ -75,6 +76,19 @@ function defaultForType(type: WebsiteElement['type']): { content: any; style: an
     case 'blockquote':     return { content: { text: 'A memorable quote goes right here.', author: 'Author name' }, style: { fontStyle: 'italic', borderLeftWidth: '4px', borderLeftStyle: 'solid', padding: '16px 20px' } };
     case 'divider':        return { content: { dividerStyle: 'solid', thickness: '1px' }, style: { marginTop: '24px', marginBottom: '24px' } };
     case 'spacer':         return { content: { height: '40px' }, style: {} };
+    case 'table':
+      return {
+        content: {
+          headers: ['Season', 'Healing', 'Best for'],
+          rows: [
+            ['Fall', 'Very easy', 'Almost everyone'],
+            ['Winter', 'Very easy', 'Large pieces'],
+            ['Summer', 'Moderate', 'Strict aftercare'],
+          ],
+          caption: '',
+        },
+        style: { width: '100%', borderCollapse: 'collapse' },
+      };
     case 'icon':           return { content: { icon: 'fa-star', iconSize: '32px' }, style: {} };
     case 'image':          return { content: { imageUrl: '', imageAlt: 'Image' }, style: { width: '100%', borderRadius: '12px' } };
     case 'video':          return { content: { videoUrl: '', videoTitle: 'Video' }, style: { width: '100%', maxWidth: '640px', borderRadius: '12px' } };

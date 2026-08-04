@@ -135,7 +135,9 @@ function buildPageLocationList({
   incomingLocations = [],
   mainParentLocation = null,
 }) {
-  const isBulkProject = Number(projectType ?? (isBusinessProject ? 1 : 0)) === 0;
+  const typeNum = Number(projectType ?? (isBusinessProject ? 1 : 0));
+  const isBulkProject = typeNum === 0;
+  const isContentProject = typeNum === 2;
   const allLocations = Array.isArray(incomingLocations) ? incomingLocations : [];
   const toggleOn = resolvePageLocationToggle({
     configPageKey,
@@ -145,6 +147,11 @@ function buildPageLocationList({
   const parent =
     mainParentLocation ||
     resolveMainParentLocation(allLocations, { isBusinessProject: !isBulkProject });
+
+  // Content websites (projectType 2): global-only — no BusinessLocation hierarchy.
+  if (isContentProject) {
+    return [null];
+  }
 
   if (configPageKey === "location") {
     return allLocations.length ? allLocations : isBulkProject ? [null] : parent ? [parent] : [];

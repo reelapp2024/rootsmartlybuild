@@ -12,8 +12,19 @@ const AuthorSchema = new mongoose.Schema(
             url: { type: String, required: true },   // URL of the link
         }],
         userId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        /** Content website linkage (projectType 2). Business blogs may leave null. */
+        projectId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'userProjects',
+            required: false,
+            default: null,
+            index: true,
+        },
+        isDefault: { type: Boolean, default: false },
     },
     { timestamps: true } // optional: createdAt/updatedAt
 );
+
+AuthorSchema.index({ userId: 1, name: 1, projectId: 1 });
 
 module.exports = mongoose.model('Author', AuthorSchema);

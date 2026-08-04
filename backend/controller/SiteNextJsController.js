@@ -406,5 +406,29 @@ module.exports = {
     }
   },
 
-  
+  /** Public: Category → Subcategory → Article tree for content websites */
+  content_taxonomy: async (req, res) => {
+    try {
+      const projectId = String(req.body?.projectId ?? req.query?.projectId ?? "").trim();
+      if (!projectId) {
+        return res.status(400).json({ message: "projectId is required" });
+      }
+      const project = await UserProject.findById(projectId).select("_id projectType").lean();
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      if (Number(project.projectType) !== 2) {
+        return res.status(400).json({ message: "Not a content website project" });
+      }
+      const { getContentTaxonomy } = require("../services/contentTaxonomyService");
+      const taxonomy = await getContentTaxonomy(projectId);
+      return res.status(200).json({
+        message: "Content taxonomy loaded",
+        data: { projectId, ...taxonomy },
+      });
+    } catch (error) {
+      console.error("Error in content_taxonomy:", error);
+      return res.status(500).json({ message: "Server error while loading taxonomy" });
+    }
+  },
 };

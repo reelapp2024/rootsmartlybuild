@@ -81,11 +81,23 @@ module.exports = {
                 return res.status(400).json({ message: "valid slug is required" });
             }
 
-            // ✅ validate authorId and ownership
-            if (!authorId || !mongoose.isValidObjectId(authorId)) {
+            // ✅ authorId — prefer request; content sites fall back to project.defaultAuthorId
+            let resolvedAuthorId = authorId;
+            if (!resolvedAuthorId || !mongoose.isValidObjectId(resolvedAuthorId)) {
+                if (projectId && mongoose.isValidObjectId(projectId)) {
+                    const UserProject = require("../models/userProjects");
+                    const proj = await UserProject.findById(projectId)
+                        .select("defaultAuthorId projectType")
+                        .lean();
+                    if (proj?.defaultAuthorId) {
+                        resolvedAuthorId = String(proj.defaultAuthorId);
+                    }
+                }
+            }
+            if (!resolvedAuthorId || !mongoose.isValidObjectId(resolvedAuthorId)) {
                 return res.status(400).json({ message: "valid authorId is required" });
             }
-            const authorExists = await Author.findOne({ _id: authorId, userId });
+            const authorExists = await Author.findOne({ _id: resolvedAuthorId, userId });
             if (!authorExists) {
                 return res.status(404).json({ message: "Author not found" });
             }
@@ -192,7 +204,7 @@ module.exports = {
                 type: String(type).trim(),
                 coverImage: normalizedCover || undefined,
                 seoMeta: builtSeo,
-                authorId,               // ✅ store the Author reference
+                authorId: resolvedAuthorId,               // ✅ store the Author reference
                 isSchedule: scheduleFlag,
                 scheduleTime: scheduleAt, // <-- Date or null (schema: Date)
                 slug: slug.trim(),       // NEW: use provided slug

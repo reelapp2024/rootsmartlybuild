@@ -995,7 +995,17 @@ async function generateSingleSection({
     if (pageType === "about" || pageName === "about" || pageName === "about us") return "about";
     if (pageType === "contact" || pageName === "contact") return "contact";
     if (pageType === "home" || pageType === "homepage" || pageName === "home") return "homepage";
-    if (pageName === "blog" || pageName === "blogs" || pageName.startsWith("blog-")) return "blog";
+    if (
+      pageType === "blog" ||
+      pageName === "blog" ||
+      pageName === "blogs" ||
+      pageName.startsWith("blog-")
+    ) {
+      return "blog";
+    }
+    if (pageType === "article" || pageName === "article") return "article";
+    if (pageType === "category" || pageName === "category") return "category";
+    if (pageType === "author" || pageName === "author") return "author";
     // Location landings reuse homepage section modules (content scoped by locationId)
     if (pageName.startsWith("location-") || pageName === "location" || pageDoc?.locationId) {
       return "homepage";
@@ -1011,6 +1021,7 @@ async function generateSingleSection({
       return "allareas";
     }
     if (
+      pageType === "legal" ||
       pageName === "legal" ||
       pageName.includes("privacy") ||
       pageName.includes("terms") ||
@@ -1021,7 +1032,13 @@ async function generateSingleSection({
     return pageName || pageType || "";
   })();
 
-  const sectionFile = resolveSectionFile(normalizedSectionId, { pageType, pageFolder });
+  const projectTypeNumEarly = Number(project?.projectType ?? 0);
+  const sectionFile = resolveSectionFile(normalizedSectionId, {
+    pageType,
+    pageFolder,
+    projectType: projectTypeNumEarly,
+    scope: projectTypeNumEarly === 2 ? "contentsites" : undefined,
+  });
 
   if (!sectionFile) {
     console.warn(`⏭ Section file missing, skipping: ${normalizedSectionId}`);
@@ -1715,6 +1732,41 @@ Rules:
       serviceName = String(firstSvc?.name || project?.serviceType || "").trim();
     }
 
+    // Content sites: seed FAQ prompts with keyword-research questions
+    let contentFaqExtra = {};
+    if (projectTypeNum === 2 && normalizedSectionId === "faq") {
+      try {
+        const ProjectKeywords = require("../models/projectKeywords");
+        const kwDocs = await ProjectKeywords.find({
+          projectId,
+          status: "active",
+        })
+          .select("primaryKeyword faqKeywords")
+          .limit(40)
+          .lean();
+        const faqKeywords = [];
+        const primaryKeywords = [];
+        for (const kw of kwDocs || []) {
+          if (kw.primaryKeyword) primaryKeywords.push(String(kw.primaryKeyword));
+          for (const q of kw.faqKeywords || []) {
+            if (q) faqKeywords.push(String(q));
+          }
+        }
+        contentFaqExtra = {
+          faqKeywords: [...new Set(faqKeywords)].slice(0, 16),
+          primaryKeywords: [...new Set(primaryKeywords)].slice(0, 10),
+          nicheName: project?.focusKeyword || "",
+          categoryName: project?.serviceType || "",
+          categoryTitle: pageDoc?.displayName || pageDoc?.name || "",
+        };
+      } catch (faqSeedErr) {
+        console.warn(
+          "[sectionGeneration] content FAQ seed skipped:",
+          faqSeedErr?.message || faqSeedErr
+        );
+      }
+    }
+
     const rawPrompt = sectionModule.prompt({
       project,
       location: location || {},
@@ -1729,6 +1781,7 @@ Rules:
         serviceName,
         serviceNames,
         servicesCount: serviceNames.length,
+        ...contentFaqExtra,
         ...extraData,
       }
     });

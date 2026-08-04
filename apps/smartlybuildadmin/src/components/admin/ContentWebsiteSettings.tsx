@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -49,6 +48,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { http } from "../../config.js";
+import { Switch } from "@/components/ui/switch";
 
 type GoalRow = { _id: string; name: string; slug: string; status: number };
 type LanguageRow = { _id: string; code: string; name: string; status: number };
@@ -82,11 +82,31 @@ function authHeaders() {
   return { Authorization: `Bearer ${localStorage.getItem("token") || ""}` };
 }
 
-function StatusBadge({ status }: { status: number }) {
-  return Number(status) === 1 ? (
-    <Badge className="bg-emerald-600 hover:bg-emerald-600">Active</Badge>
-  ) : (
-    <Badge variant="secondary">Inactive</Badge>
+function StatusToggle({
+  checked,
+  disabled,
+  onToggle,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onToggle}
+        aria-label={checked ? "Active" : "Inactive"}
+      />
+      <span
+        className={`text-xs font-medium ${
+          checked ? "text-emerald-700" : "text-muted-foreground"
+        }`}
+      >
+        {checked ? "Active" : "Inactive"}
+      </span>
+    </div>
   );
 }
 
@@ -296,6 +316,7 @@ export function ContentWebsiteSettings() {
   const [nicheName, setNicheName] = useState("");
   const [nicheCategoryId, setNicheCategoryId] = useState("");
   const [itemStatus, setItemStatus] = useState(1);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // Debounce search
   useEffect(() => {
@@ -566,6 +587,92 @@ export function ContentWebsiteSettings() {
     }
   };
 
+  const handleToggleStatus = async (
+    type: TabId,
+    id: string,
+    currentStatus: number
+  ) => {
+    const nextStatus = Number(currentStatus) === 1 ? 0 : 1;
+    setTogglingId(id);
+
+    // Optimistic UI
+    if (type === "goals") {
+      setGoals((rows) =>
+        rows.map((r) => (r._id === id ? { ...r, status: nextStatus } : r))
+      );
+    } else if (type === "languages") {
+      setLanguages((rows) =>
+        rows.map((r) => (r._id === id ? { ...r, status: nextStatus } : r))
+      );
+    } else if (type === "categories") {
+      setCategories((rows) =>
+        rows.map((r) => (r._id === id ? { ...r, status: nextStatus } : r))
+      );
+    } else if (type === "niches") {
+      setNiches((rows) =>
+        rows.map((r) => (r._id === id ? { ...r, status: nextStatus } : r))
+      );
+    }
+
+    try {
+      if (type === "goals") {
+        await http.post(
+          "/pinterest/v2/updateGoal",
+          { goalId: id, status: nextStatus },
+          { headers: authHeaders() }
+        );
+      } else if (type === "languages") {
+        await http.post(
+          "/pinterest/v2/updateLanguage",
+          { languageId: id, status: nextStatus },
+          { headers: authHeaders() }
+        );
+      } else if (type === "categories") {
+        await http.post(
+          "/pinterest/v2/updateCategory",
+          { categoryId: id, status: nextStatus },
+          { headers: authHeaders() }
+        );
+      } else if (type === "niches") {
+        await http.post(
+          "/pinterest/v2/updateNiche",
+          { nicheId: id, status: nextStatus },
+          { headers: authHeaders() }
+        );
+      }
+      toast({
+        title: nextStatus === 1 ? "Activated" : "Deactivated",
+        description: `Status set to ${nextStatus === 1 ? "Active" : "Inactive"}.`,
+      });
+    } catch (err: any) {
+      // Revert
+      if (type === "goals") {
+        setGoals((rows) =>
+          rows.map((r) => (r._id === id ? { ...r, status: currentStatus } : r))
+        );
+      } else if (type === "languages") {
+        setLanguages((rows) =>
+          rows.map((r) => (r._id === id ? { ...r, status: currentStatus } : r))
+        );
+      } else if (type === "categories") {
+        setCategories((rows) =>
+          rows.map((r) => (r._id === id ? { ...r, status: currentStatus } : r))
+        );
+      } else if (type === "niches") {
+        setNiches((rows) =>
+          rows.map((r) => (r._id === id ? { ...r, status: currentStatus } : r))
+        );
+      }
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Failed to update status",
+        variant: "destructive",
+      });
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const handleDelete = async (type: TabId, id: string, label: string) => {
     if (!window.confirm(`Delete "${label}"?`)) return;
     try {
@@ -727,7 +834,13 @@ export function ContentWebsiteSettings() {
                               <TableCell className="font-medium">{row.name}</TableCell>
                               <TableCell className="text-muted-foreground text-sm">{row.slug}</TableCell>
                               <TableCell>
-                                <StatusBadge status={row.status} />
+                                <StatusToggle
+                                  checked={Number(row.status) === 1}
+                                  disabled={togglingId === row._id}
+                                  onToggle={() =>
+                                    handleToggleStatus("goals", row._id, row.status)
+                                  }
+                                />
                               </TableCell>
                               <TableCell className="text-right space-x-1">
                                 <Button type="button" size="sm" variant="ghost" onClick={() => openEditGoal(row)}>
@@ -804,7 +917,13 @@ export function ContentWebsiteSettings() {
                               <TableCell className="font-medium">{row.code}</TableCell>
                               <TableCell>{row.name}</TableCell>
                               <TableCell>
-                                <StatusBadge status={row.status} />
+                                <StatusToggle
+                                  checked={Number(row.status) === 1}
+                                  disabled={togglingId === row._id}
+                                  onToggle={() =>
+                                    handleToggleStatus("languages", row._id, row.status)
+                                  }
+                                />
                               </TableCell>
                               <TableCell className="text-right space-x-1">
                                 <Button type="button" size="sm" variant="ghost" onClick={() => openEditLanguage(row)}>
@@ -885,7 +1004,13 @@ export function ContentWebsiteSettings() {
                               <TableCell className="text-muted-foreground">{srNo(i)}</TableCell>
                               <TableCell className="font-medium">{row.categoryName}</TableCell>
                               <TableCell>
-                                <StatusBadge status={row.status} />
+                                <StatusToggle
+                                  checked={Number(row.status) === 1}
+                                  disabled={togglingId === row._id}
+                                  onToggle={() =>
+                                    handleToggleStatus("categories", row._id, row.status)
+                                  }
+                                />
                               </TableCell>
                               <TableCell className="text-right space-x-1">
                                 <Button type="button" size="sm" variant="ghost" onClick={() => openEditCategory(row)}>
@@ -1000,7 +1125,13 @@ export function ContentWebsiteSettings() {
                               <TableCell className="font-medium">{row.nicheName}</TableCell>
                               <TableCell>{categoryLabel(row)}</TableCell>
                               <TableCell>
-                                <StatusBadge status={row.status} />
+                                <StatusToggle
+                                  checked={Number(row.status) === 1}
+                                  disabled={togglingId === row._id}
+                                  onToggle={() =>
+                                    handleToggleStatus("niches", row._id, row.status)
+                                  }
+                                />
                               </TableCell>
                               <TableCell className="text-right space-x-1">
                                 <Button type="button" size="sm" variant="ghost" onClick={() => openEditNiche(row)}>
@@ -1161,17 +1292,17 @@ export function ContentWebsiteSettings() {
               </>
             )}
 
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={String(itemStatus)} onValueChange={(v) => setItemStatus(Number(v))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Active</SelectItem>
-                  <SelectItem value="0">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+              <div>
+                <Label className="text-sm">Status</Label>
+                <p className="text-xs text-muted-foreground">
+                  {itemStatus === 1 ? "Visible in create wizard" : "Hidden from create wizard"}
+                </p>
+              </div>
+              <StatusToggle
+                checked={itemStatus === 1}
+                onToggle={(on) => setItemStatus(on ? 1 : 0)}
+              />
             </div>
           </div>
 

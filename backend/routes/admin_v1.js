@@ -89,6 +89,7 @@ router.post("/pinterest/v2/runKeywordEngine", authentication, PinterestControlle
 router.post("/pinterest/v2/listProjectKeywords", authentication, PinterestControllerV2.listProjectKeywords);
 router.post("/pinterest/v2/runContentClusters", authentication, PinterestControllerV2.runContentClusters);
 router.post("/pinterest/v2/listProjectClusters", authentication, PinterestControllerV2.listProjectClusters);
+router.post("/pinterest/v2/getContentTaxonomy", authentication, PinterestControllerV2.getContentTaxonomy);
 
 router.post("/addBulkCategoriesWithSubs", CategoriesController.addBulkCategoriesWithSubs);
 

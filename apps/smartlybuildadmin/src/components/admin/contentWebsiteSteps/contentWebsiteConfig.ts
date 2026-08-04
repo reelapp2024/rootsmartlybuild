@@ -60,6 +60,7 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
       { id: "post_grid", name: "Post Grid", description: "Article cards", defaultSelected: true },
       { id: "popular_posts", name: "Popular Posts", description: "Reader favorites", defaultSelected: true },
       { id: "newsletter", name: "Newsletter", description: "Email capture on blog", defaultSelected: true },
+      { id: "faq", name: "FAQ", description: "Blog listing FAQs", defaultSelected: true },
     ],
   },
   {
@@ -72,6 +73,7 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
       { id: "category_hero", name: "Category Hero", description: "Category title + intro", defaultSelected: true },
       { id: "post_grid", name: "Post Grid", description: "Posts in this category", defaultSelected: true },
       { id: "related_categories", name: "Related Categories", description: "Cross-links", defaultSelected: true },
+      { id: "faq", name: "FAQ", description: "Category / subcategory FAQs", defaultSelected: true },
     ],
   },
   {
@@ -112,6 +114,7 @@ export const DEFAULT_CONTENT_PAGES: ContentPageOption[] = [
       { id: "contact_hero", name: "Contact Hero", description: "Contact banner", defaultSelected: true },
       { id: "contact_form", name: "Contact Form", description: "Message form", defaultSelected: true },
       { id: "contact_info", name: "Contact Info", description: "Email / social", defaultSelected: true },
+      { id: "faq", name: "FAQ", description: "Contact & support FAQs", defaultSelected: true },
     ],
   },
   {
