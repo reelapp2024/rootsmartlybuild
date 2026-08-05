@@ -40,11 +40,12 @@ export const TrendingPinsFunky: React.FC<Props> = ({
   const padX = s.paddingX ?? 'px-4 sm:px-6';
   const colors = surface.cardAlts;
 
+  const live = Boolean(readOnly);
   const titleEl = mergeFunkyElement(section, `${section.id}-cw-trend-title`, {
     id: `${section.id}-cw-trend-title`, type: 'heading',
     content: { text: c.title || 'Trending on the board', htmlTag: 'h2' },
     style: { color: titleColor, fontSize: 'clamp(1.6rem, 3.5vw, 2.6rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-  });
+  }, { preferFallbackText: live });
   const titleElPainted: WebsiteElement = {
     ...titleEl,
     style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) },
@@ -78,12 +79,12 @@ export const TrendingPinsFunky: React.FC<Props> = ({
               id: `${section.id}-cw-trend-item-${i}-title`, type: 'heading',
               content: { text: item.title || item.name || 'Item', htmlTag: 'h3' },
               style: { color: titleColor, fontSize: '1.15rem', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-            });
+            }, { preferFallbackText: live });
             const itemDesc = mergeFunkyElement(section, `${section.id}-cw-trend-item-${i}-desc`, {
               id: `${section.id}-cw-trend-item-${i}-desc`, type: 'text',
               content: { text: item.description || item.subtitle || item.tag || '' },
               style: { color: textColor, fontFamily: FUNKY.fonts.body },
-            });
+            }, { preferFallbackText: live });
             const itemTitlePainted: WebsiteElement = {
               ...itemTitle,
               style: { ...withFunkyTextStyle(itemTitle.style as any, titleColor, isLight) },
@@ -108,18 +109,33 @@ export const TrendingPinsFunky: React.FC<Props> = ({
                   padding: 16,
                 }}
               >
-                {item.image ? (
-                  <img
-                    src={item.image}
-                    alt=""
-                    className="w-full h-40 object-cover rounded-xl mb-3"
-                    style={{ border: `2px solid ${f.ink}` }}
-                  />
-                ) : null}
-                <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemTitlePainted] }} {...passThrough} />
-                <div className="mt-2">
-                  <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemDescPainted] }} {...passThrough} />
-                </div>
+                {(() => {
+                  const href = String(item.link || item.href || '').trim();
+                  const inner = (
+                    <>
+                      {item.image ? (
+                        <img
+                          src={item.image}
+                          alt=""
+                          className="w-full h-40 object-cover rounded-xl mb-3"
+                          style={{ border: `2px solid ${f.ink}` }}
+                        />
+                      ) : null}
+                      <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemTitlePainted] }} {...passThrough} />
+                      <div className="mt-2">
+                        <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemDescPainted] }} {...passThrough} />
+                      </div>
+                    </>
+                  );
+                  if (href && live) {
+                    return (
+                      <a href={href} className="block no-underline text-inherit">
+                        {inner}
+                      </a>
+                    );
+                  }
+                  return inner;
+                })()}
               </motion.div>
             );
           })}

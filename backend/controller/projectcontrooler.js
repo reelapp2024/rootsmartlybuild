@@ -3462,6 +3462,34 @@ Exclude existing names: ${existingNames.join(" | ") || "none"}.`;
         req?.user?.userId || null
       );
 
+      // Persist + emit generating immediately so Project List never shows idle while Redis waits
+      try {
+        const sectionCount = Array.isArray(selectedSectionIds) ? selectedSectionIds.length : 0;
+        const snapshot = {
+          status: "generating",
+          total: sectionCount,
+          done: 0,
+          failed: 0,
+          skipped: 0,
+          pending: sectionCount,
+          percent: 0,
+          message: "Section generation queued…",
+          startedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await UserProject.updateOne({ _id: projectId }, { $set: { contentGeneration: snapshot } });
+        const { startProgress } = require("../services/sectionGenerationProgress");
+        startProgress(String(projectId), {
+          total: sectionCount,
+          message: "Section generation queued…",
+        });
+      } catch (progressErr) {
+        console.warn(
+          "[enqueueSectionsContnetGeneration] progress seed failed:",
+          progressErr?.message || progressErr
+        );
+      }
+
       const job = await enqueueSectionGeneration({
         projectId,
         locations: isContentProject ? [] : Array.isArray(locations) ? locations : [],

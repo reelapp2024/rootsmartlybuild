@@ -544,6 +544,85 @@ async function listPublishedBlogCategories(projectId) {
 }
 
 /**
+ * FAQ Q&As for a published article — prefer keyword research faqKeywords
+ * linked via articleId / searchIntentSlug / primaryKeyword.
+ */
+async function buildBlogFaqItems(projectId, blog) {
+  try {
+    const ProjectKeywords = require("../models/projectKeywords");
+    const blogId = blog?._id;
+    const slug = String(blog?.slug || "")
+      .trim()
+      .toLowerCase();
+    const title = String(blog?.title || "")
+      .trim()
+      .toLowerCase();
+
+    const or = [];
+    if (blogId) or.push({ articleId: blogId });
+    if (slug) {
+      or.push({ searchIntentSlug: slug });
+      or.push({ searchIntentSlug: `blog/${slug}` });
+    }
+    if (title) or.push({ primaryKeyword: new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") });
+
+    let kw = null;
+    if (or.length) {
+      kw = await ProjectKeywords.findOne({
+        projectId,
+        status: "active",
+        $or: or,
+      })
+        .select("faqKeywords primaryKeyword")
+        .lean();
+    }
+
+    const questions = Array.isArray(kw?.faqKeywords) ? kw.faqKeywords : [];
+    const items = questions
+      .map((q) => {
+        const question = String(q || "").trim();
+        if (!question) return null;
+        return {
+          title: question,
+          question,
+          description: `Here's a clear answer about “${question.replace(/\?$/, "")}” related to ${String(blog?.title || "this article").trim()}.`,
+          answer: `Here's a clear answer about “${question.replace(/\?$/, "")}” related to ${String(blog?.title || "this article").trim()}.`,
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 8);
+
+    if (items.length) return items;
+
+    // Fallback: a few article-scoped prompts so FAQ section isn't empty
+    const topic = String(blog?.title || "this topic").trim();
+    return [
+      {
+        title: `What is ${topic} about?`,
+        question: `What is ${topic} about?`,
+        description: String(blog?.information || "").trim() || `A practical guide covering ${topic}.`,
+        answer: String(blog?.information || "").trim() || `A practical guide covering ${topic}.`,
+      },
+      {
+        title: "Who is this article for?",
+        question: "Who is this article for?",
+        description: "Anyone looking for clear, actionable tips on this topic.",
+        answer: "Anyone looking for clear, actionable tips on this topic.",
+      },
+      {
+        title: "Where can I read more?",
+        question: "Where can I read more?",
+        description: "Browse related articles below or explore categories from the homepage.",
+        answer: "Browse related articles below or explore categories from the homepage.",
+      },
+    ];
+  } catch (err) {
+    console.warn("[buildBlogFaqItems]", err?.message || err);
+    return [];
+  }
+}
+
+/**
  * Full live payload for GenieBuild blog detail sections (one request).
  * Keys match section.content shapes used by blogarticlehero / blogcontent /
  * blogauthor / blogrelated / blogcomments.
@@ -574,13 +653,14 @@ async function buildPublishedBlogDetailPayload(projectId, opts = {}) {
     : null;
 
   const resolvedOpts = { blogId: String(blog._id), slug: String(blog.slug || "") };
-  const [heroWrap, contentWrap, authorWrap, relatedItems, commentsWrap] =
+  const [heroWrap, contentWrap, authorWrap, relatedItems, commentsWrap, faqItems] =
     await Promise.all([
       buildBlogArticleHeroData(projectId, resolvedOpts),
       buildBlogContentData(projectId, resolvedOpts),
       buildBlogAuthorData(projectId, resolvedOpts),
       buildBlogRelatedItems(projectId, { ...resolvedOpts, limit: 3 }),
       buildBlogCommentsData(projectId, resolvedOpts),
+      buildBlogFaqItems(projectId, blog),
     ]);
 
   // Always prefer the live Author document for identity + ALL links
@@ -614,6 +694,11 @@ async function buildPublishedBlogDetailPayload(projectId, opts = {}) {
       title: "Related Articles",
       items: relatedItems,
       contentRef: { source: "blog_collection", blogId: String(blog._id) },
+    },
+    faq: {
+      title: "Frequently Asked Questions",
+      subtitle: `Common questions about ${String(blog.title || "this article").trim()}`,
+      items: faqItems,
     },
     comments: commentsWrap?.data || { comments: [] },
     /** Flat convenience fields (same as hero/content) */
@@ -660,5 +745,6 @@ module.exports = {
   buildBlogRelatedItems,
   buildBlogCommentsData,
   listPublishedBlogCategories,
+  buildBlogFaqItems,
   buildPublishedBlogDetailPayload,
 };

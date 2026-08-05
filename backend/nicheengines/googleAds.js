@@ -1,5 +1,25 @@
 const axios = require('axios');
 
+/** In-process cache — keyword engine often re-asks the same seed/related phrases. */
+const demandCache = new Map();
+const DEMAND_CACHE_MAX = 200;
+
+function normalizeCacheKey(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cacheDemand(key, value) {
+  if (demandCache.size >= DEMAND_CACHE_MAX) {
+    const first = demandCache.keys().next().value;
+    demandCache.delete(first);
+  }
+  demandCache.set(key, value);
+  return value;
+}
+
 function isAdsModeEnabled() {
   return String(process.env.GOOGLE_ADS_API_MODE || '').toLowerCase() === 'true';
 }
@@ -191,6 +211,7 @@ async function getKeywordDemand({
   language = 'EN',
   categoryName = '',
   userId = null,
+  skipAi = false,
 } = {}) {
   const LOG = '[NicheAnalysis][Ads]';
   const q = String(keyword || '').trim();
@@ -205,6 +226,11 @@ async function getKeywordDemand({
     };
   }
 
+  const cacheKey = `${normalizeCacheKey(q)}|${country}|${language}|${skipAi ? 'noai' : 'ai'}`;
+  if (demandCache.has(cacheKey)) {
+    return demandCache.get(cacheKey);
+  }
+
   const adsOn = isAdsModeEnabled();
   const credsOk = hasAdsCredentials();
   console.log(`${LOG} Volume engine decision:`, {
@@ -212,10 +238,11 @@ async function getKeywordDemand({
     country,
     language,
     categoryName: categoryName || null,
+    skipAi: Boolean(skipAi),
     GOOGLE_ADS_API_MODE: adsOn,
     credentialsPresent: credsOk,
     willTryGoogleAds: adsOn && credsOk,
-    fallbackIfNeeded: 'OpenAI + Google Suggest',
+    fallbackIfNeeded: skipAi ? 'Google Suggest heuristic' : 'OpenAI + Google Suggest',
   });
 
   if (adsOn && credsOk) {
@@ -235,12 +262,12 @@ async function getKeywordDemand({
         relatedCount: Math.max(0, rows.length - 1),
         relatedSample: rows.slice(1, 5).map((r) => r.keyword),
       });
-      return {
+      return cacheDemand(cacheKey, {
         mode: 'google_ads',
         dataLabel: primary?.dataLabel || 'real',
         primary,
         related: rows.slice(1, 8),
-      };
+      });
     } catch (err) {
       console.warn(
         `${LOG} Google Ads FAILED → falling back to OpenAI + Suggest:`,
@@ -257,7 +284,7 @@ async function getKeywordDemand({
     );
   }
 
-  // Ads off / failed → OpenAI demand estimate + Suggest for related keywords
+  // Ads off / failed → Suggest (+ optional OpenAI)
   console.log(`${LOG} Fetching Google Suggest (autocomplete) for related terms…`);
   const suggestStarted = Date.now();
   const suggestions = await fetchGoogleSuggest(q, language);
@@ -268,12 +295,13 @@ async function getKeywordDemand({
 
   let aiEstimate = null;
 
-  try {
-    console.log(`${LOG} Calling OpenAI for volume/competition estimate (High/Med/Low)…`);
-    const { fetchJSONFromOpenAI } = require('../additional/openaiHelpers');
-    const tAi = Date.now();
-    aiEstimate = await fetchJSONFromOpenAI(
-      `You estimate niche keyword demand for content / Pinterest sites.
+  if (!skipAi) {
+    try {
+      console.log(`${LOG} Calling OpenAI for volume/competition estimate (High/Med/Low)…`);
+      const { fetchJSONFromOpenAI } = require('../additional/openaiHelpers');
+      const tAi = Date.now();
+      aiEstimate = await fetchJSONFromOpenAI(
+        `You estimate niche keyword demand for content / Pinterest sites.
 
 Return ONLY JSON:
 {
@@ -295,19 +323,22 @@ Rules:
 - Language: ${language}
 - Google Suggest hints (optional): ${JSON.stringify(suggestions.slice(0, 8))}
 `,
-      'NICHE_DEMAND_ESTIMATE',
-      {
-        userId: userId ? String(userId) : undefined,
-        promptFrom: 'nicheengines/googleAds',
-        promptFor: `Demand estimate - ${q}`,
-      }
-    );
-    console.log(`${LOG} OpenAI demand estimate OK (${Date.now() - tAi}ms):`, aiEstimate);
-  } catch (err) {
-    console.warn(
-      `${LOG} OpenAI estimate FAILED — will use Suggest-count heuristic:`,
-      err.message
-    );
+        'NICHE_DEMAND_ESTIMATE',
+        {
+          userId: userId ? String(userId) : undefined,
+          promptFrom: 'nicheengines/googleAds',
+          promptFor: `Demand estimate - ${q}`,
+        }
+      );
+      console.log(`${LOG} OpenAI demand estimate OK (${Date.now() - tAi}ms):`, aiEstimate);
+    } catch (err) {
+      console.warn(
+        `${LOG} OpenAI estimate FAILED — will use Suggest-count heuristic:`,
+        err.message
+      );
+    }
+  } else {
+    console.log(`${LOG} OpenAI demand skipped (skipAi=true)`);
   }
 
   const volumeLevel =
@@ -363,12 +394,12 @@ Rules:
       volumeRange: 'estimate',
       volumeLevel,
       competition: 'estimate',
-      source: 'openai_estimate',
+      source: aiEstimate ? 'openai_estimate' : 'suggest_heuristic',
       dataLabel: 'estimate',
     }));
 
   const result = {
-    mode: 'openai_estimate',
+    mode: aiEstimate ? 'openai_estimate' : 'suggest_heuristic',
     dataLabel: 'estimate',
     primary: {
       keyword: q,
@@ -378,7 +409,7 @@ Rules:
       competition,
       competitionNote: aiEstimate?.competitionNote || null,
       demandScore,
-      source: 'openai_estimate',
+      source: aiEstimate ? 'openai_estimate' : 'suggest_heuristic',
       dataLabel: 'estimate',
       suggestionCount: suggestions.length,
       volumeSource,
@@ -398,7 +429,7 @@ Rules:
     related: relatedMerged.map((r) => r.keyword),
   });
 
-  return result;
+  return cacheDemand(cacheKey, result);
 }
 
 module.exports = {

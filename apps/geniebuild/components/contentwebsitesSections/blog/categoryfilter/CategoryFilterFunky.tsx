@@ -39,17 +39,19 @@ export const CategoryFilterFunky: React.FC<Props> = ({
   const padB = s.paddingBottom ?? 'pb-12 sm:pb-16';
   const padX = s.paddingX ?? 'px-4 sm:px-6';
   const colors = surface.cardAlts;
+  const live = Boolean(readOnly);
 
-  const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cw-catfilter-title`) || {
+  const titleEl = mergeFunkyElement(section, `${section.id}-cw-catfilter-title`, {
     id: `${section.id}-cw-catfilter-title`, type: 'heading',
     content: { text: c.title || "Filter by vibe", htmlTag: 'h2' },
     style: { color: titleColor, fontSize: 'clamp(1.6rem, 3.5vw, 2.6rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-  };
+  }, { preferFallbackText: live });
   const titleElPainted: WebsiteElement = { ...titleEl, style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) } };
 
-  const items: any[] = Array.isArray(c.items) && c.items.length ? c.items : [{"title":"All","description":"Everything"},{"title":"DIY","description":"Projects"},{"title":"Printables","description":"Downloads"},{"title":"Guides","description":"How-tos"}];
+  const items: any[] = Array.isArray(c.items) && c.items.length ? c.items : [{"title":"All","description":"Everything","link":"/blog"},{"title":"DIY","description":"Projects"},{"title":"Printables","description":"Downloads"},{"title":"Guides","description":"How-tos"}];
 
   const themeColors = { ...tc, ...funkyThemeBag, titleColor, textColor };
+  const lightStyles = { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor };
   const passThrough = {
     onTextEdit, onElementUpdate: onElementUpdate || (() => {}), onElementSelect,
     selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
@@ -59,33 +61,43 @@ export const CategoryFilterFunky: React.FC<Props> = ({
     <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
       <div className={`max-w-7xl mx-auto ${padX} ${padT} ${padB}`}>
-        <div className="mb-8"><ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [titleElPainted] }} {...passThrough} /></div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="mb-8"><ElementsSection section={{ ...section, styles: lightStyles, elements: [titleElPainted] }} {...passThrough} /></div>
+        <div className="flex flex-wrap gap-3 sm:gap-4">
           {items.map((item, i) => {
             const itemTitle = mergeFunkyElement(section, `${section.id}-cw-catfilter-item-${i}-title`, {
               id: `${section.id}-cw-catfilter-item-${i}-title`, type: 'heading',
               content: { text: item.title || item.name || 'Item', htmlTag: 'h3' },
-              style: { color: titleColor, fontSize: '1.15rem', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-            });
-            const itemDesc = mergeFunkyElement(section, `${section.id}-cw-catfilter-item-${i}-desc`, {
-              id: `${section.id}-cw-catfilter-item-${i}-desc`, type: 'text',
-              content: { text: item.description || item.subtitle || item.tag || '' },
-              style: { color: textColor, fontFamily: FUNKY.fonts.body },
-            });
+              style: { color: titleColor, fontSize: '1rem', fontWeight: '800', fontFamily: FUNKY.fonts.display },
+            }, { preferFallbackText: live });
             const itemTitlePainted: WebsiteElement = {
               ...itemTitle,
               style: { ...withFunkyTextStyle(itemTitle.style as any, titleColor, isLight) },
             };
-            const itemDescPainted: WebsiteElement = {
-              ...itemDesc,
-              style: { ...withFunkyTextStyle(itemDesc.style as any, textColor, isLight) },
-            };
+            const href = String(item.link || item.href || '').trim();
+            const chip = (
+              <div
+                style={{
+                  background: colors[i % colors.length],
+                  border: `2.5px solid ${f.ink}`,
+                  borderRadius: 999,
+                  boxShadow: FUNKY.shadow,
+                  padding: '10px 18px',
+                  minWidth: 100,
+                }}
+              >
+                <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemTitlePainted] }} {...passThrough} />
+                {(item.description || item.subtitle) ? (
+                  <div className="text-xs mt-0.5 opacity-80" style={{ color: textColor, fontFamily: FUNKY.fonts.body }}>
+                    {item.description || item.subtitle}
+                  </div>
+                ) : null}
+              </div>
+            );
             return (
-              <motion.div key={i} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-                style={{ background: colors[i % colors.length], border: `2.5px solid ${f.ink}`, borderRadius: 22, boxShadow: FUNKY.shadow, transform: i % 2 ? 'rotate(1.2deg)' : 'rotate(-1.2deg)', overflow: 'hidden', padding: 16 }}>
-                {item.image ? <img src={item.image} alt="" className="w-full h-40 object-cover rounded-xl mb-3" style={{ border: `2px solid ${f.ink}` }} /> : null}
-                <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [itemTitlePainted] }} {...passThrough} />
-                <div className="mt-2"><ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [itemDescPainted] }} {...passThrough} /></div>
+              <motion.div key={i} initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+                {href && readOnly ? (
+                  <a href={href} className="block no-underline text-inherit">{chip}</a>
+                ) : chip}
               </motion.div>
             );
           })}

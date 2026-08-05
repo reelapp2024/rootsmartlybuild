@@ -41,6 +41,16 @@ export type PublishedBlogDetail = {
   content?: Record<string, any>;
   author?: Record<string, any>;
   related?: { items?: PublishedBlogItem[]; badgeText?: string; relatedTitle?: string; title?: string };
+  faq?: {
+    title?: string;
+    subtitle?: string;
+    items?: Array<{
+      title?: string;
+      question?: string;
+      description?: string;
+      answer?: string;
+    }>;
+  };
   comments?: {
     commentSectionTitle?: string;
     commentSectionSubtitle?: string;

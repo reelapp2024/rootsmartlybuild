@@ -4,15 +4,19 @@
  * With credentials (PINTEREST_API_MODE=true + PINTEREST_ACCESS_TOKEN):
  *   → Official Pinterest API v5 search/pins
  *
- * Without credentials (always works):
- *   → Google CSE site:pinterest.com (if GOOGLE_API_KEY set)
- *   → OpenAI pin-potential estimate
- *   → Visual keyword heuristic
+ * Without credentials:
+ *   → Google CSE site:pinterest.com (circuit-breaks on repeated 403)
+ *   → Heuristic (fast, default) OR OpenAI when deep=true
  */
 
 const axios = require('axios');
 
 const LOG = '[NicheAnalysis][Pinterest]';
+
+/** Skip CSE after repeated auth/quota failures (avoids N×403 in keyword engine). */
+let cseFailStreak = 0;
+const CSE_CIRCUIT_OPEN_AFTER = 2;
+let cseCircuitOpenUntil = 0;
 
 function isPinterestApiMode() {
   return String(process.env.PINTEREST_API_MODE || '').toLowerCase() === 'true';
@@ -79,7 +83,6 @@ async function searchPinsOfficial(keyword) {
       ? Math.round(withSaves.reduce((s, p) => s + p.saveCount, 0) / withSaves.length)
       : null;
 
-  // Map pin density / saves → potential score
   let score = 40 + Math.min(35, pins.length * 3);
   if (avgSaves != null) {
     if (avgSaves >= 5000) score += 20;
@@ -104,6 +107,7 @@ async function searchViaGoogleCse(keyword) {
   const key = process.env.GOOGLE_API_KEY;
   const cx = process.env.GOOGLE_SEARCH_ENGINE_ID;
   if (!key || !cx) return null;
+  if (Date.now() < cseCircuitOpenUntil) return null;
 
   const { data } = await axios.get('https://www.googleapis.com/customsearch/v1', {
     params: {
@@ -112,9 +116,10 @@ async function searchViaGoogleCse(keyword) {
       q: `${String(keyword).trim()} site:pinterest.com`,
       num: 8,
     },
-    timeout: 12000,
+    timeout: 8000,
   });
 
+  cseFailStreak = 0;
   const items = Array.isArray(data?.items) ? data.items : [];
   return {
     resultCount: items.length,
@@ -125,6 +130,19 @@ async function searchViaGoogleCse(keyword) {
       snippet: i.snippet,
     })),
   };
+}
+
+function noteCseFailure(err) {
+  const status = err?.response?.status;
+  if (status === 403 || status === 429) {
+    cseFailStreak += 1;
+    if (cseFailStreak >= CSE_CIRCUIT_OPEN_AFTER) {
+      cseCircuitOpenUntil = Date.now() + 15 * 60 * 1000;
+      console.warn(
+        `${LOG} CSE circuit OPEN for 15m after ${cseFailStreak}× ${status} failures`
+      );
+    }
+  }
 }
 
 async function estimateWithOpenAI({ keyword, categoryName, userId, cse, heuristic }) {
@@ -164,12 +182,14 @@ Rules:
 }
 
 /**
- * Main entry — Pinterest potential signals for a niche keyword.
+ * @param {{ deep?: boolean }} opts.deep — true for niche validation (CSE+AI).
+ *   Keyword engine bulk must pass deep=false (default) → heuristic only.
  */
 async function getPinterestSignals({
   keyword,
   categoryName = '',
   userId = null,
+  deep = false,
 } = {}) {
   const q = String(keyword || '').trim();
   if (!q) {
@@ -182,8 +202,11 @@ async function getPinterestSignals({
     };
   }
 
+  const wantDeep = deep === true;
+
   console.log(`${LOG} Decision:`, {
     keyword: q,
+    deep: wantDeep,
     PINTEREST_API_MODE: isPinterestApiMode(),
     credentialsPresent: hasPinterestCredentials(),
     willTryOfficialApi: isPinterestApiMode() && hasPinterestCredentials(),
@@ -214,21 +237,47 @@ async function getPinterestSignals({
     );
   }
 
-  // ---- No-credentials / fallback path ----
   const heuristic = visualHeuristicScore(q, categoryName);
+
+  if (!wantDeep) {
+    const result = {
+      mode: 'heuristic',
+      dataLabel: 'estimate',
+      level: heuristic.level,
+      score: heuristic.score,
+      visualStrength: heuristic.level,
+      summary: `Visual/heuristic Pinterest fit for "${q}".`,
+      pinAngles: [],
+      cse: null,
+      heuristicHits: heuristic.hits,
+      note: 'Heuristic-only (deep=false) — skipped CSE + OpenAI',
+    };
+    console.log(`${LOG} Heuristic RESULT:`, {
+      mode: result.mode,
+      score: result.score,
+      level: result.level,
+    });
+    return result;
+  }
+
   let cse = null;
   try {
-    console.log(`${LOG} Fallback: Google CSE site:pinterest.com…`);
-    cse = await searchViaGoogleCse(q);
-    if (cse) {
-      console.log(`${LOG} CSE OK:`, {
-        resultCount: cse.resultCount,
-        totalEstimated: cse.totalEstimated,
-      });
+    if (Date.now() < cseCircuitOpenUntil) {
+      console.log(`${LOG} CSE skipped (circuit open)`);
     } else {
-      console.log(`${LOG} CSE skipped (GOOGLE_API_KEY / GOOGLE_SEARCH_ENGINE_ID missing)`);
+      console.log(`${LOG} Fallback: Google CSE site:pinterest.com…`);
+      cse = await searchViaGoogleCse(q);
+      if (cse) {
+        console.log(`${LOG} CSE OK:`, {
+          resultCount: cse.resultCount,
+          totalEstimated: cse.totalEstimated,
+        });
+      } else {
+        console.log(`${LOG} CSE skipped (GOOGLE_API_KEY / GOOGLE_SEARCH_ENGINE_ID missing)`);
+      }
     }
   } catch (err) {
+    noteCseFailure(err);
     console.warn(`${LOG} CSE failed:`, err.message);
   }
 

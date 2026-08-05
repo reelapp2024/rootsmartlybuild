@@ -84,16 +84,27 @@ export function mapApiSectionToCanvas(sec: any, index: number): Section | null {
     .filter((el: WebsiteElement | null): el is WebsiteElement => !!el);
 
   const mergedContent: Record<string, unknown> = {
+    // Stored / AI SectionContent
+    ...(sec?.data && typeof sec.data === 'object' && !Array.isArray(sec.data) ? sec.data : {}),
+    // Live overlays (content taxonomy, dynamics) MUST win over static stored items
     ...(sec?.content && typeof sec.content === 'object' && !Array.isArray(sec.content)
       ? sec.content
       : {}),
-    ...(sec?.data && typeof sec.data === 'object' && !Array.isArray(sec.data) ? sec.data : {}),
   };
-  if (type === 'faq' && Array.isArray(sec?.data)) {
+  if (type === 'faq' && Array.isArray(sec?.data) && !Array.isArray(mergedContent.items)) {
     mergedContent.items = sec.data;
   }
   if (!mergedContent.items && Array.isArray(sec?.data?.data)) {
     mergedContent.items = sec.data.data;
+  }
+  // Prefer explicit live content.items when present (grids / FAQ)
+  if (
+    sec?.content &&
+    typeof sec.content === 'object' &&
+    Array.isArray((sec.content as any).items) &&
+    (sec.content as any).items.length > 0
+  ) {
+    mergedContent.items = (sec.content as any).items;
   }
 
   if (

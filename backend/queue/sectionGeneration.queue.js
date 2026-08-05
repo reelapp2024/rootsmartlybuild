@@ -2414,7 +2414,7 @@ Rules:
       }
     }
 
-    // Legal pages: normalize GenieBuild + legacy shapes
+    // Legal pages: normalize GenieBuild + legacy shapes (+ content-site Funky bodies)
     if (
       [
         "legalhero",
@@ -2422,6 +2422,9 @@ Rules:
         "legalprivacy",
         "legalterms",
         "legaldisclaimer",
+        "privacybody",
+        "termsbody",
+        "disclaimerbody",
       ].includes(normalizedSectionId) &&
       resultToSave &&
       typeof resultToSave === "object"
@@ -2439,6 +2442,21 @@ Rules:
         resultToSave = {
           ...resultToSave,
           sections: split.content.sections,
+          body: split.content.body,
+        };
+      } else if (
+        normalizedSectionId === "privacybody" ||
+        normalizedSectionId === "termsbody" ||
+        normalizedSectionId === "disclaimerbody"
+      ) {
+        // Content-site single-section legal pages: hero fields + full document body
+        resultToSave = {
+          ...resultToSave,
+          ...split.combined,
+          title: split.combined.title,
+          subtitle: split.combined.subtitle,
+          sections: split.combined.sections,
+          body: split.combined.body,
         };
       } else {
         resultToSave = { ...resultToSave, ...split.combined };

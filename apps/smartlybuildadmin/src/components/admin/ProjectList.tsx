@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Eye, ExternalLink, Pencil, Search, Server, Trash, Plus, Zap, Globe, Laptop, Wrench, Link, Settings, CheckCircle, BarChart3, MoreVertical, Layout, FileText, Info, CheckCircle2, Loader2 } from "lucide-react";
@@ -194,15 +194,32 @@ export function ProjectList({
     };
   }, [navigate, currentPage, limit, searchTerm, projectType]);
 
-  // Poll progress for projects still generating (socket backup).
+  // Poll progress only as a sparse socket backup (never hammer the API).
+  const generatingIdsKey = useMemo(
+    () =>
+      projects
+        .filter((p) => String(p?.contentGeneration?.status || "") === "generating")
+        .map((p) => String(p._id))
+        .sort()
+        .join(","),
+    // Recompute only when generating set changes — not on every percent tick
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects.map((p) => `${p._id}:${p?.contentGeneration?.status}`).join("|")]
+  );
+  const pollInFlightRef = useRef(false);
+
   useEffect(() => {
-    const generatingIds = projects
-      .filter((p) => String(p?.contentGeneration?.status || "") === "generating")
-      .map((p) => String(p._id));
+    if (!generatingIdsKey) return;
+    const generatingIds = generatingIdsKey.split(",").filter(Boolean);
     if (!generatingIds.length) return;
 
     let cancelled = false;
+    let intervalId = 0;
+
     const tick = async () => {
+      if (cancelled || pollInFlightRef.current) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      pollInFlightRef.current = true;
       try {
         const token = localStorage.getItem("token");
         if (!token) return;
@@ -221,16 +238,24 @@ export function ProjectList({
         });
       } catch {
         /* ignore poll errors */
+      } finally {
+        pollInFlightRef.current = false;
       }
     };
 
-    tick();
-    const id = window.setInterval(tick, 3000);
+    // Sockets carry live updates; first HTTP backup after 8s, then every 15s
+    const initialDelayId = window.setTimeout(() => {
+      if (cancelled) return;
+      tick();
+      intervalId = window.setInterval(tick, 15000);
+    }, 8000);
+
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      window.clearTimeout(initialDelayId);
+      if (intervalId) window.clearInterval(intervalId);
     };
-  }, [projects.map((p) => `${p._id}:${p?.contentGeneration?.status}`).join("|")]);
+  }, [generatingIdsKey]);
 
   // Handle page change
   const handlePageChange = (pageNumber) => {
@@ -329,6 +354,64 @@ export function ProjectList({
       verificationCode: currentVerificationCode,
       htmlFileName: currentHtmlFileName
     });
+  };
+
+  /** Queue AI section generation (content / business / bulk) — same Redis worker */
+  const handleGenerateWebsiteContent = async (
+    projectId: string,
+    projectType?: number | string
+  ) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast({
+          title: "Authentication Error",
+          description: "No authentication token found",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      mergeContentGeneration(String(projectId), {
+        projectId: String(projectId),
+        status: "generating",
+        percent: 0,
+        message: "Section generation queued…",
+      } as ContentGenerationProgress);
+
+      const typeNum = Number(projectType);
+      if (typeNum === 2) {
+        // Content sites: ensure design exists, then enqueue (same create path)
+        await http.post(
+          "/pinterest/v2/bootstrapContentPages",
+          { projectId, enqueueSections: true },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      } else {
+        await http.post(
+          "/enqueueSectionsContentGeneration",
+          {
+            projectId,
+            selectedSectionIds: [],
+            locations: [],
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
+
+      toast({
+        title: "Content generation started",
+        description:
+          "Sections are generating in the background. Progress updates live here.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Failed to start generation",
+        description:
+          err?.response?.data?.message || err?.message || "Could not queue section generation",
+        variant: "destructive",
+      });
+    }
   };
 
   // Handle generate default header/footer
@@ -618,7 +701,24 @@ export function ProjectList({
                               ) : null}
                             </div>
                           ) : (
-                            <span className="text-xs text-gray-400">Not generated yet</span>
+                            <div className="flex flex-col gap-1">
+                              <span className="text-xs text-gray-400">Not generated yet</span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[11px] px-2 w-fit"
+                                onClick={() =>
+                                  handleGenerateWebsiteContent(
+                                    String(project._id),
+                                    project.projectType
+                                  )
+                                }
+                              >
+                                <Zap className="h-3 w-3 mr-1" />
+                                Generate now
+                              </Button>
+                            </div>
                           )}
                         </div>
                         <Button
@@ -673,6 +773,17 @@ export function ProjectList({
                           <DropdownMenuItem onClick={() => handleUpdateProject(project._id, project.projectType)}>
                             {React.createElement(Pencil as any, { className: "h-4 w-4 mr-2" })}
                             Update
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleGenerateWebsiteContent(
+                                String(project._id),
+                                project.projectType
+                              )
+                            }
+                          >
+                            {React.createElement(Zap as any, { className: "h-4 w-4 mr-2" })}
+                            Generate Website Content
                           </DropdownMenuItem>
                           <DropdownMenuItem 
                             onClick={() => handleGenerateDefaultHeaderFooter(project._id, project.userId || localStorage.getItem('userId'))}

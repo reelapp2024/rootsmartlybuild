@@ -63,7 +63,7 @@ const DEFAULT_PAGE_SLUGS = {
   author: 'author',
 };
 
-/** Wizard page id → WebsitePage.pageType (drives section prompt folders) */
+/** Wizard page id → WebsitePage.pageType (must match WebsitePage enum) */
 const CONTENT_PAGE_TYPE_BY_ID = {
   home: 'home',
   blog: 'blog',
@@ -76,6 +76,26 @@ const CONTENT_PAGE_TYPE_BY_ID = {
   terms: 'legal',
   disclaimer: 'legal',
 };
+
+const WEBSITE_PAGE_TYPE_ENUM = new Set([
+  'default',
+  'service',
+  'home',
+  'homepage',
+  'blog',
+  'category',
+  'article',
+  'about',
+  'contact',
+  'author',
+  'legal',
+]);
+
+function resolveContentPageType(pageId) {
+  const mapped =
+    CONTENT_PAGE_TYPE_BY_ID[String(pageId || '').toLowerCase()] || 'default';
+  return WEBSITE_PAGE_TYPE_ENUM.has(mapped) ? mapped : 'default';
+}
 
 /** Legal page id → section type folder + Funky variant file */
 const LEGAL_BY_PAGE = {
@@ -320,7 +340,18 @@ function dummyContentForSection(sectionId, blueprint = {}, pageId = '', chromeCt
             : pageId === 'disclaimer'
               ? 'Disclaimer'
               : 'Privacy Policy',
-        body: `This is placeholder legal copy for ${brand}. Replace after generation.`,
+        subtitle:
+          pageId === 'terms'
+            ? 'Rules for using this website and its content.'
+            : pageId === 'disclaimer'
+              ? 'Limits on editorial and affiliate content.'
+              : 'How we collect and use information on this site.',
+        lastUpdatedLabel: `Last updated: ${new Date().toLocaleString('en-US', {
+          month: 'long',
+          year: 'numeric',
+        })}`,
+        sections: [],
+        body: '',
       };
     case 'brand_story':
     case 'brand_voice':
@@ -533,26 +564,57 @@ async function bootstrapContentWebsitePages({
   for (const page of selectedPages) {
     const name = page.id;
     const slug = resolveSlug(page.id, urlStructure);
-    const pageType = CONTENT_PAGE_TYPE_BY_ID[String(page.id || '').toLowerCase()] || 'default';
+    const pageType = resolveContentPageType(page.id);
     let doc = await WebsitePage.findOne({ projectId, name });
     if (!doc) {
-      doc = await WebsitePage.create({
-        projectId,
-        name,
-        slug,
-        displayName: page.name || name,
-        description: page.description || `${page.name} page`,
-        pageType,
-        isPublished: true,
-        componentIds: [],
-      });
-      created.push(doc);
+      try {
+        doc = await WebsitePage.create({
+          projectId,
+          name,
+          slug,
+          displayName: page.name || name,
+          description: page.description || `${page.name} page`,
+          pageType,
+          isPublished: true,
+          componentIds: [],
+        });
+        created.push(doc);
+      } catch (createErr) {
+        // Fallback if enum / validation drifts — never block the whole bootstrap
+        console.warn(
+          '[contentWebsitePagesBootstrap] page create retry with default pageType:',
+          name,
+          createErr?.message || createErr
+        );
+        doc = await WebsitePage.create({
+          projectId,
+          name,
+          slug,
+          displayName: page.name || name,
+          description: page.description || `${page.name} page`,
+          pageType: 'default',
+          isPublished: true,
+          componentIds: [],
+        });
+        created.push(doc);
+      }
     } else {
       doc.displayName = page.name || doc.displayName;
       doc.slug = slug || doc.slug;
-      doc.pageType = pageType || doc.pageType;
-      doc.isPublished = true;
-      await doc.save();
+      try {
+        doc.pageType = pageType || doc.pageType || 'default';
+        doc.isPublished = true;
+        await doc.save();
+      } catch (saveErr) {
+        doc.pageType = 'default';
+        doc.isPublished = true;
+        await doc.save();
+        console.warn(
+          '[contentWebsitePagesBootstrap] page save fell back to default pageType:',
+          name,
+          saveErr?.message || saveErr
+        );
+      }
     }
     pageIds[page.id] = String(doc._id);
   }

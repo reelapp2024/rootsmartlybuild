@@ -8,7 +8,7 @@ import SectionRenderer from './components/SectionRenderer';
 import { preloadVariant } from './components/sections/SectionRouter';
 import { PreviewFrame } from './components/PreviewFrame';
 import toast, { Toaster } from 'react-hot-toast';
-import { getDefaultVariant, getVariantsForSection } from './components/SectionsAndVariantRegistry';
+import { getDefaultVariant, getVariantsForSection, setActiveProjectType } from './components/SectionsAndVariantRegistry';
 import { ThemeProvider, useTheme, type ThemeData } from '@ui/blocks';
 import { AboutUsContactProvider } from './components/builder/context/AboutUsContactContext';
 import { OpenInternalLinkProvider } from './components/builder/context/OpenInternalLinkContext';
@@ -399,6 +399,9 @@ const AppContent: React.FC = () => {
       }
 
       const data = await response.json();
+      if (data?.data?.projectType !== undefined && data?.data?.projectType !== null) {
+        setActiveProjectType(Number(data.data.projectType));
+      }
       if (Array.isArray(data?.data?.sections) && data.data.sections.length > 0) {
         const apiThemeSettings = data?.data?.themeSettings || null;
         const themeSync = syncThemeFromApiSettings(apiThemeSettings, { projectId });

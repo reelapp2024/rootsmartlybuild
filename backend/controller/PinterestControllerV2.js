@@ -88,29 +88,54 @@ async function enqueueContentWebsiteSectionGeneration({ projectId, userId }) {
     ),
   ];
 
+  // Always include legal body sections when those pages exist in the design
+  // (guards against older bootstraps or filtered wizard selections dropping them).
+  const LEGAL_BODY_TYPES = new Set(['privacybody', 'termsbody', 'disclaimerbody']);
+  for (const page of design?.pages || []) {
+    for (const comp of Array.isArray(page.sections) ? page.sections : []) {
+      const type = String(comp?.sectionData?.type || '')
+        .toLowerCase()
+        .trim();
+      if (LEGAL_BODY_TYPES.has(type) && !selectedSectionIds.includes(type)) {
+        selectedSectionIds.push(type);
+      }
+    }
+  }
+
   if (!selectedSectionIds.length) {
     return { queued: false, reason: 'no_body_sections', selectedSectionsCount: 0 };
   }
 
+  const snapshot = {
+    status: 'generating',
+    total: selectedSectionIds.length,
+    done: 0,
+    failed: 0,
+    skipped: 0,
+    pending: selectedSectionIds.length,
+    percent: 0,
+    message: 'Section generation queued…',
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
   await UserProject.updateOne(
     { _id: projectId },
-    {
-      $set: {
-        contentGeneration: {
-          status: 'generating',
-          total: 0,
-          done: 0,
-          failed: 0,
-          skipped: 0,
-          pending: 0,
-          percent: 0,
-          message: 'Section generation queued…',
-          startedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-      },
-    }
+    { $set: { contentGeneration: snapshot } }
   );
+
+  // Live socket progress immediately (before worker plans units)
+  try {
+    const {
+      startProgress,
+    } = require('../services/sectionGenerationProgress');
+    startProgress(String(projectId), {
+      total: selectedSectionIds.length,
+      message: 'Section generation queued…',
+    });
+  } catch (_) {
+    /* optional */
+  }
 
   const job = await enqueueSectionGeneration({
     projectId: String(projectId),
@@ -2190,35 +2215,79 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
 
       // Same Redis/Bull queue as bulk + business — content prompts via resolveSectionFile(projectType: 2)
       let sectionGeneration = null;
-      if (pagesBootstrap?.designSaved) {
-        try {
+      try {
+        // If bootstrap failed earlier (or returned empty), retry once before enqueue
+        if (!pagesBootstrap?.designSaved) {
+          try {
+            pagesBootstrap = await bootstrapContentWebsitePages({
+              projectId: project._id,
+              userId,
+              blueprint: blueprint && typeof blueprint === 'object' ? blueprint : {},
+              selectedPages: bodySelectedPages,
+            });
+            if (pagesBootstrap?.designSaved) {
+              try {
+                const { syncContentCategoryPages } = require('../services/contentTaxonomyService');
+                taxonomySync = await syncContentCategoryPages({
+                  projectId: project._id,
+                  userId,
+                });
+              } catch (taxRetryErr) {
+                console.warn(
+                  '[PinterestV2] taxonomy retry failed:',
+                  taxRetryErr?.message || taxRetryErr
+                );
+              }
+            }
+          } catch (bootRetryErr) {
+            console.error('[PinterestV2] pages bootstrap retry failed:', bootRetryErr);
+          }
+        }
+
+        sectionGeneration = await enqueueContentWebsiteSectionGeneration({
+          projectId: project._id,
+          userId,
+        });
+
+        if (
+          !sectionGeneration?.queued &&
+          sectionGeneration?.reason === 'no_body_sections'
+        ) {
+          // Last chance: bootstrap again then enqueue
+          pagesBootstrap = await bootstrapContentWebsitePages({
+            projectId: project._id,
+            userId,
+            blueprint: blueprint && typeof blueprint === 'object' ? blueprint : {},
+            selectedPages: bodySelectedPages,
+          });
           sectionGeneration = await enqueueContentWebsiteSectionGeneration({
             projectId: project._id,
             userId,
           });
-          if (sectionGeneration?.queued) {
-            console.log('[PinterestV2] content site section generation enqueued', {
-              projectId: String(project._id),
-              jobId: sectionGeneration.jobId,
-              sections: sectionGeneration.selectedSectionsCount,
-            });
-          } else {
-            console.warn(
-              '[PinterestV2] skip section enqueue:',
-              sectionGeneration?.reason || 'unknown',
-              String(project._id)
-            );
-          }
-        } catch (enqueueErr) {
-          console.error(
-            '[PinterestV2] section generation enqueue failed:',
-            enqueueErr?.message || enqueueErr
-          );
-          sectionGeneration = {
-            queued: false,
-            error: enqueueErr?.message || 'enqueue_failed',
-          };
         }
+
+        if (sectionGeneration?.queued) {
+          console.log('[PinterestV2] content site section generation enqueued', {
+            projectId: String(project._id),
+            jobId: sectionGeneration.jobId,
+            sections: sectionGeneration.selectedSectionsCount,
+          });
+        } else {
+          console.warn(
+            '[PinterestV2] skip section enqueue:',
+            sectionGeneration?.reason || 'unknown',
+            String(project._id)
+          );
+        }
+      } catch (enqueueErr) {
+        console.error(
+          '[PinterestV2] section generation enqueue failed:',
+          enqueueErr?.message || enqueueErr
+        );
+        sectionGeneration = {
+          queued: false,
+          error: enqueueErr?.message || 'enqueue_failed',
+        };
       }
 
       try {
@@ -2325,9 +2394,48 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
         console.warn('[PinterestV2] ensureContentChromeOnProject:', chromeErr?.message || chromeErr);
       }
 
+      let taxonomySync = null;
+      let blogsEnqueue = null;
       let sectionGeneration = null;
       // Opt-in only — avoid re-queueing on chrome/page repair. Create flow enqueues itself.
       if (result?.designSaved && req.body?.enqueueSections === true) {
+        try {
+          const { syncContentCategoryPages } = require('../services/contentTaxonomyService');
+          taxonomySync = await syncContentCategoryPages({
+            projectId: project._id,
+            userId: project.userId || userId,
+          });
+        } catch (taxErr) {
+          console.warn('[PinterestV2] taxonomy sync on bootstrap:', taxErr?.message || taxErr);
+        }
+
+        try {
+          let authorId = project.defaultAuthorId;
+          if (!authorId) {
+            const { ensureContentWebsiteAuthor } = require('../additional/ensureContentWebsiteAuthor');
+            const authorBootstrap = await ensureContentWebsiteAuthor({
+              projectId: project._id,
+              userId: project.userId || userId,
+              blueprint,
+              nicheName: project.focusKeyword || '',
+              projectName: project.projectName || '',
+            });
+            authorId = authorBootstrap?.author?._id;
+          }
+          if (authorId) {
+            const {
+              enqueueContentWebsiteStarterBlogs,
+            } = require('../additional/enqueueContentWebsiteStarterBlogs');
+            blogsEnqueue = await enqueueContentWebsiteStarterBlogs({
+              projectId: project._id,
+              userId: project.userId || userId,
+              authorId: String(authorId),
+            });
+          }
+        } catch (blogErr) {
+          console.warn('[PinterestV2] starter blogs on bootstrap:', blogErr?.message || blogErr);
+        }
+
         try {
           sectionGeneration = await enqueueContentWebsiteSectionGeneration({
             projectId: project._id,
@@ -2348,6 +2456,8 @@ ${homepageSectionNames.length ? `Preferred homepage.sections names: ${JSON.strin
       return helper.sendSuccess(res, 200, 'Content website pages bootstrapped.', {
         ...result,
         chromeRepair,
+        taxonomySync,
+        blogsEnqueue,
         sectionGeneration,
       });
     } catch (error) {

@@ -133,6 +133,30 @@ export function assembleLiveBlogDetailSections(
     blogId: detail.blogId,
   };
 
+  const faqItems = (
+    Array.isArray((detail as any).faq?.items) ? (detail as any).faq.items : []
+  ).map((it: any) => ({
+    title: it.title || it.question || it.q || '',
+    question: it.question || it.title || it.q || '',
+    description: it.description || it.answer || it.a || it.content || '',
+    answer: it.answer || it.description || it.a || it.content || '',
+  }));
+  const faq = sectionFromTemplate('faq', 'live-blog-faq');
+  faq.content = {
+    ...(faq.content as any),
+    title: String((detail as any).faq?.title || 'Frequently Asked Questions'),
+    subtitle: String((detail as any).faq?.subtitle || ''),
+    items: faqItems.length
+      ? faqItems
+      : Array.isArray((faq.content as any)?.items)
+        ? (faq.content as any).items
+        : [],
+  };
+  faq.styles = {
+    ...(faq.styles as any),
+    variant: 'FaqFunky',
+  };
+
   const comments = sectionFromTemplate('blogcomments', 'live-blog-comments');
   const commentsBlogId = String(
     (detail.comments as any)?.blogId || detail.blogId || (detail.comments as any)?.contentRef?.blogId || ''
@@ -149,7 +173,11 @@ export function assembleLiveBlogDetailSections(
     },
   };
 
-  sections.push(hero, body, author, related, comments);
+  sections.push(hero, body, author, related);
+  if (faqItems.length || Array.isArray((faq.content as any)?.items)) {
+    sections.push(faq);
+  }
+  sections.push(comments);
   if (footer) sections.push(footer);
   return sections;
 }

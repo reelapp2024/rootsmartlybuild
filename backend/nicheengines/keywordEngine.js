@@ -142,20 +142,8 @@ async function discoverKeywords({
     source: 'google_suggest',
   }));
 
+  // Skip extra Suggest fan-out (was 3× serial Suggest calls) — seed Suggest + Ads related is enough
   const extraSuggest = [];
-  for (const rel of relatedFromAds.slice(0, 3)) {
-    try {
-      const more = await googleAds.fetchGoogleSuggest(
-        rel.keyword,
-        String(language || 'en').toLowerCase()
-      );
-      (more || []).slice(0, 6).forEach((k) => {
-        extraSuggest.push({ keyword: k, source: 'google_suggest' });
-      });
-    } catch {
-      /* ignore */
-    }
-  }
 
   const seedRows = [
     {
@@ -266,21 +254,51 @@ ${JSON.stringify(
 
 async function enrichKeywordsDeep(
   rows,
-  { country = 'US', language = 'EN', categoryName = '', userId = null } = {}
+  { country = 'US', language = 'EN', categoryName = '', userId = null, seedKeyword = '' } = {}
 ) {
-  const list = (rows || []).slice(0, 24);
-  const concurrency = 4;
+  // Cap hard — per-keyword Ads/Trends/Pinterest OpenAI was burning 40+ LLM calls.
+  // Only the seed (or first row) gets external signals; the rest use AI batch metadata.
+  const seedNorm = normalizePhrase(seedKeyword);
+  const list = (rows || []).slice(0, 4);
   const enriched = new Array(list.length);
+
+  console.log(`${LOG} deep enrich START`, {
+    count: list.length,
+    seed: seedKeyword || list[0]?.keyword || null,
+    mode: 'seed_external + heuristic_pin (no per-keyword OpenAI volume/pin)',
+  });
 
   async function enrichOne(row, index) {
     const keyword = row.keyword;
+    const isSeed = seedNorm
+      ? normalizePhrase(keyword) === seedNorm
+      : index === 0;
     try {
+      const needsVolume = !(row.searchVolume != null && row.volumeLevel);
       const [ads, trends, pin] = await Promise.all([
-        row.searchVolume != null && row.volumeLevel
-          ? Promise.resolve(null)
-          : googleAds.getKeywordDemand({ keyword, country, language, categoryName, userId }),
-        googleTrends.getTrendSignals({ keyword, country }),
-        pinterest.getPinterestSignals({ keyword, categoryName, userId }),
+        // Never call per-keyword OpenAI volume here — discover already did seed;
+        // remaining phrases get KEYWORD_ENGINE_META_BATCH.
+        needsVolume && isSeed
+          ? googleAds.getKeywordDemand({
+              keyword,
+              country,
+              language,
+              categoryName,
+              userId,
+              skipAi: false,
+            })
+          : Promise.resolve(null),
+        // Trends only for seed — otherwise mostly empty + slow
+        isSeed
+          ? googleTrends.getTrendSignals({ keyword, country })
+          : Promise.resolve(null),
+        // Heuristic only (deep=false) — no CSE 403 storm / no OpenAI per phrase
+        pinterest.getPinterestSignals({
+          keyword,
+          categoryName,
+          userId,
+          deep: false,
+        }),
       ]);
 
       enriched[index] = {
@@ -300,7 +318,7 @@ async function enrichKeywordsDeep(
         pinterestLevel: pin?.level || null,
         pinterestSummary: pin?.summary || null,
         pinterestMode: pin?.mode || null,
-        enrichMode: 'deep',
+        enrichMode: isSeed ? 'deep_seed' : 'light',
       };
     } catch (err) {
       console.warn(`${LOG} deep enrich failed for "${keyword}":`, err?.message || err);
@@ -308,11 +326,12 @@ async function enrichKeywordsDeep(
     }
   }
 
-  for (let i = 0; i < list.length; i += concurrency) {
-    const batch = list.slice(i, i + concurrency);
-    await Promise.all(batch.map((row, offset) => enrichOne(row, i + offset)));
+  // Sequential for seed-first cache reuse; list is tiny (≤4)
+  for (let i = 0; i < list.length; i++) {
+    await enrichOne(list[i], i);
   }
 
+  console.log(`${LOG} deep enrich DONE`, { count: enriched.filter(Boolean).length });
   return enriched.filter(Boolean);
 }
 
@@ -803,11 +822,8 @@ async function runKeywordEngine({
   });
 
   const toDeep = uniqByNorm([
-    ...buckets.main.slice(0, 8),
-    ...buckets.longTail.slice(0, 6),
-    ...buckets.questions.slice(0, 4),
-    ...buckets.pinterest.slice(0, 4),
-    ...buckets.seasonal.slice(0, 2),
+    // Seed first (already has volume from discover) + a few mains for light pin heuristic
+    ...buckets.main.slice(0, 3),
   ]);
 
   const deepEnriched = await enrichKeywordsDeep(toDeep, {
@@ -815,6 +831,7 @@ async function runKeywordEngine({
     language,
     categoryName,
     userId,
+    seedKeyword: nicheName,
   });
   const deepMap = new Map(deepEnriched.map((e) => [normalizePhrase(e.keyword), e]));
 
@@ -826,6 +843,7 @@ async function runKeywordEngine({
     ...buckets.seasonal,
   ]).map((row) => deepMap.get(normalizePhrase(row.keyword)) || row);
 
+  // One (or few) batched OpenAI call(s) for everyone missing meta — not per-keyword OpenAI
   const needBatch = flatRaw.filter(
     (r) => !r.volumeLevel || !r.trendDirection || !r.pinterestLevel || !r.competition
   );

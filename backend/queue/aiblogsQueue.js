@@ -345,6 +345,8 @@ aiblogsQueue.process(WORKERS, async (job) => {
             $set: {
               articleCreated: true,
               articleId: saved._id,
+              "metadata.blogSlug": finalSlug,
+              "metadata.blogId": String(saved._id),
             },
           }
         );

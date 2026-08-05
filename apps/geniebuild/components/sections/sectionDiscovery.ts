@@ -174,6 +174,33 @@ Object.entries(allModules).forEach(([key, loader]) => {
 const IGNORE_ROOT = new Set(['SectionRouter.tsx', 'SectionRouterGenerator.tsx']);
 const IGNORED_SECTION_FOLDERS = new Set(['utils']);
 
+/**
+ * Active project type for variant filtering.
+ * 0 = bulk/location, 1 = business, 2 = content website.
+ * Funky variants are content-website only.
+ */
+let activeProjectType: number | null = null;
+
+export function setActiveProjectType(projectType: number | null | undefined): void {
+  if (projectType === null || projectType === undefined || Number.isNaN(Number(projectType))) {
+    activeProjectType = null;
+    return;
+  }
+  activeProjectType = Number(projectType);
+}
+
+export function getActiveProjectType(): number | null {
+  return activeProjectType;
+}
+
+export function isContentWebsiteProject(): boolean {
+  return activeProjectType === 2;
+}
+
+export function isFunkyVariantName(variant: string | null | undefined): boolean {
+  return /funky$/i.test(String(variant || '').replace(/\.tsx$/i, ''));
+}
+
 function normalizeSectionType(sectionType: string): string {
   const raw = String(sectionType || '').toLowerCase().trim();
   const aliases: Record<string, string> = {
@@ -250,19 +277,36 @@ const variantMap = buildVariantMap();
 /** All section types that have at least one variant file */
 export const DISCOVERED_SECTION_TYPES: string[] = Array.from(variantMap.keys()).sort();
 
+/**
+ * Filter Funky (content-website) variants by project type.
+ * - Content (2): prefer Funky when available for that section type
+ * - Bulk/business (0/1): never expose Funky when non-Funky alternatives exist
+ * - Unknown (null): same as bulk/business for mixed types; keep Funky-only types
+ */
+function filterVariantsForProject(list: SectionVariantEntry[]): SectionVariantEntry[] {
+  if (!list.length) return list;
+  const funky = list.filter((e) => isFunkyVariantName(e.variantFile));
+  const nonFunky = list.filter((e) => !isFunkyVariantName(e.variantFile));
+
+  if (activeProjectType === 2) {
+    return funky.length > 0 ? funky : list;
+  }
+
+  // Bulk, business, or unknown: never offer Funky when Plumbing/Default etc. exist
+  if (nonFunky.length > 0) return nonFunky;
+  // Funky-only section types belong to content sites — hide from bulk/business lists
+  if (activeProjectType === 0 || activeProjectType === 1) return [];
+  return list;
+}
+
 export function getDiscoveredVariants(sectionType: string): SectionVariantEntry[] {
-  return variantMap.get(normalizeSectionType(sectionType)) || [];
+  const list = variantMap.get(normalizeSectionType(sectionType)) || [];
+  return filterVariantsForProject(list);
 }
 
 export function getDefaultVariantForSection(sectionType: string): string {
   const list = getDiscoveredVariants(sectionType);
   if (!list.length) return '';
-  // Content-native section types only ship Funky variants — prefer those.
-  const funky = list.filter((e) => /funky$/i.test(e.variantFile));
-  if (funky.length > 0 && funky.length === list.length) {
-    return [...funky].sort((a, b) => a.variantFile.localeCompare(b.variantFile))[0]
-      .variantFile;
-  }
   const sorted = [...list].sort((a, b) => a.variantFile.localeCompare(b.variantFile));
   return sorted[0].variantFile;
 }

@@ -43,11 +43,12 @@ export const ArticleFaqFunky: React.FC<Props> = ({
     { title: 'Do you cover monetization?', description: 'Affiliate, digital products, and ads angles.' },
   ];
 
+  const live = Boolean(readOnly);
   const titleEl = mergeFunkyElement(section, `${section.id}-cw-artfaq-title`, {
     id: `${section.id}-cw-artfaq-title`, type: 'heading',
     content: { text: c.title || 'FAQ', htmlTag: 'h2' },
     style: { color: titleColor, fontSize: 'clamp(1.6rem, 3vw, 2.4rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-  });
+  }, { preferFallbackText: live });
   const titleElPainted: WebsiteElement = {
     ...titleEl,
     style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) },
@@ -81,7 +82,7 @@ export const ArticleFaqFunky: React.FC<Props> = ({
       titleColor,
       color: textColor,
     } as any,
-  });
+  }, { preferFallbackText: live });
   const faqElPainted: WebsiteElement = {
     ...faqEl,
     style: {

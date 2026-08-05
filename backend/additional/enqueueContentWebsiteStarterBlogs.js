@@ -73,7 +73,8 @@ async function enqueueContentWebsiteStarterBlogs({
       authorId: String(authorId),
       status: 1,
       title,
-      slug: slugify(title),
+      // Keep Blog.slug aligned with taxonomy card href (/blog/{searchIntentSlug})
+      slug: String(kw.searchIntentSlug || slugify(title)).trim() || slugify(title),
       isSchedule: false,
       scheduleTime: null,
       scheduleKey: null,

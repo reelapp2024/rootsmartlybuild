@@ -44,7 +44,7 @@ export const FeaturedPostsFunky: React.FC<Props> = ({
     id: `${section.id}-cw-feat-title`, type: 'heading',
     content: { text: c.title || 'Featured & juicy', htmlTag: 'h2' },
     style: { color: titleColor, fontSize: 'clamp(1.6rem, 3.5vw, 2.6rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-  });
+  }, { preferFallbackText: Boolean(readOnly) });
   const titleElPainted: WebsiteElement = {
     ...titleEl,
     style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) },
@@ -78,12 +78,12 @@ export const FeaturedPostsFunky: React.FC<Props> = ({
               id: `${section.id}-cw-feat-item-${i}-title`, type: 'heading',
               content: { text: item.title || item.name || 'Item', htmlTag: 'h3' },
               style: { color: titleColor, fontSize: '1.15rem', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-            });
+            }, { preferFallbackText: Boolean(readOnly) });
             const itemDesc = mergeFunkyElement(section, `${section.id}-cw-feat-item-${i}-desc`, {
               id: `${section.id}-cw-feat-item-${i}-desc`, type: 'text',
               content: { text: item.description || item.subtitle || item.tag || '' },
               style: { color: textColor, fontFamily: FUNKY.fonts.body },
-            });
+            }, { preferFallbackText: Boolean(readOnly) });
             const itemTitlePainted: WebsiteElement = {
               ...itemTitle,
               style: { ...withFunkyTextStyle(itemTitle.style as any, titleColor, isLight) },

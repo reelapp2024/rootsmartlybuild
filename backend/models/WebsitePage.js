@@ -31,7 +31,23 @@ const websitePageSchema = new Schema({
   },
   pageType: {
     type: String,
-    enum: ["default", "service"],
+    /**
+     * Business/bulk: default | service
+     * Content websites (projectType 2): home | blog | category | article | about | contact | author | legal
+     */
+    enum: [
+      "default",
+      "service",
+      "home",
+      "homepage",
+      "blog",
+      "category",
+      "article",
+      "about",
+      "contact",
+      "author",
+      "legal",
+    ],
     default: "default",
     required: true,
     trim: true,

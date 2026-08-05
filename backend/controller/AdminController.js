@@ -5659,16 +5659,38 @@ Example format:
                     let contentGeneration;
                     if (live && live.status === "generating") {
                         contentGeneration = normalizeProgress(live);
-                    } else if (persisted && String(persisted.status) === "generating" && dbCounts.pending > 0) {
+                    } else if (persisted && String(persisted.status) === "generating") {
+                        // Trust queued/in-flight jobs even before pending SectionContent rows exist
+                        // (Redis wait / worker planning). Without this, list shows "Not generated yet".
+                        const done = Math.max(dbCounts.generated, Number(persisted.done) || 0);
+                        const failed = Math.max(dbCounts.failed, Number(persisted.failed) || 0);
+                        const total = Math.max(
+                            Number(persisted.total) || 0,
+                            dbTotal,
+                            done + failed + (Number(persisted.pending) || 0)
+                        );
                         contentGeneration = normalizeProgress({
                             ...persisted,
                             projectId: pid,
-                            done: dbCounts.generated,
-                            failed: dbCounts.failed,
-                            pending: dbCounts.pending,
-                            total: Math.max(Number(persisted.total) || 0, dbTotal),
+                            status: "generating",
+                            done,
+                            failed,
+                            total,
+                            pending: Math.max(
+                                dbCounts.pending,
+                                Number(persisted.pending) || 0,
+                                Math.max(0, total - done - failed - (Number(persisted.skipped) || 0))
+                            ),
+                            parallelWorkers:
+                                Number(persisted.parallelWorkers) || getDefaultParallelWorkers(),
+                            message:
+                                persisted.message ||
+                                (dbCounts.pending > 0
+                                    ? "Section generation in progress"
+                                    : "Section generation queued…"),
                         });
-                    } else if (dbCounts.pending > 0) {
+                    } else if (dbCounts.pending > 0 && !persisted) {
+                        // Legacy: pending rows with no contentGeneration snapshot
                         contentGeneration = normalizeProgress({
                             projectId: pid,
                             status: "generating",
@@ -5681,7 +5703,7 @@ Example format:
                             message: "Section generation in progress",
                         });
                     } else if (
-                        (persisted && (persisted.status === "completed" || persisted.status === "failed")) ||
+                        (persisted && (persisted.status === "completed" || persisted.status === "failed" || persisted.status === "completed_with_errors")) ||
                         dbCounts.generated > 0
                     ) {
                         const total = Math.max(
@@ -5799,27 +5821,71 @@ Example format:
                 return res.status(400).json({ message: "projectIds required" });
             }
 
-            const user = await User.findById(userId).select("isSuper").lean();
+            // Lean + tiny projection — this endpoint is polled; keep it cheap
+            const user = await User.findById(userId).select("_id isSuper").lean();
             if (!user) return res.status(404).json({ message: "User not found" });
 
-            const filter = {
-                _id: { $in: projectIds.filter((id) => mongoose.isValidObjectId(id)) },
-            };
+            const validIds = projectIds.filter((id) => mongoose.isValidObjectId(id));
+            const filter = { _id: { $in: validIds } };
             if (user.isSuper === 0) filter.userId = userId;
 
-            const projects = await UserProject.find(filter).select("_id contentGeneration").lean();
+            const projects = await UserProject.find(filter)
+                .select("_id contentGeneration")
+                .lean();
             const liveMap = getLiveProgressMap(projectIds);
             const data = {};
+            const STALE_MS = 3 * 60 * 1000;
+
             for (const p of projects) {
                 const pid = String(p._id);
                 const live = liveMap[pid];
-                data[pid] = live
+                const persisted =
+                    p.contentGeneration && typeof p.contentGeneration === "object"
+                        ? p.contentGeneration
+                        : {};
+
+                let row = live
                     ? normalizeProgress(live)
                     : normalizeProgress({
-                          ...(p.contentGeneration || {}),
+                          ...persisted,
                           projectId: pid,
-                          status: p.contentGeneration?.status || "idle",
+                          status: persisted.status || "idle",
                       });
+
+                // Heal stuck "generating" when worker has no live job (stops endless UI polling)
+                if (!live && String(row.status) === "generating") {
+                    const total = Number(row.total) || 0;
+                    const finished =
+                        Number(row.done || 0) +
+                        Number(row.failed || 0) +
+                        Number(row.skipped || 0);
+                    const updatedMs = Date.parse(String(row.updatedAt || persisted.updatedAt || "")) || 0;
+                    const stale = !updatedMs || Date.now() - updatedMs > STALE_MS;
+                    const countersDone = total > 0 && finished >= total;
+
+                    if (countersDone || stale) {
+                        row = normalizeProgress({
+                            ...row,
+                            projectId: pid,
+                            status: Number(row.failed) > 0 && Number(row.done) === 0 ? "failed" : "completed",
+                            pending: 0,
+                            percent: 100,
+                            activeWorkers: 0,
+                            currentSections: [],
+                            finishedAt: row.finishedAt || new Date().toISOString(),
+                            message: countersDone
+                                ? row.message || "Section generation complete"
+                                : "Section generation marked complete (stale job cleared)",
+                        });
+                        // Persist heal so list/poll stop treating this as generating
+                        UserProject.updateOne(
+                            { _id: p._id },
+                            { $set: { contentGeneration: row } }
+                        ).catch(() => {});
+                    }
+                }
+
+                data[pid] = row;
             }
 
             return res.status(200).json({
@@ -9665,6 +9731,7 @@ Example format:
                 data: {
                     projectId,
                     pageId: targetPageId,
+                    projectType,
                     locationId: scopedPreferredLocationId || null,
                     seo: seoForBuilder,
                     seoSettings: pageSeoEntry ? [seoEntryToLegacyApi(pageSeoEntry, pageMeta)] : [],

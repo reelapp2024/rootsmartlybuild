@@ -6,7 +6,12 @@
 import React, { Suspense, lazy, useMemo, useEffect } from 'react';
 import { Section, WebsiteElement } from '../../types';
 import { getDefaultVariant } from '../SectionsAndVariantRegistry';
-import { resolveVariantGlobPath, getVariantModuleLoader } from './sectionDiscovery';
+import {
+  resolveVariantGlobPath,
+  getVariantModuleLoader,
+  getActiveProjectType,
+  isFunkyVariantName,
+} from './sectionDiscovery';
 import { ElementsSection } from './homepage/ElementsSection';
 
 // Module-level cache: resolved lazy components survive re-renders.
@@ -141,10 +146,22 @@ export const SectionRouter: React.FC<SectionRouterProps> = (props) => {
   const rawVariant = (safeSection.styles as any)?.variant;
   // Prefer saved variant when it resolves to a real module (business or content Funky).
   // Otherwise fall through to the discovered default.
-  const variant =
+  let variant =
     rawVariant && resolveVariantGlobPath(sectionType, String(rawVariant))
       ? rawVariant
       : getDefaultVariant(sectionType);
+
+  // Bulk / business must never render content-website Funky variants.
+  // Live content sites keep saved Funky even when projectType is not set yet.
+  if (
+    (getActiveProjectType() === 0 || getActiveProjectType() === 1) &&
+    isFunkyVariantName(String(variant || ''))
+  ) {
+    const fallback = getDefaultVariant(sectionType);
+    if (fallback && !isFunkyVariantName(fallback)) {
+      variant = fallback;
+    }
+  }
 
   const forceCommonVariants = new Set([
     // Legacy navbar variants

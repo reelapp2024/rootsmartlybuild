@@ -89,6 +89,7 @@ async function collectNicheSignals({
       keyword: q,
       categoryName,
       userId,
+      deep: true,
     }),
     amazon.getAmazonSignals({
       keyword: q,

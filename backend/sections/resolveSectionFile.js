@@ -208,7 +208,7 @@ function resolveSectionFile(sectionId, options = {}) {
     }
   } else if (
     // Non-content projects: still allow uniquely content-native section ids
-    /^(article|category|author|featured|trending|pin|newsletter|brand|shop|postgrid|categoriesgrid|aboutteaser|seasonalspotlight|pinboardcta)/i.test(
+    /^(article|category|author|featured|trending|pin|newsletter|brand|shop|postgrid|categoriesgrid|aboutteaser|seasonalspotlight|pinboardcta|privacybody|termsbody|disclaimerbody)/i.test(
       normalized
     )
   ) {

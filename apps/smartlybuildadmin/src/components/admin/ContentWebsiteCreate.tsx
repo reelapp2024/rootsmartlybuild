@@ -351,9 +351,9 @@ const STEP_META = [
   { title: "Category", icon: LayoutGrid, hint: "Wizard 4/9 · Content category" },
   { title: "Niche", icon: Sparkles, hint: "Wizard 5/9 · Focus niche" },
   { title: "Niche Validation", icon: BarChart3, hint: "Wizard 6/9 · Is this niche worth building?" },
-  { title: "Website Blueprint", icon: Palette, hint: "Wizard 7/9 · Pages, brand, approve" },
+  { title: "Website Blueprint", icon: Palette, hint: "Wizard 7/9 · Pages, brand, continue" },
   { title: "Keyword Engine", icon: Search, hint: "Wizard 8/9 · Master keyword DB for Content Clusters" },
-  { title: "Content Clusters", icon: Network, hint: "Wizard 9/9 · Silo map · pillar + supporting · approve" },
+  { title: "Content Clusters", icon: Network, hint: "Wizard 9/9 · Silo map · pillar + supporting" },
 ] as const;
 
 const ANALYSIS_CARDS: Array<{ key: keyof NonNullable<NicheAnalysisResult["analysis"]>; label: string }> = [
@@ -422,7 +422,6 @@ export function ContentWebsiteCreate() {
 
   const [clusterDataset, setClusterDataset] = useState<ClusterDataset | null>(null);
   const [clusterLoading, setClusterLoading] = useState(false);
-  const [clustersApproved, setClustersApproved] = useState(false);
 
   const [selectedPages, setSelectedPages] = useState<ContentPageOption[]>(() =>
     buildDefaultSelectedPages()
@@ -433,7 +432,6 @@ export function ContentWebsiteCreate() {
 
   const [blueprint, setBlueprint] = useState<WebsiteBlueprint | null>(null);
   const [blueprintLoading, setBlueprintLoading] = useState(false);
-  const [blueprintApproved, setBlueprintApproved] = useState(false);
 
   const token = () => localStorage.getItem("token") || "";
 
@@ -610,7 +608,6 @@ export function ContentWebsiteCreate() {
       }));
     }
     setBlueprint(null);
-    setBlueprintApproved(false);
   };
 
   const handleToggleSection = (pageId: string, section: ContentSectionOption) => {
@@ -623,7 +620,6 @@ export function ContentWebsiteCreate() {
       return { ...prev, [pageId]: nextList };
     });
     setBlueprint(null);
-    setBlueprintApproved(false);
   };
 
   const runNicheAnalysis = async () => {
@@ -693,7 +689,6 @@ export function ContentWebsiteCreate() {
     }
 
     setBlueprintLoading(true);
-    setBlueprintApproved(false);
     try {
       const res = await http.post(
         "/pinterest/v2/generateWebsiteBlueprint",
@@ -725,7 +720,7 @@ export function ContentWebsiteCreate() {
       if (bp?.websiteName && !projectName.trim()) {
         setProjectName(bp.websiteName);
       }
-      toast({ title: "Blueprint ready", description: "Approve, then continue to Keyword Engine." });
+      toast({ title: "Blueprint ready", description: "Review the brand, then continue to Keyword Engine." });
     } catch (err: any) {
       toast({
         title: "Error",
@@ -773,7 +768,6 @@ export function ContentWebsiteCreate() {
       }
       setKeywordDataset(data);
       setClusterDataset(null);
-      setClustersApproved(false);
       toast({
         title: "Master keyword database ready",
         description: `${raw} raw · ${
@@ -800,9 +794,7 @@ export function ContentWebsiteCreate() {
     setNicheAnalysis(null);
     setKeywordDataset(null);
     setClusterDataset(null);
-    setClustersApproved(false);
     setBlueprint(null);
-    setBlueprintApproved(false);
   }, [selectedCategoryId, selectedNicheId, selectedGoal, selectedLanguage, selectedCountry?.countryId]);
 
   useEffect(() => {
@@ -820,7 +812,7 @@ export function ContentWebsiteCreate() {
   }, [step]);
 
   useEffect(() => {
-    if (step === 8 && blueprintApproved && !keywordDataset && !keywordLoading) {
+    if (step === 8 && blueprint && !keywordDataset && !keywordLoading) {
       runKeywordPlanner();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -853,7 +845,6 @@ export function ContentWebsiteCreate() {
   };
 
   const patchClusterDataset = (updater: (prev: ClusterDataset) => ClusterDataset) => {
-    setClustersApproved(false);
     setClusterDataset((prev) => (prev ? updater(prev) : prev));
   };
 
@@ -952,7 +943,6 @@ export function ContentWebsiteCreate() {
   const runContentClusters = async () => {
     if (!keywordDataset) return;
     setClusterLoading(true);
-    setClustersApproved(false);
     try {
       const res = await http.post(
         "/pinterest/v2/runContentClusters",
@@ -1004,7 +994,6 @@ export function ContentWebsiteCreate() {
       return (
         selectedPages.length > 0 &&
         !!blueprint &&
-        blueprintApproved &&
         !blueprintLoading
       );
     if (step === 8) {
@@ -1020,7 +1009,6 @@ export function ContentWebsiteCreate() {
       return (
         !!clusterDataset &&
         (clusterDataset.clusters?.length || 0) > 0 &&
-        clustersApproved &&
         !clusterLoading
       );
     }
@@ -1034,7 +1022,7 @@ export function ContentWebsiteCreate() {
     if (!blueprint) {
       toast({
         title: "Blueprint required",
-        description: "Generate and approve the website blueprint first.",
+        description: "Generate the website blueprint first.",
         variant: "destructive",
       });
       return;
@@ -1047,10 +1035,10 @@ export function ContentWebsiteCreate() {
       });
       return;
     }
-    if (!clusterDataset?.clusters?.length || !clustersApproved) {
+    if (!clusterDataset?.clusters?.length) {
       toast({
         title: "Content clusters required",
-        description: "Generate and approve Content Clusters before creating the website.",
+        description: "Generate Content Clusters before creating the website.",
         variant: "destructive",
       });
       return;
@@ -1060,7 +1048,7 @@ export function ContentWebsiteCreate() {
     if (!finalName) {
       toast({
         title: "Website name required",
-        description: "Set a website name before approving.",
+        description: "Set a website name before creating.",
         variant: "destructive",
       });
       return;
@@ -1106,18 +1094,35 @@ export function ContentWebsiteCreate() {
 
       const pagesBoot = project?.pagesBootstrap;
       let sectionQueued = Boolean(project?.sectionGeneration?.queued);
-      if (!pagesBoot?.pagesTotal) {
-        // Fallback: ensure pages exist even if bootstrap was skipped
+
+      // Always ensure pages exist + section generation is queued (same as business/bulk)
+      if (!pagesBoot?.pagesTotal || !sectionQueued) {
         try {
-          const bootRes = await http.post(
-            "/pinterest/v2/bootstrapContentPages",
-            { projectId, selectedPages: selectedPagesPayload, enqueueSections: true },
-            { headers: { Authorization: `Bearer ${token()}` } }
-          );
-          sectionQueued =
-            sectionQueued || Boolean(bootRes?.data?.data?.sectionGeneration?.queued);
+          if (!pagesBoot?.pagesTotal) {
+            const bootRes = await http.post(
+              "/pinterest/v2/bootstrapContentPages",
+              { projectId, selectedPages: selectedPagesPayload, enqueueSections: true },
+              { headers: { Authorization: `Bearer ${token()}` } }
+            );
+            sectionQueued =
+              sectionQueued || Boolean(bootRes?.data?.data?.sectionGeneration?.queued);
+          }
+          if (!sectionQueued) {
+            const enqueueRes = await http.post(
+              "/enqueueSectionsContentGeneration",
+              {
+                projectId,
+                selectedSectionIds: [],
+                locations: [],
+              },
+              { headers: { Authorization: `Bearer ${token()}` } }
+            );
+            sectionQueued = Boolean(
+              enqueueRes?.data?.success || enqueueRes?.data?.data?.jobId || enqueueRes?.status === 202
+            );
+          }
         } catch (bootErr) {
-          console.warn("[ContentWebsiteCreate] pages bootstrap fallback failed", bootErr);
+          console.warn("[ContentWebsiteCreate] ensure pages/section gen failed", bootErr);
         }
       }
 
@@ -1640,7 +1645,6 @@ export function ContentWebsiteCreate() {
                           )
                         );
                         setBlueprint(null);
-                        setBlueprintApproved(false);
                       }}
                     >
                       Select All
@@ -1654,7 +1658,6 @@ export function ContentWebsiteCreate() {
                         setSelectedPages(buildDefaultSelectedPages());
                         setPageSections(buildDefaultPageSections());
                         setBlueprint(null);
-                        setBlueprintApproved(false);
                       }}
                     >
                       Reset
@@ -1751,7 +1754,7 @@ export function ContentWebsiteCreate() {
                 )}
               </div>
 
-              {/* AI brand preview + approve */}
+              {/* AI brand preview */}
               {blueprintLoading && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -1762,21 +1765,15 @@ export function ContentWebsiteCreate() {
               {!blueprintLoading && blueprint && (
                 <>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Badge variant={blueprintApproved ? "default" : "outline"}>
-                        {blueprintApproved ? "Approved" : "Pending approval"}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        Preview → Approve → website create
-                      </span>
-                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Review the brand preview, then continue to Keyword Engine
+                    </p>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => {
                         setBlueprint(null);
-                        setBlueprintApproved(false);
                         generateBlueprint();
                       }}
                       disabled={blueprintLoading || saving}
@@ -1793,7 +1790,6 @@ export function ContentWebsiteCreate() {
                       value={projectName || blueprint.websiteName || ""}
                       onChange={(e) => {
                         setProjectName(e.target.value);
-                        setBlueprintApproved(false);
                       }}
                     />
                     {blueprint.tagline && (
@@ -1926,23 +1922,6 @@ export function ContentWebsiteCreate() {
                         ))}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Button
-                      type="button"
-                      variant={blueprintApproved ? "default" : "outline"}
-                      onClick={() => setBlueprintApproved(true)}
-                      disabled={saving || selectedPages.length === 0}
-                    >
-                      <Check className="h-4 w-4 mr-1" />
-                      {blueprintApproved ? "Approved" : "Approve blueprint"}
-                    </Button>
-                    {!blueprintApproved && (
-                      <p className="text-xs text-muted-foreground self-center">
-                        Approve, then continue to Keyword Engine
-                      </p>
-                    )}
                   </div>
                 </>
               )}
@@ -2229,11 +2208,6 @@ export function ContentWebsiteCreate() {
                           clusterDataset.unassigned?.length ??
                           0}
                       </Badge>
-                      {clustersApproved && (
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
-                          Approved
-                        </Badge>
-                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button
@@ -2246,16 +2220,6 @@ export function ContentWebsiteCreate() {
                         <RefreshCw className="h-4 w-4 mr-1" />
                         Re-run silos
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={clustersApproved ? "default" : "outline"}
-                        onClick={() => setClustersApproved(true)}
-                        disabled={!clusterDataset.clusters?.length}
-                      >
-                        <Check className="h-4 w-4 mr-1" />
-                        {clustersApproved ? "Approved" : "Approve clusters"}
-                      </Button>
                     </div>
                   </div>
 
@@ -2267,7 +2231,7 @@ export function ContentWebsiteCreate() {
                     <p className="text-xs text-muted-foreground">
                       Website architecture for Calendar → Articles → Pinterest. Clusters use{" "}
                       <span className="font-medium text-foreground">primary keywords only</span>.
-                      Edit freely, then approve before Create.
+                      Edit freely, then create the website.
                     </p>
                   </div>
 
@@ -2395,12 +2359,6 @@ export function ContentWebsiteCreate() {
                         ))}
                       </div>
                     </div>
-                  )}
-
-                  {!clustersApproved && (
-                    <p className="text-xs text-amber-700">
-                      Approve the silo map to enable Create website.
-                    </p>
                   )}
                 </>
               )}

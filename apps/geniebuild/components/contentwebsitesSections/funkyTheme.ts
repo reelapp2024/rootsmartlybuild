@@ -33,7 +33,7 @@ export const FUNKY = {
   shadow: '4px 4px 0 #1A1025',
   shadowLg: '8px 8px 0 #1A1025',
   fontsHref:
-    'https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=DM+Sans:wght@400;600;700&family=Outfit:wght@700;800&family=Syne:wght@700;800&display=swap',
+    'https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=DM+Sans:wght@400;600;700&family=Nunito:wght@400;600;700&family=Outfit:wght@700;800&family=Syne:wght@700;800&display=swap',
 } as const;
 
 /** @deprecated use isDarkCanvasTextColor — kept for existing imports */
@@ -164,20 +164,25 @@ export function withFunkyTextStyle(
   return next;
 }
 
-/** Prefer saved GenieBuild element (so color edits stick) over ephemeral defaults. */
+/** Prefer saved GenieBuild element (so color edits stick) over ephemeral defaults.
+ *  When preferFallbackText=true (live SiteNext), dynamic content.items titles win. */
 export function mergeFunkyElement(
   section: { elements?: WebsiteElement[] } | null | undefined,
   id: string,
-  fallback: WebsiteElement
+  fallback: WebsiteElement,
+  options?: { preferFallbackText?: boolean }
 ): WebsiteElement {
   const saved = section?.elements?.find((e) => e.id === id);
   if (!saved) return fallback;
+  const preferFallbackText = Boolean(options?.preferFallbackText);
   return {
     ...fallback,
     ...saved,
     id,
     type: (saved.type || fallback.type) as WebsiteElement['type'],
-    content: { ...(fallback.content as object), ...(saved.content as object) },
+    content: preferFallbackText
+      ? { ...(saved.content as object), ...(fallback.content as object) }
+      : { ...(fallback.content as object), ...(saved.content as object) },
     style: { ...(fallback.style as object), ...(saved.style as object) },
   };
 }

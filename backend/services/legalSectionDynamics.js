@@ -27,9 +27,9 @@ function resolveLegalDocType({ sectionId = "", pageName = "", pageSlug = "", ext
   if (/privacy/.test(blob)) return "privacy";
 
   const id = String(sectionId || "").toLowerCase();
-  if (id === "legalterms") return "terms";
-  if (id === "legaldisclaimer") return "disclaimer";
-  if (id === "legalprivacy") return "privacy";
+  if (id === "legalterms" || id === "termsbody") return "terms";
+  if (id === "legaldisclaimer" || id === "disclaimerbody") return "disclaimer";
+  if (id === "legalprivacy" || id === "privacybody") return "privacy";
 
   return "privacy";
 }
@@ -90,6 +90,16 @@ function splitLegalPayload(data = {}, docType = "privacy") {
         .filter((s) => s.heading || s.bodyHtml)
     : [];
 
+  const bodyFromSections = sections
+    .map((s) => {
+      const h = s.heading ? `<h2>${s.heading}</h2>` : "";
+      const b = s.bodyHtml || "";
+      return `${h}${b}`;
+    })
+    .join("")
+    .trim();
+  const body = String(data.body || data.html || data.description || "").trim() || bodyFromSections;
+
   return {
     docType,
     legacySectionId: defaults.legacySectionId,
@@ -104,7 +114,7 @@ function splitLegalPayload(data = {}, docType = "privacy") {
         `Last updated: ${new Date().toLocaleString("en-US", { month: "long", year: "numeric" })}`,
       breadcrumbLabel,
     },
-    content: { sections },
+    content: { sections, body },
     combined: {
       badgeText,
       heroTitle,
@@ -116,6 +126,7 @@ function splitLegalPayload(data = {}, docType = "privacy") {
         `Last updated: ${new Date().toLocaleString("en-US", { month: "long", year: "numeric" })}`,
       breadcrumbLabel,
       sections,
+      body,
     },
   };
 }

@@ -1,6 +1,9 @@
 /**
  * Section registry — derived from filesystem via sectionDiscovery (import.meta.glob).
  * Add a variant by creating sections/{sectionType}/{VariantName}.tsx only.
+ *
+ * Variant lists are filtered at call time by active project type
+ * (Funky = content websites only).
  */
 
 import {
@@ -8,7 +11,16 @@ import {
   getDiscoveredVariants,
   getDefaultVariantForSection,
   isDiscoveredVariant,
+  setActiveProjectType,
+  getActiveProjectType,
+  isContentWebsiteProject,
 } from './sections/sectionDiscovery';
+
+export {
+  setActiveProjectType,
+  getActiveProjectType,
+  isContentWebsiteProject,
+};
 
 export interface SectionConfig {
   sectionType: string;
@@ -16,6 +28,7 @@ export interface SectionConfig {
   defaultVariant?: string;
 }
 
+/** Snapshot at module load. Prefer getVariantsForSection for live project-type filtering. */
 export const SECTIONS_REGISTRY: SectionConfig[] = DISCOVERED_SECTION_TYPES.map((sectionType) => ({
   sectionType,
   variants: getDiscoveredVariants(sectionType).map((e) => e.variantFile),
@@ -31,13 +44,13 @@ export const SECTIONS_REGISTRY_MAP: Record<string, SectionConfig> = SECTIONS_REG
 );
 
 export const getVariantsForSection = (sectionType: string): string[] => {
-  return SECTIONS_REGISTRY_MAP[sectionType]?.variants || [];
+  return getDiscoveredVariants(sectionType).map((e) => e.variantFile);
 };
 
 export const getDefaultVariant = (sectionType: string): string => {
   const v = getDefaultVariantForSection(sectionType);
   if (v) return v;
-  return SECTIONS_REGISTRY_MAP[sectionType]?.variants[0] || '';
+  return getVariantsForSection(sectionType)[0] || '';
 };
 
 export const isValidVariant = (sectionType: string, variant: string): boolean => {
