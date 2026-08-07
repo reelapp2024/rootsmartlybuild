@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import SectionRenderer from '@geniebuild/components/SectionRenderer';
 import { AboutUsContactProvider } from '@geniebuild/components/builder/context/AboutUsContactContext';
-import { Section, GlobalElementStyles } from '@geniebuild/types';
+import { Section, GlobalElementStyles, WebsiteData } from '@geniebuild/types';
 import { DEFAULT_TYPOGRAPHY, resolveSiteFontSizes } from '@geniebuild/constants';
 import { DefaultSizesContext } from '@geniebuild/components/builder/state/DefaultSizesContext';
 import { GlobalElementStylesContext } from '@geniebuild/components/builder/state/GlobalElementStylesContext';
@@ -14,7 +14,34 @@ import {
   mountSiteThemeCss,
   type ThemeSettingsInput,
 } from '@geniebuild/utils/themeResolver';
+import {
+  buildResponsiveOverrideCss,
+  resolveSectionForBreakpoint,
+  type EditBreakpoint,
+} from '@geniebuild/components/builder/state/responsiveOverrideCss';
 import { dispatchSitePathChange } from '@/lib/sitePath';
+
+function useViewportEditBreakpoint(): EditBreakpoint {
+  const [bp, setBp] = useState<EditBreakpoint>('desktop');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mqMobile = window.matchMedia('(max-width: 767px)');
+    const mqTablet = window.matchMedia('(max-width: 1023px)');
+    const sync = () => {
+      if (mqMobile.matches) setBp('mobile');
+      else if (mqTablet.matches) setBp('tablet');
+      else setBp('desktop');
+    };
+    sync();
+    mqMobile.addEventListener('change', sync);
+    mqTablet.addEventListener('change', sync);
+    return () => {
+      mqMobile.removeEventListener('change', sync);
+      mqTablet.removeEventListener('change', sync);
+    };
+  }, []);
+  return bp;
+}
 
 interface GenieBuildPageRendererProps {
   sections: Section[];
@@ -45,6 +72,11 @@ export default function GenieBuildPageRenderer({
   const resolvedDefaultSizes = useMemo(
     () => resolveSiteFontSizes(themeSettings ?? null),
     [themeSettings]
+  );
+  const viewportBp = useViewportEditBreakpoint();
+  const displaySections = useMemo(
+    () => sections.map((section) => resolveSectionForBreakpoint(section, viewportBp)),
+    [sections, viewportBp]
   );
 
   useEffect(() => {
@@ -105,6 +137,22 @@ export default function GenieBuildPageRenderer({
     return mountSiteThemeCss({ themeSettings: themeSettings ?? null, globalColors });
   }, [themeSettings, globalColors]);
 
+  // Real CSS props (padding, fontSize, color, …) via media queries; semantic
+  // keys (titleColor, markerColor, …) come from resolveSectionForBreakpoint above.
+  useEffect(() => {
+    const css = buildResponsiveOverrideCss({ sections } as WebsiteData);
+    let styleEl = document.getElementById('geniebuild-responsive-overrides');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'geniebuild-responsive-overrides';
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = css;
+    return () => {
+      styleEl.textContent = '';
+    };
+  }, [sections]);
+
   const effectiveProjectId = projectId || '';
 
   return (
@@ -112,7 +160,7 @@ export default function GenieBuildPageRenderer({
     <GlobalElementStylesContext.Provider value={globalElementStyles}>
     <AboutUsContactProvider projectId={effectiveProjectId || null}>
     <div id="canvas-root" className="min-h-full">
-      {sections.map((section) => (
+      {displaySections.map((section) => (
         <SectionRenderer
           key={section.id}
           section={section}

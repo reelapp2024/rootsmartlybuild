@@ -213,7 +213,7 @@ export default function HomePageClientV2({
           const themeSync = syncThemeFromApiSettings(apiThemeSettings, { projectId });
           const normalized = hydrateSectionsForDisplay(assembled, {
             themeSettings: apiThemeSettings,
-            stripPresetColors: themeSync.shouldStripPresetColors,
+            stripPresetColors: false,
           });
           if (cancelled) return;
           setSections(normalized);
@@ -320,7 +320,7 @@ export default function HomePageClientV2({
         const incomingSections = Array.isArray(data?.sections) ? data.sections : [];
         const normalizedSections = hydrateSectionsForDisplay(incomingSections, {
           themeSettings: apiThemeSettings,
-          stripPresetColors: themeSync.shouldStripPresetColors,
+          stripPresetColors: false,
         });
         setSections(normalizedSections);
         setThemeSettings(apiThemeSettings);
