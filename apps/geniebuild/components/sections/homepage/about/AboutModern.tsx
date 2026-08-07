@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -92,11 +93,11 @@ export const AboutModern: React.FC<Props> = ({
     selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
   } as const;
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-badge`, type: 'badge',
     content: { text: apiBadgeText, icon: 'fa-user-tie', iconPosition: 'left', iconSize: '0.65rem' },
-    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: `${accent}1A`, color: accent },
-  };
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any},
+  });
   const badgeElResolved: WebsiteElement = { ...badgeEl, content: { ...(badgeEl.content || {}), text: apiBadgeText } };
 
   const titleEl: WebsiteElement = (() => {
@@ -108,11 +109,11 @@ export const AboutModern: React.FC<Props> = ({
     // auto last-word highlight (which only fires when all parts are empty) so
     // no accent-coloured word can render. highlightColor:titleColor keeps the
     // (empty) highlight span neutral too.
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore: sourceText, highlightedText: '', textAfter: '', htmlTag: 'h2' },
-      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em', textAlign: 'center' as any, titleColor, highlightColor: titleColor },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em', textAlign: 'center' as any },
+    });
     if (existing) {
       return {
         ...existing,
@@ -125,17 +126,17 @@ export const AboutModern: React.FC<Props> = ({
           textAfter: '',
           htmlTag: (existing.content as any)?.htmlTag || 'h2',
         },
-        style: { ...(base.style as any), ...(existing.style as any), titleColor, highlightColor: titleColor },
+        style: { ...(base.style as any), ...(existing.style as any) },
       } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore: sourceText, highlightedText: '', textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-desc`, type: 'text',
     content: { text: apiDescriptionText, textSize: 'base' },
     style: { lineHeight: '1.75', textAlign: 'center' as any, maxWidth: '640px', marginLeft: 'auto', marginRight: 'auto' },
-  };
+  });
   const descElResolved: WebsiteElement = { ...descEl, content: { ...(descEl.content || {}), text: apiDescriptionText } };
 
   const sourceFeatureBoxes = (
@@ -160,15 +161,15 @@ export const AboutModern: React.FC<Props> = ({
     if (existing) return { ...existing, content: { ...(existing.content || {}), ...desired } };
     return {
       id, type: 'feature-box', content: desired,
-      style: { iconContainerSize: '2.75rem', iconBorderRadius: '0.625rem', titleFontSize: '0.95rem', titleFontWeight: '700', descriptionFontSize: '0.8125rem', borderWidth: '1px', borderStyle: 'solid', borderRadius: '1rem', padding: '1.25rem', backgroundColor: cardBg } as any,
+      style: { iconContainerSize: '2.75rem', iconBorderRadius: '0.625rem', titleFontSize: '0.95rem', titleFontWeight: '700', descriptionFontSize: '0.8125rem', borderWidth: '1px', borderStyle: 'solid', borderRadius: '1rem', padding: '1.25rem'} as any,
     };
   };
 
-  const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-cta`) || {
+  const ctaBtnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-cta`, type: 'cta-button',
     content: { text: apiCtaText, link: apiCtaHref, buttonVariant: 'primary' },
     style: { padding: '0.875rem 1.75rem', borderRadius: '0.625rem', fontWeight: '700', fontSize: '0.95rem' },
-  };
+  });
   const ctaBtnElResolved: WebsiteElement = { ...ctaBtnEl, content: { ...(ctaBtnEl.content || {}), text: apiCtaText, link: apiCtaHref } };
 
   return (

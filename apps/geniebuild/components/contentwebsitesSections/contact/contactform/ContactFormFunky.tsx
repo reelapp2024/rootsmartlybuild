@@ -6,17 +6,14 @@ import {
   funkyFromTheme,
   funkyTextColors,
   mergeFunkyElement,
-  withFunkyTextStyle,
   resolveFunkyIsLight,
-  funkySurfaceColors,
-} from '../../funkyTheme';
+  funkySurfaceColors, resolveFunkySectionChrome } from '../../funkyTheme';
 import { motion } from 'motion/react';
 import { getProjectIdFromUrl } from '../../../../lib/aboutUsApi';
 import {
   fetchProjectDynamicForm,
   mapDynamicFormToSectionFields,
-  submitDynamicFormData,
-} from '../../../../lib/dynamicFormApi';
+  submitDynamicFormData } from '../../../../lib/dynamicFormApi';
 
 interface Props {
   section: Section;
@@ -52,8 +49,7 @@ export const ContactFormFunky: React.FC<Props> = ({
   selectedElementId,
   readOnly = false,
   themeColors: tc,
-  projectId: projectIdProp,
-}) => {
+  projectId: projectIdProp }) => {
   const { content, styles } = section;
   const s = styles as any;
   const c = content as any;
@@ -65,6 +61,7 @@ export const ContactFormFunky: React.FC<Props> = ({
   const surface = funkySurfaceColors(isLight, (styles as any)?.backgroundColor);
   const accent = tc?.iconColor || tc?.accentColor || f.primary;
   const bg = surface.bg;
+  const { wrapperStyle, overlayStyle } = resolveFunkySectionChrome(styles, isLight);
   const padT = s.paddingTop ?? 'pt-10 sm:pt-14';
   const padB = s.paddingBottom ?? 'pb-10 sm:pb-14';
   const padX = s.paddingX ?? 'px-4 sm:px-6';
@@ -77,23 +74,13 @@ export const ContactFormFunky: React.FC<Props> = ({
       type: 'heading',
       content: {
         text: c.contactIntroHeading || c.title || 'Send a message',
-        htmlTag: 'h2',
-      },
-      style: {
-        color: titleColor,
-        fontSize: 'clamp(1.5rem, 3vw, 2.2rem)',
+        htmlTag: 'h2' },
+      style: { fontSize: 'clamp(1.5rem, 3vw, 2.2rem)',
         fontWeight: '800',
         fontFamily: FUNKY.fonts.display,
-        textAlign: 'center' as any,
-      },
-    },
+        textAlign: 'center' as any } },
     { preferFallbackText: live }
   );
-  const titleElPainted: WebsiteElement = {
-    ...titleEl,
-    style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) },
-  };
-
   const descEl = mergeFunkyElement(
     section,
     `${section.id}-cw-conform-desc`,
@@ -105,32 +92,21 @@ export const ContactFormFunky: React.FC<Props> = ({
           c.contactIntroBody ||
           c.subtitle ||
           c.description ||
-          "Tell us what you need — we'll get back soon.",
-      },
-      style: {
-        color: textColor,
-        fontFamily: FUNKY.fonts.body,
+          "Tell us what you need — we'll get back soon." },
+      style: { fontFamily: FUNKY.fonts.body,
         textAlign: 'center' as any,
         maxWidth: '480px',
         margin: '0 auto',
-        lineHeight: '1.65',
-      },
-    },
+        lineHeight: '1.65' } },
     { preferFallbackText: live }
   );
-  const descElPainted: WebsiteElement = {
-    ...descEl,
-    style: { ...withFunkyTextStyle(descEl.style as any, textColor, isLight) },
-  };
-
   const themeColors = {
     ...tc,
     ...funkyThemeBag,
     titleColor,
     textColor,
     buttonBackgroundColor: f.primary,
-    buttonTextColor: '#fff',
-  };
+    buttonTextColor: '#fff' };
   const passThrough = {
     onTextEdit,
     onElementUpdate: onElementUpdate || (() => {}),
@@ -139,14 +115,11 @@ export const ContactFormFunky: React.FC<Props> = ({
     readOnly,
     isWrapped: false,
     buttonClass,
-    themeColors,
-  } as const;
+    themeColors } as const;
   const lightStyles = {
     ...(section.styles || {}),
     themeMode: funkyThemeMode as any,
-    titleColor,
-    textColor,
-  };
+    textColor };
 
   const projectId = String(projectIdProp || getProjectIdFromUrl() || '').trim();
   const storedFormId = String(c.formId || '').trim();
@@ -159,8 +132,7 @@ export const ContactFormFunky: React.FC<Props> = ({
         type: String(field?.type || 'text').trim(),
         required: Boolean(field?.required),
         options: Array.isArray(field?.options) ? field.options.map(String) : [],
-        placeholder: String(field?.placeholder || field?.label || '').trim(),
-      }));
+        placeholder: String(field?.placeholder || field?.label || '').trim() }));
     }
     return [
       { name: 'full_name', label: 'Full Name', type: 'text', required: true },
@@ -259,11 +231,9 @@ export const ContactFormFunky: React.FC<Props> = ({
     borderRadius: 14,
     padding: '0.75rem 1rem',
     fontSize: '0.95rem',
-    color: titleColor,
     width: '100%',
     outline: 'none',
-    fontFamily: FUNKY.fonts.body,
-  };
+    fontFamily: FUNKY.fonts.body };
 
   const renderField = (field: FormFieldView, i: number) => {
     const common = {
@@ -275,8 +245,7 @@ export const ContactFormFunky: React.FC<Props> = ({
       disabled: !live || submitting,
       value: values[field.name] || '',
       onChange: (ev: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-        onChangeField(field.name, ev.target.value),
-    };
+        onChangeField(field.name, ev.target.value) };
 
     if (field.type === 'textarea') {
       return <textarea key={field.name || i} rows={4} {...common} />;
@@ -298,7 +267,7 @@ export const ContactFormFunky: React.FC<Props> = ({
         <label
           key={field.name || i}
           className="flex items-center gap-2 text-sm"
-          style={{ color: textColor, fontFamily: FUNKY.fonts.body }}
+          style={{ fontFamily: FUNKY.fonts.body }}
         >
           <input
             type="checkbox"
@@ -318,8 +287,11 @@ export const ContactFormFunky: React.FC<Props> = ({
   };
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...wrapperStyle }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
+      {overlayStyle ? (
+        <div className="absolute inset-0 pointer-events-none z-[1]" style={overlayStyle} />
+      ) : null}
       <div className={`max-w-xl mx-auto ${padX} ${padT} ${padB}`}>
         <motion.div
           initial={{ opacity: 0, y: 16 }}
@@ -328,11 +300,11 @@ export const ContactFormFunky: React.FC<Props> = ({
           className="mb-6 text-center space-y-3"
         >
           <ElementsSection
-            section={{ ...section, styles: lightStyles, elements: [titleElPainted] }}
+            section={{ ...section, styles: lightStyles, elements: [titleEl] }}
             {...passThrough}
           />
           <ElementsSection
-            section={{ ...section, styles: lightStyles, elements: [descElPainted] }}
+            section={{ ...section, styles: lightStyles, elements: [descEl] }}
             {...passThrough}
           />
         </motion.div>
@@ -347,8 +319,7 @@ export const ContactFormFunky: React.FC<Props> = ({
             border: `2.5px solid ${f.ink}`,
             borderRadius: 24,
             boxShadow: FUNKY.shadow,
-            padding: 24,
-          }}
+            padding: 24 }}
         >
           <form onSubmit={handleSubmit} className="space-y-4" noValidate={!live}>
             {fields.map((field, i) => (
@@ -356,7 +327,7 @@ export const ContactFormFunky: React.FC<Props> = ({
                 {field.type !== 'checkbox' && (
                   <label
                     className="block text-sm font-bold"
-                    style={{ color: textColor, fontFamily: FUNKY.fonts.body }}
+                    style={{ fontFamily: FUNKY.fonts.body }}
                     htmlFor={`${section.id}-field-${field.name || i}`}
                   >
                     {field.label}
@@ -368,7 +339,7 @@ export const ContactFormFunky: React.FC<Props> = ({
             ))}
 
             {formMissing && live && (
-              <p className="text-sm" style={{ color: textColor, fontFamily: FUNKY.fonts.body }}>
+              <p className="text-sm" style={{ fontFamily: FUNKY.fonts.body }}>
                 No contact form is enabled for this project yet. Create one in Admin → Forms.
               </p>
             )}
@@ -389,15 +360,13 @@ export const ContactFormFunky: React.FC<Props> = ({
                   disabled={submitting || !formId}
                   className="w-full font-extrabold transition disabled:opacity-60"
                   style={{
-                    backgroundColor: f.primary,
                     color: '#fff',
                     padding: '0.9rem 1.5rem',
                     fontSize: '1rem',
                     borderRadius: 9999,
                     border: `2.5px solid ${f.ink}`,
                     boxShadow: FUNKY.shadow,
-                    fontFamily: FUNKY.fonts.display,
-                  }}
+                    fontFamily: FUNKY.fonts.display }}
                 >
                   {submitting ? 'Sending…' : btnLabel}
                 </button>
@@ -411,9 +380,7 @@ export const ContactFormFunky: React.FC<Props> = ({
                         id: `${section.id}-cw-conform-btn`,
                         type: 'cta-button',
                         content: { text: btnLabel, link: '#' },
-                        style: {
-                          backgroundColor: f.primary,
-                          color: '#fff',
+                        style: { color: '#fff',
                           padding: '0.9rem 1.5rem',
                           borderRadius: '9999px',
                           fontWeight: '800',
@@ -421,11 +388,8 @@ export const ContactFormFunky: React.FC<Props> = ({
                           width: '100%',
                           border: `2.5px solid ${f.ink}`,
                           boxShadow: FUNKY.shadow,
-                          fontFamily: FUNKY.fonts.display,
-                        } as any,
-                      },
-                    ],
-                  }}
+                          fontFamily: FUNKY.fonts.display } as any },
+                    ] }}
                   {...passThrough}
                 />
               )}

@@ -99,17 +99,13 @@ export const SectionSidebarBody: React.FC<Props> = ({
       fontSize: effectiveElementStyle?.fontSize || resolvedSectionStyles?.buttonSize || resolvedSectionStyles?.buttonFontSize || resolvedSectionStyles?.fontSize || '1rem',
       textAlign: effectiveElementStyle?.textAlign || resolvedSectionStyles?.buttonAlign || resolvedSectionStyles?.textAlign || 'center',
       fontFamily: effectiveElementStyle?.fontFamily || resolvedSectionStyles?.buttonFontFamily || resolvedSectionStyles?.fontFamily || undefined,
+      // Color keys stay as real overrides only — never paint theme into saved style.
     } : selectedElement.type === 'badge' ? {
       ...effectiveElementStyle,
-      backgroundColor: (effectiveElementStyle?.backgroundColor && effectiveElementStyle.backgroundColor !== '' && effectiveElementStyle.backgroundColor !== 'transparent')
-        ? effectiveElementStyle.backgroundColor
-        : (themeData?.badge?.background || 'rgba(225,29,72,0.15)'),
-      color: (effectiveElementStyle?.color && effectiveElementStyle.color !== '' && effectiveElementStyle.color !== 'transparent')
-        ? effectiveElementStyle.color
-        : (themeData?.badge?.text || '#F8FAFC'),
       fontSize: effectiveElementStyle?.fontSize || '0.75rem',
       padding: effectiveElementStyle?.padding || '4px 12px',
       borderRadius: effectiveElementStyle?.borderRadius || '9999px',
+      // Do not hydrate theme colors into backgroundColor/color — Inherited UI uses fallbacks.
     } : effectiveElementStyle;
 
     return renderStyleEditor(

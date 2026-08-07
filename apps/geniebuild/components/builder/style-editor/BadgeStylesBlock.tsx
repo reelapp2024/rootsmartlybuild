@@ -215,8 +215,8 @@ export const BadgeStylesBlock: React.FC<BadgeStylesBlockProps> = ({
       </div>
 
       {/* ── 3. COLORS ──────────────────────────────────────────────── */}
-      <ColorInput label="Background Color" value={styles.backgroundColor || fallbackBg} onChange={(v) => onUpdate('backgroundColor', v)} onReset={() => onUpdate('backgroundColor', '')} />
-      <ColorInput label="Text Color"       value={styles.color           || fallbackText || ''} onChange={(v) => onUpdate('color', v)}            onReset={() => onUpdate('color', '')} />
+      <ColorInput label={styles.backgroundColor ? 'Background Color' : 'Background Color (Inherited)'} value={styles.backgroundColor || fallbackBg} onChange={(v) => onUpdate('backgroundColor', v)} onReset={() => onUpdate('backgroundColor', '')} />
+      <ColorInput label={styles.color ? 'Text Color' : 'Text Color (Inherited)'}       value={styles.color           || fallbackText || ''} onChange={(v) => onUpdate('color', v)}            onReset={() => onUpdate('color', '')} />
       {currentVariant === 'outline' && (
         <ColorInput label="Border Color" value={styles.borderColor || accent} onChange={(v) => onUpdate('borderColor', v)} onReset={() => onUpdate('borderColor', '')} />
       )}

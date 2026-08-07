@@ -9,6 +9,7 @@ import { useDefaultSizes } from '../builder/state/DefaultSizesContext';
 import {
   buildHeadingHighlightSpanStyle,
   buildHeadingEditableHtml,
+  plainTextFromHtml,
   resolveHeadingFontSize,
   resolveHighlightAccentColor,
   resolveTextFontSize,
@@ -17,9 +18,17 @@ import {
   type TextSizePreset,
 } from '../../utils/resolveElementTypography';
 import {
+  lineClampStyle,
+  plainTextForTruncate,
+  resolveTextLimit,
+  truncateToNearestSentence,
+} from '../../utils/textTruncate';
+import {
   isDarkCanvasTextColor,
   resolveIsLightSurface,
 } from '../../utils/themeSurface';
+import { resolveElementColor, hasExplicitStyleValue } from '../../utils/applyElementComputedStyle';
+import { resolveSectionBackground } from '../../utils/sectionBackground';
 import { ELEMENT_DEFAULTS, IMAGE_BOX_DEFAULT_TITLE_HEADING, PRESET_THEMES } from '../../constants';
 import * as LucideIcons from 'lucide-react';
 import { StatCardValue } from './StatCardValue';
@@ -39,6 +48,7 @@ import {
   getEditableNode,
   getLiveCaretOffset,
   getPlainTextCaretOffset,
+  htmlPreserveTrailingSpaces,
   isInlineEditing,
   restoreCaretAfterReactUpdate,
   setLiveTrailingSpace,
@@ -666,11 +676,20 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
   // Prefer actual background luminance over themeMode — dark mode + cream/white
   // bg (or light mode + dark bg) was painting unreadable element colors.
   const sectionStyles = (section.styles || {}) as Record<string, unknown>;
+  const sectionBgResolved = resolveSectionBackground(section.styles as any, {
+    defaultSurface:
+      (sectionStyles.backgroundColor as string) ||
+      (themeColors as any)?.backgroundColor ||
+      (themeColors as any)?.cardBackgroundColor ||
+      '',
+  });
+  const sectionSurfaceForLuminance =
+    (sectionBgResolved.backgroundColor as string | undefined) ||
+    (sectionStyles.backgroundColor as string) ||
+    (themeColors as any)?.backgroundColor;
   const isLightMode = resolveIsLightSurface({
     themeMode: (section.styles?.themeMode as string) || (themeColors as any)?.themeMode,
-    backgroundColor:
-      (sectionStyles.backgroundColor as string) ||
-      (themeColors as any)?.backgroundColor,
+    backgroundColor: sectionSurfaceForLuminance,
     fallbackBackgroundColor: (themeColors as any)?.cardBackgroundColor,
   });
   // themeData may be { name, elements: {...} } or the elements object directly — normalise the same way SectionRenderer does
@@ -1161,13 +1180,15 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 ? safeStyle.fontFamily
                 : (gHead.fontFamily || theme?.titleFontFamily);
 
-            // Color resolution — per-element > per-level global > theme > fallback
-            const titleCol =
-              safeStyle.color ||
-              gHeadColor ||
-              theme?.titleColor ||
-              renderStyle.color ||
-              (isLightMode ? '#111827' : '#F8FAFC');
+            // Color resolution — explicit element.style.color always wins (never luminance-replaced).
+            const titleCol = resolveElementColor({
+              elementStyle: safeStyle,
+              colorKey: 'color',
+              themeFallback: gHeadColor || theme?.titleColor || renderStyle.color,
+              isLightMode,
+              lightFallback: '#111827',
+              darkFallback: '#F8FAFC',
+            });
 
             const accentCol = resolveHighlightAccentColor({
               elementStyle: renderStyle,
@@ -1356,8 +1377,10 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const c: any = content || {};
             const isSubtitleElement = id.includes('-hero-subtitle') || id.includes('subheading') || c.textSize === 'subheading';
             const textSizePreset = (c.textSize || 'base') as TextSizePreset;
+            // Use el.style only — renderStyle includes ELEMENT_DEFAULTS which must not
+            // override content.textSize presets (base / small / large / xl).
             const resolvedTextFontSize = resolveTextFontSize({
-              elementStyle: renderStyle,
+              elementStyle: (el.style || {}) as Record<string, unknown>,
               textSize: textSizePreset,
               sectionSubtitleTextSize: section.content?.subtitleTextSize as TextSizePreset | undefined,
               isHeroSubtitle: id.includes('-hero-subtitle'),
@@ -1375,10 +1398,14 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
 
             const textStyle: React.CSSProperties = {
                 ...safeStyle,
-                color:
-                  safeStyle.color ||
-                  (isSubtitleElement ? theme.subheadingColor : theme.textColor) ||
-                  (isLightMode ? '#4B5563' : '#D1D5DB'),
+                color: resolveElementColor({
+                  elementStyle: safeStyle,
+                  colorKey: 'color',
+                  themeFallback: isSubtitleElement ? theme.subheadingColor : theme.textColor,
+                  isLightMode,
+                  lightFallback: '#4B5563',
+                  darkFallback: '#D1D5DB',
+                }),
                 fontWeight: renderStyle.fontWeight || gText.fontWeight || '400',
                 fontSize: resolvedTextFontSize,
                 textAlign: (renderStyle.textAlign as any) || 'left',
@@ -1450,19 +1477,41 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 );
             }
 
+            const textLimit = resolveTextLimit(c);
+            // Full text always stored. Truncate only for display when not actively editing
+            // so card layouts stay even (homepage services) without destroying copy.
+            const editingThisText = !readOnly && (isSelected || isInlineEditing(id));
+            const fullTextHtml = c.text || '';
+            const displayTextHtml =
+              !editingThisText && textLimit.mode === 'words' && textLimit.wordLimit > 0
+                ? truncateToNearestSentence(fullTextHtml, textLimit.wordLimit)
+                : fullTextHtml;
+            const clampCss =
+              !editingThisText && textLimit.mode === 'lines' && textLimit.maxLines > 0
+                ? lineClampStyle(textLimit.maxLines)
+                : {};
+            // Words mode swaps the DOM string — only editable while selected so we never
+            // save the trimmed blurb over the full copy. Lines mode keeps full text + CSS clamp.
+            const textEditable = !readOnly && (textLimit.mode !== 'words' || editingThisText);
+
             const paragraphEl = (
                 <p
-                    key={`${id}-${c.textSize || 'base'}-${resolvedTextFontSize}`}
+                    key={`${id}-${c.textSize || 'base'}-${resolvedTextFontSize}-${textLimit.mode}-${textLimit.maxLines}-${textLimit.wordLimit}-${editingThisText ? 'edit' : 'view'}`}
                     id={scopedId}
                     className={`outline-none rounded px-1 relative transition-all cursor-pointer ${selectedClass}`}
-                    style={textStyle}
+                    style={{ ...textStyle, ...clampCss }}
+                    title={
+                      textLimit.mode !== 'none' && !editingThisText
+                        ? plainTextForTruncate(fullTextHtml) || undefined
+                        : undefined
+                    }
                     {...(hasUsableHref(String(c.link || '').trim()) && !readOnly
                       ? { 'data-gb-editable-link': '1' }
                       : {})}
                     onClick={!readOnly ? (e: React.MouseEvent) => handleElementActivate(e, el, c.link) : undefined}
-                    ref={bindHtml(id, c.text || '')}
-                    contentEditable={!readOnly}
-                    {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                    ref={bindHtml(id, displayTextHtml)}
+                    contentEditable={textEditable}
+                    {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html), textEditable)}
                 />
             );
 
@@ -2560,12 +2609,33 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const themeTextColor  = t.featureBoxTextColor  || t.textColor || '#4B5563';
 
             // User-customized element styles (sidebar edits) override theme; otherwise follow live theme.
-            const featureIconColor   = renderStyle.iconColor || themeIconColor;
+            const featureIconColor = resolveElementColor({
+              elementStyle: renderStyle as any,
+              colorKey: 'iconColor',
+              themeFallback: themeIconColor,
+              isLightMode,
+            });
             const featureIconBg      = renderStyle.iconBackgroundColor || renderStyle.iconBgColor || themeIconBg;
             const featureCardBg      = renderStyle.backgroundColor || themeCardBg;
             const featureBorderColor = renderStyle.borderColor || themeCardBorder;
-            const featureTitleColor  = renderStyle.titleColor || renderStyle.color || themeTitleColor;
-            const featureTextColor   = renderStyle.descriptionColor || renderStyle.textColor || themeTextColor;
+            const featureTitleColor = resolveElementColor({
+              elementStyle: renderStyle as any,
+              colorKey: hasExplicitStyleValue(renderStyle as any, 'titleColor') ? 'titleColor' : 'color',
+              themeFallback: themeTitleColor,
+              isLightMode,
+              lightFallback: '#111827',
+              darkFallback: '#F8FAFC',
+            });
+            const featureTextColor = resolveElementColor({
+              elementStyle: renderStyle as any,
+              colorKey: hasExplicitStyleValue(renderStyle as any, 'descriptionColor')
+                ? 'descriptionColor'
+                : 'textColor',
+              themeFallback: themeTextColor,
+              isLightMode,
+              lightFallback: '#4B5563',
+              darkFallback: '#D1D5DB',
+            });
             const accentColor        = t.accentColor || themeIconColor;
 
             const iconSize   = renderStyle.iconContainerSize || '3rem';
@@ -3999,8 +4069,19 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             // Falls back to content.listType for backward compat.
             const listType: string = (renderStyle as any).listType || (content as any).listType || 'bullet';
             const items: any[] = content.items || [{title: 'List Item 1'}, {title: 'List Item 2'}, {title: 'List Item 3'}];
-            const textCol  = safeStyle.color || theme?.textColor || '#D1D5DB';
-            const markerCol = (renderStyle as any).markerColor || (renderStyle as any).iconColor || theme?.accentColor || textCol;
+            const textCol = resolveElementColor({
+              elementStyle: safeStyle,
+              colorKey: 'color',
+              themeFallback: theme?.textColor,
+              isLightMode,
+              lightFallback: '#4B5563',
+              darkFallback: '#D1D5DB',
+            });
+            const markerCol = hasExplicitStyleValue(renderStyle as any, 'markerColor')
+              ? String((renderStyle as any).markerColor)
+              : hasExplicitStyleValue(renderStyle as any, 'iconColor')
+                ? String((renderStyle as any).iconColor)
+                : (theme?.listMarkerColor || theme?.accentColor || textCol);
             const itemGap   = (renderStyle as any).itemGap || '0.5rem';
             const indent    = (renderStyle as any).indent || '0px';
             const customIcon: string = (renderStyle as any).bulletIcon || (content as any).bulletIcon || 'fa-check';
@@ -4374,9 +4455,12 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         <IconRenderer icon={content.icon} size={iconSize} className="mr-2" />
                     )}
                     <span
-                        ref={bindHtml(id, content.text || 'Badge')}
+                        ref={bindHtml(id, htmlPreserveTrailingSpaces(content.text || 'Badge'))}
                         contentEditable={!readOnly}
-                        {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                        style={{ whiteSpace: 'pre-wrap' }}
+                        {...editHandlers(id, (html) =>
+                          handleContentUpdate(id, 'text', plainTextFromHtml(html, { trim: false }))
+                        )}
                     />
                     {hasIcon && iconPosition === 'right' && (
                         <IconRenderer icon={content.icon} size={iconSize} className="ml-2" />
@@ -4727,7 +4811,17 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                     <span
                                         className="acc-q outline-none flex-1"
                                         style={{
-                                            color: (safeStyle as Record<string, string>).titleColor || theme?.accordionQuestionColor || theme?.titleColor || safeStyle.color || (isLightMode ? '#111827' : '#F8FAFC'),
+                                            color: resolveElementColor({
+                                              elementStyle: safeStyle as Record<string, any>,
+                                              colorKey: 'titleColor',
+                                              themeFallback:
+                                                theme?.accordionQuestionColor ||
+                                                theme?.titleColor ||
+                                                safeStyle.color,
+                                              isLightMode,
+                                              lightFallback: '#111827',
+                                              darkFallback: '#F8FAFC',
+                                            }),
                                             fontFamily: (renderStyle as any).questionFontFamily || (renderStyle as any).fontFamily || theme?.titleFontFamily,
                                             fontSize: accQuestionFontSize,
                                             fontWeight: accQuestionFontWeight as any,
@@ -4749,7 +4843,14 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                         paddingTop: accDividerColor ? itemPadding : 0,
                                         borderTop: accDividerColor ? `1px solid ${accDividerColor}` : 'none',
                                         marginTop: accDividerColor ? '0' : '-0.5rem',
-                                        color: safeStyle.color ?? theme?.accordionAnswerColor ?? theme?.textColor ?? (isLightMode ? '#4B5563' : '#D1D5DB'),
+                                        color: resolveElementColor({
+                                          elementStyle: safeStyle,
+                                          colorKey: 'color',
+                                          themeFallback: theme?.accordionAnswerColor || theme?.textColor,
+                                          isLightMode,
+                                          lightFallback: '#4B5563',
+                                          darkFallback: '#D1D5DB',
+                                        }),
                                         fontFamily: (renderStyle as any).answerFontFamily || (renderStyle as any).fontFamily || theme?.descriptionFontFamily,
                                         fontSize: accAnswerFontSize,
                                         lineHeight: accAnswerLineHeight,
@@ -6774,7 +6875,25 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     );
   };
 
-  const renderElementWithLink = (el: WebsiteElement) => wrapWithLink(el, renderElement(el));
+  /** Attach data-element-id so tablet/mobile CSS overrides from buildResponsiveOverrideCss match. */
+  const withElementId = (el: WebsiteElement, node: React.ReactNode): React.ReactNode => {
+    if (React.isValidElement(node)) {
+      const props = node.props as Record<string, unknown>;
+      if (props['data-element-id']) return node;
+      return React.cloneElement(node as React.ReactElement<any>, {
+        'data-element-id': el.id,
+        key: node.key ?? el.id,
+      });
+    }
+    return (
+      <span key={el.id} data-element-id={el.id} style={{ display: 'contents' }}>
+        {node}
+      </span>
+    );
+  };
+
+  const renderElementWithLink = (el: WebsiteElement) =>
+    withElementId(el, wrapWithLink(el, renderElement(el)));
 
   // Render elements
   const elementsContent = isWrapped ? (

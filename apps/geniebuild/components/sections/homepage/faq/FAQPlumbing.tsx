@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -91,7 +92,6 @@ export const FAQPlumbing: React.FC<Props> = ({
 
   const themeColors = {
     ...tc,
-    titleColor,
     textColor,
     accentColor: accent,
     cardBackgroundColor: cardBg,
@@ -105,17 +105,13 @@ export const FAQPlumbing: React.FC<Props> = ({
   };
 
   // Badge — accent-tinted pill, matches the convention across other sections.
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fqp-badge`, type: 'badge',
     content: { text: c.badgeText || 'FAQ', icon: 'fa-circle-question', iconPosition: 'left', iconSize: '0.7rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
-      textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
-    },
-  };
+      textAlign: 'center' as any},
+  });
   const badgeElResolved: WebsiteElement = {
     ...badgeEl,
     content: { ...(badgeEl.content || {}), text: apiBadgeText },
@@ -126,11 +122,11 @@ export const FAQPlumbing: React.FC<Props> = ({
     const id = `${section.id}-fqp-title`;
     const existing = section.elements?.find(e => e.id === id);
     const sourceText: string = apiTitleText.toString().replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, htmlTag: 'h2' },
-      style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.875rem, 4vw, 2.875rem)', lineHeight: '1.15', letterSpacing: '-0.02em', color: titleColor },
-    };
+      style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.875rem, 4vw, 2.875rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
+    });
     if (existing) {
       return {
         ...existing,
@@ -139,21 +135,21 @@ export const FAQPlumbing: React.FC<Props> = ({
           text: sourceText,
           htmlTag: (existing.content as any)?.htmlTag || 'h2',
         },
-        style: { ...(base.style as any), ...(existing.style as any), color: titleColor },
+        style: { ...(base.style as any), ...(existing.style as any) },
       } as WebsiteElement;
     }
     return { ...base, content: { text: sourceText, htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
   // Description — centered, capped width
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fqp-desc`, type: 'text',
     content: {
       text: apiDescriptionText,
       textSize: 'large',
     },
     style: { textAlign: 'center' as any, maxWidth: '620px', margin: '0 auto', lineHeight: '1.65' },
-  };
+  });
   const descElResolved: WebsiteElement = {
     ...descEl,
     content: { ...(descEl.content || {}), text: apiDescriptionText },
@@ -184,34 +180,20 @@ export const FAQPlumbing: React.FC<Props> = ({
   // current default style and let any user-customized keys override on top.
   const savedAccordion = section.elements?.find(e => e.id === `${section.id}-fqp-accordion`);
   const accordionDefaultStyle: Record<string, any> = {
-    // Item card chrome — pure white card, neutral border
-    backgroundColor: cardBg,
-    borderColor: cardBorder,
+    // Structural accordion chrome only — theme owns colors at render.
     borderWidth: '1px',
     borderStyle: 'solid',
     borderRadius: '0.875rem',
     padding: '1.5rem 1.75rem',
     itemGap: '0.75rem',
-    // Icon — plus/minus chip on the right
     iconType: 'plus',
     iconPosition: 'right',
     iconShape: 'circle',
     iconSize: '0.875rem',
-    iconColor: accent,
-    iconBackgroundColor: `${accent}15`,
-    // Question text in neutral title color, answer body in muted text.
-    titleColor,
     questionFontSize: '1.0625rem',
     questionFontWeight: '700',
-    color: textColor,
     answerFontSize: '0.9375rem',
     answerLineHeight: '1.65',
-    // Open / hover state — explicitly neutral so old saves can't bleed accent
-    activeBackgroundColor: cardBg,
-    activeBorderColor: cardBorder,
-    activeTitleColor: '',
-    hoverBackgroundColor: '',
-    dividerColor: '',
   };
   const accordionEl: WebsiteElement = {
     id: `${section.id}-fqp-accordion`, type: 'accordion',
@@ -223,11 +205,6 @@ export const FAQPlumbing: React.FC<Props> = ({
     style: {
       ...accordionDefaultStyle,
       ...(savedAccordion?.style as any || {}),
-      // Force these keys to current defaults — overrides any stale accent values.
-      backgroundColor: cardBg,
-      borderColor: cardBorder,
-      activeBackgroundColor: cardBg,
-      activeBorderColor: cardBorder,
     } as any,
   };
 
@@ -245,38 +222,34 @@ export const FAQPlumbing: React.FC<Props> = ({
   const faqCtaButtonText = String(c.ctaButtonText || '').trim();
   const faqCtaButtonLink = String(c.ctaButtonLink || '').trim();
 
-  const ctaTitleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-cta-title`) || {
+  const ctaTitleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fqp-cta-title`, type: 'heading',
     content: {
       text: faqCtaTitle,
       htmlTag: 'h3' as any,
     },
-    style: {
-      textAlign: 'center' as any,
+    style: { textAlign: 'center' as any,
       fontWeight: '800',
       fontSize: 'clamp(1.25rem, 2.5vw, 1.5rem)',
       lineHeight: '1.2',
       letterSpacing: '-0.01em',
       // No explicit color — render falls through to global heading color → theme.titleColor.
     } as any,
-  };
+  });
 
-  const ctaDescEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-cta-desc`) || {
+  const ctaDescEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fqp-cta-desc`, type: 'text',
     content: {
       text: faqCtaDescription,
       textSize: 'base',
     },
-    style: {
-      textAlign: 'center' as any,
+    style: { textAlign: 'center' as any,
       maxWidth: '480px',
       margin: '0 auto',
-      lineHeight: '1.6',
-      color: textColor,
-    } as any,
-  };
+      lineHeight: '1.6'} as any,
+  });
 
-  const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-cta-btn`) || {
+  const ctaBtnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fqp-cta-btn`, type: 'cta-button',
     content: {
       text: faqCtaButtonText,
@@ -284,15 +257,11 @@ export const FAQPlumbing: React.FC<Props> = ({
       icon: 'fa-headset',
       iconPosition: 'left',
     } as any,
-    style: {
-      backgroundColor: btnBg,
-      color: btnText,
-      padding: '0.875rem 1.75rem',
+    style: { padding: '0.875rem 1.75rem',
       borderRadius: '0.5rem',
       fontWeight: '700',
-      fontSize: '0.9375rem',
-    } as any,
-  };
+      fontSize: '0.9375rem'} as any,
+  });
 
   const ctaTitleElResolved: WebsiteElement = {
     ...ctaTitleEl,
@@ -364,7 +333,6 @@ export const FAQPlumbing: React.FC<Props> = ({
           <div
             className="rounded-2xl p-6 sm:p-8 flex flex-col items-center gap-4"
             style={{
-              backgroundColor: cardBg,
               border: `1px solid ${cardBorder}`,
             }}
           >

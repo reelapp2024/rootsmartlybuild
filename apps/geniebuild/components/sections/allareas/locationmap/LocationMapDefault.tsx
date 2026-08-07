@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -123,6 +125,7 @@ export const LocationMapDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-10 sm:pt-12 lg:pt-16';
@@ -213,15 +216,14 @@ export const LocationMapDefault: React.FC<Props> = ({
     selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
   } as const;
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-mp-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-mp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Find Us', icon: 'fa-map-pin', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
       textAlign: 'center' as any,
     },
-  };
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-mp-title`;
@@ -237,11 +239,11 @@ export const LocationMapDefault: React.FC<Props> = ({
     let textBefore = '';
     let highlightedText = sourceText;
     if (words.length > 1) { highlightedText = words[words.length - 1]; textBefore = words.slice(0, -1).join(' '); }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em', textAlign: 'center' as any },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -259,7 +261,7 @@ export const LocationMapDefault: React.FC<Props> = ({
   const hasMap = multi ? markers.length > 0 : Boolean(embedUrl);
 
   return (
-    <div className="w-full text-center" style={{ backgroundColor: bg }}>
+    <div className="w-full text-center" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
 
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}

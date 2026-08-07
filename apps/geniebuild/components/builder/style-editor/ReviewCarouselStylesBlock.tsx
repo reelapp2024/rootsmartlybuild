@@ -58,13 +58,13 @@ export const ReviewCarouselStylesBlock: React.FC<ReviewCarouselStylesBlockProps>
             The outer container around the carousel. Marquee scroll &amp; speed live in the Content tab.
           </p>
           <ColorInput
-            label="Background"
+            label={styles.wrapBg ? "Background" : "Background (Inherited)"}
             value={styles.wrapBg || ''}
             onChange={(v) => onUpdate('wrapBg', v)}
             onReset={() => onUpdate('wrapBg', '')}
           />
           <ColorInput
-            label="Border Color"
+            label={styles.wrapBorder ? "Border Color" : "Border Color (Inherited)"}
             value={styles.wrapBorder || ''}
             onChange={(v) => onUpdate('wrapBorder', v)}
             onReset={() => onUpdate('wrapBorder', '')}
@@ -96,13 +96,13 @@ export const ReviewCarouselStylesBlock: React.FC<ReviewCarouselStylesBlockProps>
       <AccordionGroup title="Review Card" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Card Background"
+            label={styles.reviewCardBg ? "Card Background" : "Card Background (Inherited)"}
             value={styles.reviewCardBg || ''}
             onChange={(v) => onUpdate('reviewCardBg', v)}
             onReset={() => onUpdate('reviewCardBg', '')}
           />
           <ColorInput
-            label="Card Border"
+            label={styles.reviewCardBorder ? "Card Border" : "Card Border (Inherited)"}
             value={styles.reviewCardBorder || ''}
             onChange={(v) => onUpdate('reviewCardBorder', v)}
             onReset={() => onUpdate('reviewCardBorder', '')}
@@ -147,7 +147,7 @@ export const ReviewCarouselStylesBlock: React.FC<ReviewCarouselStylesBlockProps>
             Per-review rating (1–5) is in the Content tab.
           </p>
           <ColorInput
-            label="Star Color"
+            label={styles.starColor ? "Star Color" : "Star Color (Inherited)"}
             value={styles.starColor || '#F59E0B'}
             onChange={(v) => onUpdate('starColor', v)}
             onReset={() => onUpdate('starColor', '')}
@@ -159,7 +159,7 @@ export const ReviewCarouselStylesBlock: React.FC<ReviewCarouselStylesBlockProps>
       <AccordionGroup title="Typography" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Review Text Color"
+            label={styles.reviewTextColor ? "Review Text Color" : "Review Text Color (Inherited)"}
             value={styles.reviewTextColor || textCol}
             onChange={(v) => onUpdate('reviewTextColor', v)}
             onReset={() => onUpdate('reviewTextColor', '')}
@@ -171,7 +171,7 @@ export const ReviewCarouselStylesBlock: React.FC<ReviewCarouselStylesBlockProps>
             placeholder="0.875rem"
           />
           <ColorInput
-            label="Author Color"
+            label={styles.authorColor ? "Author Color" : "Author Color (Inherited)"}
             value={styles.authorColor || titleCol}
             onChange={(v) => onUpdate('authorColor', v)}
             onReset={() => onUpdate('authorColor', '')}

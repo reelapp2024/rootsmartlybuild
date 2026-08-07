@@ -4,12 +4,17 @@
  */
 
 import type { WebsiteElement } from '../../types';
+import type React from 'react';
 import {
   isDarkCanvasTextColor,
-  isLightCanvasTextColor,
   isLightSurfaceColor,
   resolveIsLightSurface,
 } from '../../utils/themeSurface';
+import {
+  resolveSectionWrapperStyle,
+  resolveSectionOverlay,
+} from '../../utils/sectionBackground';
+import { resolveSectionElement } from '../../elements';
 
 export const FUNKY = {
   fonts: {
@@ -147,42 +152,63 @@ export function funkySurfaceColors(isLight: boolean, sectionBg?: string) {
 }
 
 /**
- * Ensure element text color contrasts with the active surface.
- * Preserves user-chosen colors that already contrast.
+ * Ensure element text color is set for the active surface.
+ * Only fills missing/transparent color — never overwrites an explicit user override (SSOT).
  */
 export function withFunkyTextStyle(
   style: Record<string, unknown> | undefined | null,
   fallbackColor: string,
-  isLight = true
+  _isLight = true
 ): Record<string, unknown> {
   const next = { ...(style || {}) };
-  const current = next.color != null ? String(next.color) : '';
-  const bad = isLight
-    ? !current || current === 'transparent' || isDarkCanvasTextColor(current)
-    : !current || current === 'transparent' || isLightCanvasTextColor(current);
-  if (bad) next.color = fallbackColor;
+  const current = next.color != null ? String(next.color).trim() : '';
+  if (!current || current === 'transparent') {
+    next.color = fallbackColor;
+  }
   return next;
 }
 
-/** Prefer saved GenieBuild element (so color edits stick) over ephemeral defaults.
- *  When preferFallbackText=true (live SiteNext), dynamic content.items titles win. */
+/**
+ * Prefer saved GenieBuild element (so color edits stick) over ephemeral defaults.
+ * When preferFallbackText=true (live SiteNext), dynamic content.items titles win.
+ * Theme color keys are stripped from DNA via resolveSectionElement (SSOT).
+ */
 export function mergeFunkyElement(
   section: { elements?: WebsiteElement[] } | null | undefined,
   id: string,
   fallback: WebsiteElement,
   options?: { preferFallbackText?: boolean }
 ): WebsiteElement {
-  const saved = section?.elements?.find((e) => e.id === id);
-  if (!saved) return fallback;
-  const preferFallbackText = Boolean(options?.preferFallbackText);
+  const resolved = resolveSectionElement(section as any, { ...fallback, id });
+  if (!options?.preferFallbackText) return resolved;
   return {
-    ...fallback,
-    ...saved,
-    id,
-    type: (saved.type || fallback.type) as WebsiteElement['type'],
-    content: preferFallbackText
-      ? { ...(saved.content as object), ...(fallback.content as object) }
-      : { ...(fallback.content as object), ...(saved.content as object) },
-    style: { ...(fallback.style as object), ...(saved.style as object) },
+    ...resolved,
+    content: {
+      ...(resolved.content as object),
+      ...(fallback.content as object),
+    },
+  };
+}
+
+/**
+ * Section chrome for Funky variants: shared background resolver + Funky default surface.
+ * Spread `wrapperStyle` on the outer section; render overlay when `overlayStyle` is set.
+ */
+export function resolveFunkySectionChrome(
+  styles: any,
+  isLight: boolean
+): {
+  defaultSurface: string;
+  wrapperStyle: React.CSSProperties;
+  overlayStyle: React.CSSProperties | null;
+} {
+  const surface = funkySurfaceColors(isLight, styles?.backgroundColor);
+  const wrapperStyle = resolveSectionWrapperStyle(styles || {}, {
+    defaultSurface: surface.bg,
+  });
+  return {
+    defaultSurface: surface.bg,
+    wrapperStyle,
+    overlayStyle: resolveSectionOverlay(styles),
   };
 }

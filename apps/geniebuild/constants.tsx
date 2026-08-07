@@ -19,7 +19,9 @@ export const ELEMENT_DEFAULTS: Record<string, any> = {
 
   // ── Text elements ─────────────────────────────────────────────────────────
   heading: { fontWeight: 'bold', textAlign: 'center' },
-  text: { opacity: 1, textAlign: 'left', fontSize: '16px', lineHeight: '1.7' },
+  // No fontSize here — body text size comes from content.textSize presets
+  // (resolveTextFontSize). A baked default fontSize blocked the size dropdown.
+  text: { opacity: 1, textAlign: 'left', lineHeight: '1.7' },
   blockquote: {
     padding: '16px 20px',
     borderLeftWidth: '4px',
@@ -28,7 +30,7 @@ export const ELEMENT_DEFAULTS: Record<string, any> = {
     fontSize: '16px',
     fontStyle: 'italic',
   },
-  'highlight-text': { fontSize: '16px', lineHeight: '1.7' },
+  'highlight-text': { lineHeight: '1.7' },
 
   // ── Interactive / Action elements ─────────────────────────────────────────
   button: { padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', textAlign: 'center' },

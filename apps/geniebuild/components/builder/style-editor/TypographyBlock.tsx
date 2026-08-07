@@ -2,6 +2,11 @@ import React from 'react';
 import { PRESET_FONTS } from '../../../constants';
 import { AccordionGroup, ButtonGroup, ColorInput, RangeInput, SelectInput, TextInput } from '../inputs';
 
+/**
+ * @deprecated Prefer dedicated *StylesBlock per element type (HeadingStylesBlock,
+ * TextStylesBlock, …). TypographyBlock remains only as a fallback for types
+ * without a dedicated Design panel — do not add new usages.
+ */
 interface TypographyBlockProps {
   styles: any;
   onUpdate: (key: string, val: any) => void;

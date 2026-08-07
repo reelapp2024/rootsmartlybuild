@@ -6,10 +6,8 @@ import {
   funkyFromTheme,
   funkyTextColors,
   mergeFunkyElement,
-  withFunkyTextStyle,
   resolveFunkyIsLight,
-  funkySurfaceColors,
-} from '../../funkyTheme';
+  funkySurfaceColors, resolveFunkySectionChrome } from '../../funkyTheme';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -30,8 +28,7 @@ function normalizeDocSections(c: any): DocSection[] {
     return c.sections
       .map((x: any) => ({
         heading: String(x?.heading || x?.title || '').trim(),
-        bodyHtml: String(x?.bodyHtml || x?.body || x?.description || '').trim(),
-      }))
+        bodyHtml: String(x?.bodyHtml || x?.body || x?.description || '').trim() }))
       .filter((x: DocSection) => x.heading || x.bodyHtml);
   }
   const flat = String(c?.body || c?.html || c?.description || '').trim();
@@ -47,8 +44,7 @@ export const TermsBodyFunky: React.FC<Props> = ({
   onElementUpdate,
   selectedElementId,
   readOnly = false,
-  themeColors: tc,
-}) => {
+  themeColors: tc }) => {
   const { content, styles } = section;
   const s = styles as any;
   const c = content as any;
@@ -59,6 +55,7 @@ export const TermsBodyFunky: React.FC<Props> = ({
     funkyTextColors(tc, isLight);
   const surface = funkySurfaceColors(isLight, (styles as any)?.backgroundColor);
   const bg = surface.bg;
+  const { wrapperStyle, overlayStyle } = resolveFunkySectionChrome(styles, isLight);
   const padT = s.paddingTop ?? 'pt-12 sm:pt-16';
   const padB = s.paddingBottom ?? 'pb-12 sm:pb-16';
   const padX = s.paddingX ?? 'px-4 sm:px-6';
@@ -73,20 +70,11 @@ export const TermsBodyFunky: React.FC<Props> = ({
       id: `${section.id}-cw-terms-title`,
       type: 'heading',
       content: { text: c.title || 'Terms of Use', htmlTag: 'h1' },
-      style: {
-        color: titleColor,
-        fontSize: 'clamp(1.6rem, 3.2vw, 2.4rem)',
+      style: { fontSize: 'clamp(1.6rem, 3.2vw, 2.4rem)',
         fontWeight: '800',
-        fontFamily: FUNKY.fonts.display,
-      },
-    },
+        fontFamily: FUNKY.fonts.display } },
     { preferFallbackText: live }
   );
-  const titleElPainted: WebsiteElement = {
-    ...titleEl,
-    style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) },
-  };
-
   const subtitleEl = mergeFunkyElement(
     section,
     `${section.id}-cw-terms-sub`,
@@ -94,22 +82,12 @@ export const TermsBodyFunky: React.FC<Props> = ({
       id: `${section.id}-cw-terms-sub`,
       type: 'text',
       content: {
-        text: c.subtitle || 'Please review these terms before using this website.',
-      },
-      style: {
-        color: textColor,
-        fontFamily: FUNKY.fonts.body,
+        text: c.subtitle || 'Please review these terms before using this website.' },
+      style: { fontFamily: FUNKY.fonts.body,
         lineHeight: '1.65',
-        marginTop: '0.5rem',
-      },
-    },
+        marginTop: '0.5rem' } },
     { preferFallbackText: live }
   );
-  const subtitleElPainted: WebsiteElement = {
-    ...subtitleEl,
-    style: { ...withFunkyTextStyle(subtitleEl.style as any, textColor, isLight) },
-  };
-
   const themeColors = { ...tc, ...funkyThemeBag, titleColor, textColor };
   const passThrough = {
     onTextEdit,
@@ -119,18 +97,18 @@ export const TermsBodyFunky: React.FC<Props> = ({
     readOnly,
     isWrapped: false,
     buttonClass,
-    themeColors,
-  } as const;
+    themeColors } as const;
   const lightStyles = {
     ...(section.styles || {}),
     themeMode: funkyThemeMode as any,
-    titleColor,
-    textColor,
-  };
+    textColor };
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...wrapperStyle }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
+      {overlayStyle ? (
+        <div className="absolute inset-0 pointer-events-none z-[1]" style={overlayStyle} />
+      ) : null}
       <div className={`max-w-3xl mx-auto ${padX} ${padT} ${padB}`}>
         <div
           style={{
@@ -138,23 +116,22 @@ export const TermsBodyFunky: React.FC<Props> = ({
             border: `2.5px solid ${f.ink}`,
             borderRadius: 24,
             boxShadow: FUNKY.shadow,
-            padding: 28,
-          }}
+            padding: 28 }}
         >
           <ElementsSection
-            section={{ ...section, styles: lightStyles, elements: [titleElPainted] }}
+            section={{ ...section, styles: lightStyles, elements: [titleEl] }}
             {...passThrough}
           />
           <div className="mt-2">
             <ElementsSection
-              section={{ ...section, styles: lightStyles, elements: [subtitleElPainted] }}
+              section={{ ...section, styles: lightStyles, elements: [subtitleEl] }}
               {...passThrough}
             />
           </div>
           {lastUpdated ? (
             <p
               className="mt-3 text-sm font-semibold"
-              style={{ color: textColor, fontFamily: FUNKY.fonts.body, opacity: 0.8 }}
+              style={{ fontFamily: FUNKY.fonts.body, opacity: 0.8 }}
             >
               {lastUpdated}
             </p>
@@ -170,22 +147,12 @@ export const TermsBodyFunky: React.FC<Props> = ({
                     id: `${section.id}-cw-terms-h${i}`,
                     type: 'heading',
                     content: { text: sec.heading || `Section ${i + 1}`, htmlTag: 'h2' },
-                    style: {
-                      color: titleColor,
-                      fontSize: '1.25rem',
+                    style: { fontSize: '1.25rem',
                       fontWeight: '800',
-                      fontFamily: FUNKY.fonts.display,
-                    },
-                  },
+                      fontFamily: FUNKY.fonts.display } },
                   { preferFallbackText: live }
                 );
-                const headingPainted: WebsiteElement = {
-                  ...headingEl,
-                  style: {
-                    ...withFunkyTextStyle(headingEl.style as any, titleColor, isLight),
-                  },
-                };
-                const isHtml = /<[a-z][\s\S]*>/i.test(sec.bodyHtml);
+                                const isHtml = /<[a-z][\s\S]*>/i.test(sec.bodyHtml);
                 return (
                   <motion.div
                     key={i}
@@ -199,8 +166,7 @@ export const TermsBodyFunky: React.FC<Props> = ({
                         section={{
                           ...section,
                           styles: lightStyles,
-                          elements: [headingPainted],
-                        }}
+                          elements: [headingEl] }}
                         {...passThrough}
                       />
                     ) : null}
@@ -208,21 +174,17 @@ export const TermsBodyFunky: React.FC<Props> = ({
                       <div
                         className="legal-prose"
                         style={{
-                          color: textColor,
                           fontSize: '1rem',
                           lineHeight: 1.75,
-                          fontFamily: FUNKY.fonts.body,
-                        }}
+                          fontFamily: FUNKY.fonts.body }}
                         dangerouslySetInnerHTML={{ __html: sec.bodyHtml }}
                       />
                     ) : (
                       <p
                         style={{
-                          color: textColor,
                           fontSize: '1rem',
                           lineHeight: 1.75,
-                          fontFamily: FUNKY.fonts.body,
-                        }}
+                          fontFamily: FUNKY.fonts.body }}
                       >
                         {sec.bodyHtml}
                       </p>
@@ -231,7 +193,7 @@ export const TermsBodyFunky: React.FC<Props> = ({
                 );
               })
             ) : (
-              <p style={{ color: textColor, fontFamily: FUNKY.fonts.body, lineHeight: 1.7 }}>
+              <p style={{ fontFamily: FUNKY.fonts.body, lineHeight: 1.7 }}>
                 Terms content is generating. Refresh after section generation finishes.
               </p>
             )}

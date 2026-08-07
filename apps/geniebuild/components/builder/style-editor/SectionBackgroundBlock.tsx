@@ -2,6 +2,7 @@ import React from 'react';
 import { Section } from '../../../types';
 import { PRESET_THEMES } from '../../../constants';
 import { AccordionGroup, BackgroundControl, ColorInput, RangeInput, SelectInput } from '../inputs';
+import { normalizeBackground, syncLegacyBackgroundFlats } from '../../../utils/normalizeSectionStyles';
 
 interface SectionBackgroundBlockProps {
   styles: any;
@@ -156,26 +157,46 @@ export const SectionBackgroundBlock: React.FC<SectionBackgroundBlockProps> = ({
             return '';
           })();
 
-          onUpdate('background', backgroundObj);
+          // Ensure image type always carries a url when section content has one
+          let nextBg = backgroundObj;
+          if (nextBg?.type === 'image' && nextBg.image && !nextBg.image.url && firstSectionImage) {
+            nextBg = {
+              ...nextBg,
+              image: { ...nextBg.image, url: firstSectionImage },
+            };
+          }
+          const normalized = normalizeBackground(nextBg, {
+            backgroundColor: nextBg?.type === 'color' ? nextBg.color : undefined,
+            backgroundImage: nextBg?.type === 'image' ? nextBg?.image?.url : undefined,
+          });
+          onUpdate('background', normalized);
           if (enableGeometry !== undefined) onUpdate('enableGeometry', enableGeometry);
           if (pattern !== undefined) onUpdate('backgroundPattern', pattern);
 
-          if (backgroundObj.type === 'color') {
-            onUpdate('backgroundColor', backgroundObj.color || '#000000');
+          const flats = syncLegacyBackgroundFlats({
+            background: normalized,
+            backgroundColor: styles.backgroundColor,
+            backgroundImage: styles.backgroundImage,
+          });
+          if (normalized?.type === 'color') {
+            onUpdate('backgroundColor', flats.backgroundColor || normalized.color || '#000000');
             onUpdate('backgroundImage', '');
-          } else if (backgroundObj.type === 'image' && backgroundObj.image) {
-            onUpdate('backgroundImage', backgroundObj.image.url || firstSectionImage || '');
+          } else if (normalized?.type === 'image') {
+            onUpdate('backgroundImage', flats.backgroundImage || firstSectionImage || '');
             onUpdate('backgroundColor', 'transparent');
-            if (backgroundObj.image.overlay?.enabled) {
-              onUpdate('overlayColor', backgroundObj.image.overlay.color);
-              onUpdate('overlayOpacityValue', backgroundObj.image.overlay.opacity.toString());
-              onUpdate('overlayBlendMode', backgroundObj.image.overlay.blendMode);
+            if (normalized.image?.overlay?.enabled) {
+              onUpdate('overlayColor', normalized.image.overlay.color);
+              onUpdate('overlayOpacityValue', String(normalized.image.overlay.opacity ?? 0));
+              onUpdate('overlayBlendMode', normalized.image.overlay.blendMode);
             } else {
               onUpdate('overlayColor', 'transparent');
             }
-          } else if (backgroundObj.type === 'gradient') {
+          } else if (normalized?.type === 'gradient') {
             onUpdate('backgroundColor', 'transparent');
-            onUpdate('backgroundImage', '');
+            onUpdate('backgroundImage', flats.backgroundImage || '');
+          } else {
+            onUpdate('backgroundColor', undefined);
+            onUpdate('backgroundImage', undefined);
           }
         }}
         onUpload={(imageIndex) => {

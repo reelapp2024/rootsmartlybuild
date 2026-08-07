@@ -18,36 +18,13 @@ interface Props {
 }
 
 /**
- * HeroCanvasTrust — a "Trust & Authority + Conversion" hero on the Canvas section.
- *
- * Design blueprint (ui-ux-pro-max, service/plumbing):
- *   Pattern:   mission/credibility → proof (stats) → strong single CTA
- *   Layout:    split — left content, right image; a proof-stats bar spans below
- *   Type:      bold heading, calm body; accent reserved for the ONE primary CTA
- *   Structure: badge → heading → subtitle → [primary CTA + phone] → trust chips
- *              | right: image | full-width: 3 proof stats (jobs / rating / years)
- *
- * Everything is a real, editable Canvas element. Colours are theme-driven
- * (accent used only on the primary CTA + stat numbers, per the blueprint).
- *
- * DYNAMIC: badgeText, title, subtitle, ctaText/ctaHref, phoneNumber/phoneText,
- * trustStripItems[], hero image (content.data.images[0]).
- * STATIC (see doc): the 3 proof-stat values (jobs done / rating / years) +
- * the floating "licensed" seal — make dynamic when the API provides them.
+ * HeroCanvasTrust — trust/authority hero on Canvas.
+ * Structural DNA only; theme colors via sanitizeSeedElements + render.
  */
 
-function buildTrustHero(section: Section, tc: any): WebsiteElement[] {
+function buildTrustHero(section: Section, _tc: any): WebsiteElement[] {
   const id = section.id;
   const c = (section.content || {}) as any;
-
-  const accent = tc?.accentColor || tc?.light?.accentColor || '#B45309';
-  const titleColor = tc?.titleColor || tc?.light?.titleColor || '#0F172A';
-  const textColor = tc?.textColor || tc?.light?.textColor || '#475569';
-  const mutedColor = tc?.textColorMuted || tc?.muted || tc?.light?.muted || '#64748B';
-  const btnBg = tc?.buttonBackgroundColor || tc?.light?.buttonBackgroundColor || accent;
-  const btnText = tc?.buttonTextColor || tc?.light?.buttonTextColor || '#FFFFFF';
-  const cardBorder = tc?.cardBorderColor || tc?.light?.cardBorderColor || 'rgba(15,23,42,0.10)';
-  const cardBg = tc?.cardBackgroundColor || tc?.light?.cardBackgroundColor || '#FFFFFF';
 
   const badgeText = String(c.badgeText || 'Licensed · Insured · Local');
   const title = String(c.title || 'Reliable plumbing, backed by real guarantees.');
@@ -80,32 +57,39 @@ function buildTrustHero(section: Section, tc: any): WebsiteElement[] {
     ];
   })();
 
-  // Proof stat (STATIC — make dynamic later)
   const mkStat = (sid: string, value: string, label: string, icon: string): WebsiteElement => ({
     id: `ht-${id}-${sid}`, type: 'stat-card',
     content: { value, text: label, icon } as any,
-    style: { padding: '1.1rem 1.25rem', borderRadius: '0.9rem', backgroundColor: cardBg, borderWidth: '1px', borderStyle: 'solid', borderColor: cardBorder, titleColor: accent, titleFontSize: '1.9rem', titleFontWeight: '800', descriptionColor: mutedColor, descriptionFontSize: '0.78rem', descriptionFontWeight: '600', iconColor: accent, textAlign: 'left' as any } as any,
+    style: { padding: '1.1rem 1.25rem',
+      borderRadius: '0.9rem',
+      borderWidth: '1px',
+      borderStyle: 'solid',
+      titleFontSize: '1.9rem',
+      titleFontWeight: '800',
+      descriptionFontSize: '0.78rem',
+      descriptionFontWeight: '600',
+      textAlign: 'left' as any,
+    } as any,
     settings: {},
   });
 
-  // LEFT column
   const leftChildren: WebsiteElement[] = [
     {
       id: `ht-${id}-badge`, type: 'badge',
       content: { text: badgeText, icon: 'fa-circle-check', iconPosition: 'left', iconSize: '0.7rem' },
-      style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase' as any, padding: '7px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: `${accent}14`, color: accent } as any,
+      style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase' as any, padding: '7px 14px', borderRadius: '9999px', textAlign: 'center' as any } as any,
       settings: {},
     },
     {
       id: `ht-${id}-title`, type: 'heading',
       content: { text: title, htmlTag: 'h1' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2.25rem, 4.2vw, 3.5rem)', lineHeight: '1.08', letterSpacing: '-0.03em', textAlign: 'left' as any, fontFamily: 'Poppins, sans-serif' } as any,
+      style: { fontWeight: '800', fontSize: 'clamp(2.25rem, 4.2vw, 3.5rem)', lineHeight: '1.08', letterSpacing: '-0.03em', textAlign: 'left' as any, fontFamily: 'Poppins, sans-serif' } as any,
       settings: {},
     },
     {
       id: `ht-${id}-subtitle`, type: 'text',
       content: { text: subtitle, textSize: 'large' },
-      style: { color: textColor, textAlign: 'left' as any, maxWidth: '520px', lineHeight: '1.7', fontSize: '1.075rem' } as any,
+      style: { textAlign: 'left' as any, maxWidth: '520px', lineHeight: '1.7', fontSize: '1.075rem' } as any,
       settings: {},
     },
     {
@@ -116,13 +100,13 @@ function buildTrustHero(section: Section, tc: any): WebsiteElement[] {
           {
             id: `ht-${id}-cta`, type: 'cta-button',
             content: { text: ctaText, link: ctaHref, buttonVariant: 'primary', icon: 'fa-arrow-right', iconPosition: 'right' },
-            style: { buttonVariant: 'primary', backgroundColor: btnBg, color: btnText, padding: '0 2rem', height: '3.4rem', borderRadius: '0.7rem', fontWeight: '700', fontSize: '1rem', width: '100%' } as any,
+            style: { buttonVariant: 'primary', padding: '0 2rem', height: '3.4rem', borderRadius: '0.7rem', fontWeight: '700', fontSize: '1rem', width: '100%' } as any,
             settings: {},
           },
           {
             id: `ht-${id}-phone`, type: 'cta-button',
             content: { text: phoneText, link: phoneHref, icon: 'fa-phone', iconPosition: 'left', buttonVariant: 'secondary' },
-            style: { buttonVariant: 'secondary', backgroundColor: 'transparent', color: titleColor, borderColor: cardBorder, borderWidth: '1px', borderStyle: 'solid', padding: '0 1.6rem', height: '3.4rem', borderRadius: '0.7rem', fontWeight: '600', fontSize: '0.95rem', width: '100%' } as any,
+            style: { buttonVariant: 'secondary', padding: '0 1.6rem', height: '3.4rem', borderRadius: '0.7rem', fontWeight: '600', fontSize: '0.95rem', width: '100%' } as any,
             settings: {},
           },
         ],
@@ -133,12 +117,11 @@ function buildTrustHero(section: Section, tc: any): WebsiteElement[] {
     {
       id: `ht-${id}-trust`, type: 'trust-strip',
       content: { items: trustItems } as any,
-      style: { iconColor: accent, iconBackgroundColor: `${accent}15`, iconContainerSize: '26px', iconSize: '12px', titleColor: mutedColor, titleFontSize: '13px', titleFontWeight: '600', gap: '22px', justifyContent: 'flex-start', marginTop: '0.75rem' } as any,
+      style: { iconContainerSize: '26px', iconSize: '12px', titleFontSize: '13px', titleFontWeight: '600', gap: '22px', justifyContent: 'flex-start', marginTop: '0.75rem' } as any,
       settings: {},
     },
   ];
 
-  // RIGHT column: image + floating "licensed" seal
   const rightChildren: WebsiteElement[] = [
     {
       id: `ht-${id}-image`, type: 'image',
@@ -147,10 +130,9 @@ function buildTrustHero(section: Section, tc: any): WebsiteElement[] {
       settings: {},
     },
     {
-      // STATIC seal — make dynamic later
       id: `ht-${id}-seal`, type: 'stat-card',
       content: { value: '10-yr', text: 'Workmanship guarantee', icon: 'fa-award' } as any,
-      style: { padding: '1rem 1.2rem', borderRadius: '1rem', backgroundColor: cardBg, borderWidth: '1px', borderStyle: 'solid', borderColor: cardBorder, titleColor: titleColor, titleFontSize: '1.6rem', titleFontWeight: '800', descriptionColor: mutedColor, descriptionFontSize: '0.76rem', iconColor: accent, maxWidth: '240px', marginTop: '-2.75rem', marginLeft: 'auto', marginRight: '1rem' } as any,
+      style: { padding: '1rem 1.2rem', borderRadius: '1rem', borderWidth: '1px', borderStyle: 'solid', titleFontSize: '1.6rem', titleFontWeight: '800', descriptionFontSize: '0.76rem', maxWidth: '240px', marginTop: '-2.75rem', marginLeft: 'auto', marginRight: '1rem' } as any,
       settings: {},
     },
   ];
@@ -168,7 +150,6 @@ function buildTrustHero(section: Section, tc: any): WebsiteElement[] {
       style: {} as any,
       settings: {},
     },
-    // Proof stats bar (full width, below)
     {
       id: `ht-${id}-statsrow`, type: 'row',
       content: {
@@ -179,7 +160,7 @@ function buildTrustHero(section: Section, tc: any): WebsiteElement[] {
           mkStat('stat3', '15+ yrs', 'Serving the area', 'fa-medal'),
         ],
       } as any,
-      style: { marginTop: '3rem', borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: cardBorder, paddingTop: '2rem' } as any,
+      style: { marginTop: '3rem', borderTopWidth: '1px', borderTopStyle: 'solid', paddingTop: '2rem' } as any,
       settings: {},
     },
   ];

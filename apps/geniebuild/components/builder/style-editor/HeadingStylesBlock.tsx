@@ -175,7 +175,7 @@ export const HeadingStylesBlock: React.FC<HeadingStylesBlockProps> = ({
       <AccordionGroup title="Color & Gradient" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Primary Color"
+            label={styles.color ? 'Primary Color' : 'Primary Color (Inherited)'}
             value={styles.color || titleFallback}
             onChange={(v) => onUpdate('color', v)}
             onReset={() => onUpdate('color', '')}

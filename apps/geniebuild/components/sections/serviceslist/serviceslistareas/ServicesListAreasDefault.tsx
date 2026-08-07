@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -65,6 +67,7 @@ export const ServicesListAreasDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   // Padding
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
@@ -89,17 +92,13 @@ export const ServicesListAreasDefault: React.FC<Props> = ({
   };
 
   // Badge — uses theme accent color so it matches other section badges.
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sla-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sla-badge`, type: 'badge',
     content: { text: content.badgeText || 'Service Areas', icon: 'fa-map-location-dot', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
-      textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
-    },
-  };
+      textAlign: 'center' as any},
+  });
 
   // Highlighted heading
   const titleEl: WebsiteElement = (() => {
@@ -119,11 +118,11 @@ export const ServicesListAreasDefault: React.FC<Props> = ({
       highlightedText = words[words.length - 1];
       textBefore = words.slice(0, -1).join(' ');
     }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -138,29 +137,29 @@ export const ServicesListAreasDefault: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sla-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sla-desc`, type: 'text',
     content: { text: content.subtitle || 'We provide fast, reliable plumbing services across the greater Texas area. Not sure if we serve your area? Give us a call!', textSize: 'large' },
     style: { textAlign: 'center' as any, maxWidth: '560px', margin: '0 auto', lineHeight: '1.65' },
-  };
+  });
 
-  const btnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sla-btn`) || {
+  const btnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sla-btn`, type: 'cta-button',
     content: { text: content.ctaText || 'Check Your Area', link: content.ctaHref || '#' },
     style: { padding: '0.875rem 1.75rem', borderRadius: '0.5rem', fontWeight: '700', fontSize: '0.95rem' },
-  };
+  });
 
-  const phoneEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sla-phone`) || {
+  const phoneEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sla-phone`, type: 'cta-button',
     content: { text: (content as any).phoneText || '', link: (content as any).phoneHref || '', icon: 'fa-phone', buttonVariant: 'secondary' },
     style: { padding: '0.875rem 1.5rem', borderRadius: '0.5rem', fontWeight: '600', fontSize: '0.9rem' },
-  };
+  });
 
-  const ctaNoteEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sla-note`) || {
+  const ctaNoteEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sla-note`, type: 'text',
     content: { text: "Don't see your city? We may still cover your area!", textSize: 'small' },
     style: { fontSize: '0.875rem' },
-  };
+  });
 
   // ── Cities — each city is its own editable `badge` element so the user
   // can click any pill to edit text/icon/colors individually. Section's own
@@ -248,24 +247,22 @@ export const ServicesListAreasDefault: React.FC<Props> = ({
       id,
       type: 'badge',
       content: mergedContent as WebsiteElement['content'],
-      style: {
-        fontSize: '0.875rem',
+      style: { fontSize: '0.875rem',
         fontWeight: '600',
         letterSpacing: '0',
         textTransform: 'none' as any,
         padding: '8px 16px',
         borderRadius: '9999px',
-        backgroundColor: cardBg,
-        color: titleColor,
-        borderColor: cardBorder,
+        
+        
+        
         borderWidth: '1px',
-        borderStyle: 'solid',
-      } as any,
+        borderStyle: 'solid'} as any,
     };
   };
 
   return (
-    <div className={`relative w-full overflow-hidden ${textAlignClass}`} style={{ backgroundColor: bg }}>
+    <div className={`relative w-full overflow-hidden ${textAlignClass}`} style={{ ...bgStyle }}>
       <div className="absolute inset-0 pointer-events-none opacity-30"
         style={{ backgroundImage: `radial-gradient(${accent}15 1px, transparent 1px)`, backgroundSize: '32px 32px' }} />
 
@@ -339,9 +336,6 @@ export const ServicesListAreasDefault: React.FC<Props> = ({
               transition={{ duration: 0.35 }}
               className="px-4 py-2 rounded-full border-2 border-dashed transition-all flex items-center gap-2 text-xs font-bold uppercase tracking-widest hover:scale-105"
               style={{
-                borderColor: `${accent}55`,
-                backgroundColor: `${accent}08`,
-                color: accent,
               }}
               title="Add a new city"
             >

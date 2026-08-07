@@ -95,31 +95,31 @@ export const FlipBoxStylesBlock: React.FC<FlipBoxStylesBlockProps> = ({
       <AccordionGroup title="Front Face" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Background"
+            label={styles.frontBg ? "Background" : "Background (Inherited)"}
             value={styles.frontBg || ''}
             onChange={(v) => onUpdate('frontBg', v)}
             onReset={() => onUpdate('frontBg', '')}
           />
           <ColorInput
-            label="Border Color"
+            label={styles.frontBorderColor ? "Border Color" : "Border Color (Inherited)"}
             value={styles.frontBorderColor || ''}
             onChange={(v) => onUpdate('frontBorderColor', v)}
             onReset={() => onUpdate('frontBorderColor', '')}
           />
           <ColorInput
-            label="Title Color"
+            label={styles.frontTitleColor ? "Title Color" : "Title Color (Inherited)"}
             value={styles.frontTitleColor || titleCol}
             onChange={(v) => onUpdate('frontTitleColor', v)}
             onReset={() => onUpdate('frontTitleColor', '')}
           />
           <ColorInput
-            label="Description Color"
+            label={styles.frontDescColor ? "Description Color" : "Description Color (Inherited)"}
             value={styles.frontDescColor || textCol}
             onChange={(v) => onUpdate('frontDescColor', v)}
             onReset={() => onUpdate('frontDescColor', '')}
           />
           <ColorInput
-            label="Icon Color"
+            label={styles.frontIconColor ? "Icon Color" : "Icon Color (Inherited)"}
             value={styles.frontIconColor || accent}
             onChange={(v) => onUpdate('frontIconColor', v)}
             onReset={() => onUpdate('frontIconColor', '')}
@@ -137,31 +137,31 @@ export const FlipBoxStylesBlock: React.FC<FlipBoxStylesBlockProps> = ({
       <AccordionGroup title="Back Face" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Background"
+            label={styles.backBg ? "Background" : "Background (Inherited)"}
             value={styles.backBg || accent}
             onChange={(v) => onUpdate('backBg', v)}
             onReset={() => onUpdate('backBg', '')}
           />
           <ColorInput
-            label="Title Color"
+            label={styles.backTitleColor ? "Title Color" : "Title Color (Inherited)"}
             value={styles.backTitleColor || '#FFFFFF'}
             onChange={(v) => onUpdate('backTitleColor', v)}
             onReset={() => onUpdate('backTitleColor', '')}
           />
           <ColorInput
-            label="Description Color"
+            label={styles.backDescColor ? "Description Color" : "Description Color (Inherited)"}
             value={styles.backDescColor || ''}
             onChange={(v) => onUpdate('backDescColor', v)}
             onReset={() => onUpdate('backDescColor', '')}
           />
           <ColorInput
-            label="Button Background"
+            label={styles.backBtnBg ? "Button Background" : "Button Background (Inherited)"}
             value={styles.backBtnBg || '#FFFFFF'}
             onChange={(v) => onUpdate('backBtnBg', v)}
             onReset={() => onUpdate('backBtnBg', '')}
           />
           <ColorInput
-            label="Button Text Color"
+            label={styles.backBtnText ? "Button Text Color" : "Button Text Color (Inherited)"}
             value={styles.backBtnText || '#000000'}
             onChange={(v) => onUpdate('backBtnText', v)}
             onReset={() => onUpdate('backBtnText', '')}

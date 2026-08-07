@@ -266,71 +266,17 @@ export function buildThemeSavePayload(
   return payload;
 }
 
+/**
+ * Historically stripped flat theme-mirror colors on hydrate so CSS theme tokens
+ * could win. That also deleted real user overrides (sidebar showed theme,
+ * canvas lost the edit after reload).
+ *
+ * Style-system contract: do NOT strip element or section color overrides on load.
+ * Theme inheritance is handled at render time when a key is absent.
+ * Kept as identity for call-site compatibility.
+ */
 export function stripPresetThemeColorOverrides(sections: any[]): any[] {
-  const sectionColorKeys = [
-    'backgroundColor', 'textColor', 'titleColor', 'subtitleColor', 'descriptionColor',
-    'accentColor', 'buttonBackgroundColor', 'buttonTextColor', 'secondaryHeadingColor',
-    'iconColor', 'iconBgColor', 'iconBackgroundColor', 'subheadingColor',
-    'borderColor', 'cardBackgroundColor', 'cardBorderColor', 'dividerColor', 'mutedColor',
-    'inputBgColor', 'inputBorderColor', 'inputTextColor', 'inputPlaceholderColor',
-    'navBackgroundColor', 'navBorderColor', 'footerBackgroundColor',
-    'overlayColor',
-  ];
-  const trustStripStyleKeys = ['iconColor', 'iconBackgroundColor', 'iconBgColor', 'titleColor'];
-  const headingStyleKeys = ['secondaryHeadingColor'];
-  const buttonStyleKeys = [
-    'background', 'backgroundColor', 'color', 'borderColor', 'outlineColor',
-    'hoverBackgroundColor', 'hoverTextColor',
-    // image-box / feature-box CTA color keys
-    'buttonBgColor', 'buttonTextColor', 'buttonBackgroundColor', 'buttonColor',
-  ];
-  const badgeStyleKeys = ['background', 'backgroundColor', 'color', 'borderColor'];
-
-  const sanitizeNode = (node: any): any => {
-    if (Array.isArray(node)) return node.map(sanitizeNode);
-    if (!node || typeof node !== 'object') return node;
-
-    const nextNode: any = { ...node };
-    if (nextNode.styles && typeof nextNode.styles === 'object') {
-      const nextStyles: any = { ...nextNode.styles };
-      sectionColorKeys.forEach((key) => delete nextStyles[key]);
-      nextNode.styles = nextStyles;
-    }
-
-    if (nextNode.style && typeof nextNode.style === 'object') {
-      const nextElStyle: any = { ...nextNode.style };
-      const elType = String(nextNode.type || '').toLowerCase();
-      if (elType === 'trust-strip') {
-        trustStripStyleKeys.forEach((key) => delete nextElStyle[key]);
-      }
-      if (elType === 'heading') {
-        headingStyleKeys.forEach((key) => delete nextElStyle[key]);
-      }
-      if (elType === 'button' || elType === 'call-to-action') {
-        buttonStyleKeys.forEach((key) => delete nextElStyle[key]);
-      }
-      if (elType === 'image-box' || elType === 'feature-box' || elType === 'icon-box') {
-        ['buttonBgColor', 'buttonTextColor', 'buttonBackgroundColor', 'buttonColor'].forEach(
-          (key) => delete nextElStyle[key]
-        );
-      }
-      if (elType === 'badge') {
-        badgeStyleKeys.forEach((key) => delete nextElStyle[key]);
-      }
-      nextNode.style = nextElStyle;
-    }
-
-    Object.keys(nextNode).forEach((key) => {
-      const value = nextNode[key];
-      if (value && typeof value === 'object') {
-        nextNode[key] = sanitizeNode(value);
-      }
-    });
-
-    return nextNode;
-  };
-
-  return sections.map((section: any) => sanitizeNode(section));
+  return Array.isArray(sections) ? sections : [];
 }
 
 export type SiteThemeCssInput = {

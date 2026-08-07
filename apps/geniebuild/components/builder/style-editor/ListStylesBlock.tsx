@@ -130,7 +130,7 @@ export const ListStylesBlock: React.FC<ListStylesBlockProps> = ({
           <div className="space-y-3">
             {showsIconMarker || listType === 'dash' ? (
               <ColorInput
-                label="Marker Color"
+                label={styles.markerColor ? "Marker Color" : "Marker Color (Inherited)"}
                 value={styles.markerColor || styles.iconColor || accent}
                 onChange={(v) => onUpdate('markerColor', v)}
                 onReset={() => onUpdate('markerColor', '')}
@@ -178,7 +178,7 @@ export const ListStylesBlock: React.FC<ListStylesBlockProps> = ({
                     max={4}
                   />
                   <ColorInput
-                    label="Chip Background"
+                    label={styles.markerBackgroundColor ? "Chip Background" : "Chip Background (Inherited)"}
                     value={styles.markerBackgroundColor || ''}
                     onChange={(v) => onUpdate('markerBackgroundColor', v)}
                     onReset={() => onUpdate('markerBackgroundColor', '')}
@@ -204,7 +204,7 @@ export const ListStylesBlock: React.FC<ListStylesBlockProps> = ({
                     max={6}
                   />
                   <ColorInput
-                    label="Chip Border Color"
+                    label={styles.markerBorderColor ? "Chip Border Color" : "Chip Border Color (Inherited)"}
                     value={styles.markerBorderColor || ''}
                     onChange={(v) => onUpdate('markerBorderColor', v)}
                     onReset={() => onUpdate('markerBorderColor', '')}
@@ -280,7 +280,7 @@ export const ListStylesBlock: React.FC<ListStylesBlockProps> = ({
               Adds a thin line between items. Leave color empty for no divider.
             </p>
             <ColorInput
-              label="Divider Color"
+              label={styles.dividerColor ? "Divider Color" : "Divider Color (Inherited)"}
               value={styles.dividerColor || ''}
               onChange={(v) => onUpdate('dividerColor', v)}
               onReset={() => onUpdate('dividerColor', '')}
@@ -381,13 +381,13 @@ export const ListStylesBlock: React.FC<ListStylesBlockProps> = ({
       <AccordionGroup title="Color & Hover" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Text Color"
+            label={styles.color ? "Text Color" : "Text Color (Inherited)"}
             value={styles.color || textColor}
             onChange={(v) => onUpdate('color', v)}
             onReset={() => onUpdate('color', '')}
           />
           <ColorInput
-            label="Hover Color"
+            label={styles.hoverColor ? "Hover Color" : "Hover Color (Inherited)"}
             value={styles.hoverColor || ''}
             onChange={(v) => onUpdate('hoverColor', v)}
             onReset={() => onUpdate('hoverColor', '')}
@@ -405,13 +405,13 @@ export const ListStylesBlock: React.FC<ListStylesBlockProps> = ({
             Wrap the list in a card-like background. Useful for callouts.
           </p>
           <ColorInput
-            label="Background"
+            label={styles.backgroundColor ? "Background" : "Background (Inherited)"}
             value={styles.backgroundColor || ''}
             onChange={(v) => onUpdate('backgroundColor', v)}
             onReset={() => onUpdate('backgroundColor', '')}
           />
           <ColorInput
-            label="Border Color"
+            label={styles.borderColor ? "Border Color" : "Border Color (Inherited)"}
             value={styles.borderColor || ''}
             onChange={(v) => onUpdate('borderColor', v)}
             onReset={() => onUpdate('borderColor', '')}

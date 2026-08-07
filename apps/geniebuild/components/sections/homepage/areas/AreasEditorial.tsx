@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -75,49 +76,49 @@ export const AreasEditorial: React.FC<Props> = ({
     secondaryButtonBg: 'transparent', secondaryButtonText: titleColor, secondaryButtonBorder: accent,
   };
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-ap-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-ap-badge`, type: 'badge',
     content: { text: content.badgeText || 'Service areas', icon: 'fa-map-location-dot', iconPosition: 'left', iconSize: '0.65rem' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any, backgroundColor: 'transparent', color: mutedColor },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any},
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-ap-title`;
     const existing = section.elements?.find(e => e.id === id);
     const cc = (existing?.content || {}) as any;
     const src = (cc.text || content.title || 'Areas we cover').toString().replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.1', letterSpacing: '-0.03em', textAlign: 'left' as any },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.1', letterSpacing: '-0.03em', textAlign: 'left' as any },
+    });
     if (existing) {
       return { ...existing, type: 'heading', content: { ...(existing.content || {}), htmlTag: (existing.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), ...(existing.style as any) } } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-ap-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-ap-desc`, type: 'text',
     content: { text: content.subtitle || 'We cover a wide local area. Not sure if we reach you? Give us a call and we will let you know.', textSize: 'large' },
-    style: { textAlign: 'left' as any, maxWidth: '440px', lineHeight: '1.7', color: textColor },
-  };
+    style: { textAlign: 'left' as any, maxWidth: '440px', lineHeight: '1.7' },
+  });
 
-  const btnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-ap-btn`) || {
+  const btnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-ap-btn`, type: 'cta-button',
     content: { text: content.ctaText || 'Check your area', link: content.ctaHref || '#', buttonVariant: 'primary' },
     style: { buttonVariant: 'primary', padding: '0 1.75rem', height: '3rem', borderRadius: '0.6rem', fontWeight: '700', fontSize: '0.95rem' } as any,
-  };
-  const phoneEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-ap-phone`) || {
+  });
+  const phoneEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-ap-phone`, type: 'cta-button',
     content: { text: (content as any).phoneText || '', link: (content as any).phoneHref || '', icon: 'fa-phone', buttonVariant: 'secondary' },
     style: { buttonVariant: 'secondary', padding: '0 1.5rem', height: '3rem', borderRadius: '0.6rem', fontWeight: '600', fontSize: '0.9rem' } as any,
-  };
-  const ctaNoteEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-ap-note`) || {
+  });
+  const ctaNoteEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-ap-note`, type: 'text',
     content: { text: "Don't see your area? We may still cover it.", textSize: 'small' },
-    style: { fontSize: '0.85rem', color: textColor, textAlign: 'left' as any },
-  };
+    style: { fontSize: '0.85rem',  textAlign: 'left' as any },
+  });
 
   const itemsAreMaterialized = Array.isArray(content.items) && content.items.length > 0;
   const cityItems = itemsAreMaterialized
@@ -158,7 +159,7 @@ export const AreasEditorial: React.FC<Props> = ({
     return {
       id, type: 'badge',
       content: mergedContent as any,
-      style: { fontSize: '0.875rem', fontWeight: '600', letterSpacing: '0', textTransform: 'none' as any, padding: '8px 16px', borderRadius: '9999px', backgroundColor: cardBg, color: titleColor, borderColor: cardBorder, borderWidth: '1px', borderStyle: 'solid' } as any,
+      style: { fontSize: '0.875rem', fontWeight: '600', letterSpacing: '0', textTransform: 'none' as any, padding: '8px 16px', borderRadius: '9999px',    borderWidth: '1px', borderStyle: 'solid' } as any,
     };
   };
 

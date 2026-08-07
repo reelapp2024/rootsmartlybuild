@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { motion } from 'motion/react';
 import { getCtaPhoneSubText, mapCtaTrustItems } from '../../homepage/cta/ctaTrustStrip';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -23,6 +25,7 @@ export const AboutCtaDefault: React.FC<Props> = ({
   const s = styles as any;
 
   const bg         = s.backgroundColor || tc?.backgroundColor || '#0A0F14';
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
   const titleColor = tc?.titleColor || '#F8FAFC';
   const textColor  = tc?.textColor || '#C7CDD6';
   const accent     = tc?.iconColor || tc?.accentColor || '#E11D48';
@@ -54,11 +57,11 @@ export const AboutCtaDefault: React.FC<Props> = ({
       highlightedText = words[words.length - 1];
       textBefore = words.slice(0, -1).join(' ');
     }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 4vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -86,7 +89,7 @@ export const AboutCtaDefault: React.FC<Props> = ({
   const phoneEl: WebsiteElement = (() => {
     const id = `${section.id}-act-phone`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: {
         text: livePhone,
@@ -95,8 +98,8 @@ export const AboutCtaDefault: React.FC<Props> = ({
         contactKind: 'phone',
         contactSource: 'about_primary',
       },
-      style: { color: accent, fontWeight: '900', fontSize: 'clamp(1.75rem, 5vw, 3rem)', letterSpacing: '-0.02em', textAlign: 'center' as any },
-    };
+      style: { fontWeight: '900', fontSize: 'clamp(1.75rem, 5vw, 3rem)', letterSpacing: '-0.02em', textAlign: 'center' as any },
+    });
     // Always prefer live AboutUs primary phone (DB) over saved element text
     return {
       ...base,
@@ -128,13 +131,11 @@ export const AboutCtaDefault: React.FC<Props> = ({
   const existingTrust = section.elements?.find(e => e.id === `${section.id}-act-trust`);
   const trustStripStyle = {
     gap: '24px',
-    iconColor: accent,
-    iconBackgroundColor: `${accent}20`,
-    titleColor,
+    
+    
     iconContainerSize: '28px',
     iconSize: '12px',
-    justifyContent: 'center',
-  } as any;
+    justifyContent: 'center'} as any;
   const trustStripEl: WebsiteElement = existingTrust
     ? {
         ...existingTrust,
@@ -168,7 +169,7 @@ export const AboutCtaDefault: React.FC<Props> = ({
   };
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...bgStyle }}>
       {/* Ambient layered background — theme-token-driven, non-interactive. */}
       <div className="absolute inset-0 pointer-events-none" style={ambientLayers} />
       {/* Vignette so the edges feel softer and the center reads cleaner. */}

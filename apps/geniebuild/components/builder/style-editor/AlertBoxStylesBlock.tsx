@@ -91,27 +91,27 @@ export const AlertBoxStylesBlock: React.FC<AlertBoxStylesBlockProps> = ({
             Reset any field to fall back to the variant's default palette.
           </p>
           <ColorInput
-            label="Background"
+            label={styles.backgroundColor ? "Background" : "Background (Inherited)"}
             value={styles.backgroundColor || ''}
             onChange={(v) => onUpdate('backgroundColor', v)}
             onReset={() => onUpdate('backgroundColor', '')}
           />
           {stylePreset !== 'soft' && (
             <ColorInput
-              label="Border / Bar Color"
+              label={styles.borderColor ? "Border / Bar Color" : "Border / Bar Color (Inherited)"}
               value={styles.borderColor || ''}
               onChange={(v) => onUpdate('borderColor', v)}
               onReset={() => onUpdate('borderColor', '')}
             />
           )}
           <ColorInput
-            label="Text Color"
+            label={styles.color ? "Text Color" : "Text Color (Inherited)"}
             value={styles.color || ''}
             onChange={(v) => onUpdate('color', v)}
             onReset={() => onUpdate('color', '')}
           />
           <ColorInput
-            label="Icon Color"
+            label={styles.iconColor ? "Icon Color" : "Icon Color (Inherited)"}
             value={styles.iconColor || ''}
             onChange={(v) => onUpdate('iconColor', v)}
             onReset={() => onUpdate('iconColor', '')}

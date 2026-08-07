@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -122,52 +123,65 @@ export const ServicesEditorial: React.FC<Props> = ({
 
   const themeColors = { ...tc, titleColor, textColor, accentColor: accent, secondaryHeadingColor: accent };
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sp2-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sp2-badge`, type: 'badge',
     content: { text: content.badgeText || 'What we do', iconPosition: 'left' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'center' as any, backgroundColor: 'transparent', color: mutedColor },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'center' as any},
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-sp2-title`;
     const existing = section.elements?.find(e => e.id === id);
     const src = (existing?.content as any)?.text || content.title || 'Straightforward services, priced up front.';
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'center' as any },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'center' as any },
+    });
     if (existing) {
       return { ...existing, type: 'heading', content: { ...(existing.content || {}), htmlTag: (existing.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), ...(existing.style as any) } } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sp2-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sp2-desc`, type: 'text',
     content: { text: content.description || content.subtitle || 'Whatever you need doing, you get the same deal: a clear written quote before we start, a tidy job, and a guarantee in writing.', textSize: 'large' },
-    style: { color: textColor, textAlign: 'center' as any, maxWidth: '640px', lineHeight: '1.75', margin: '0 auto' },
-  };
+    style: { textAlign: 'center' as any, maxWidth: '640px', lineHeight: '1.75', margin: '0 auto' },
+  });
 
   const getTitleEl = (i: number, def: any): WebsiteElement => {
     const id = `${section.id}-sp2-svc${i}-title`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: def.title, htmlTag: 'h3' },
-      style: { color: titleColor, fontWeight: '700', fontSize: '1.4rem', lineHeight: '1.2', letterSpacing: '-0.025em', textAlign: 'left' as any },
-    };
+      style: { fontWeight: '700', fontSize: '1.4rem', lineHeight: '1.2', letterSpacing: '-0.025em', textAlign: 'left' as any },
+    });
     return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || def.title } };
   };
   const getBodyEl = (i: number, def: any): WebsiteElement => {
     const id = `${section.id}-sp2-svc${i}-body`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'text',
-      content: { text: def.desc, textSize: 'base' },
-      style: { color: textColor, textAlign: 'left' as any, lineHeight: '1.7' },
+      content: {
+        text: def.desc,
+        textSize: 'base',
+        textLimitMode: 'words',
+        wordLimit: 40,
+      },
+      style: { textAlign: 'left' as any, lineHeight: '1.7' },
+    });
+    return {
+      ...base,
+      content: {
+        ...(base.content || {}),
+        text: (existing?.content as any)?.text || def.desc,
+        textLimitMode: (base.content as any)?.textLimitMode || 'words',
+        wordLimit: (base.content as any)?.wordLimit || 40,
+      },
     };
-    return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || def.desc } };
   };
 
   const pass = {
@@ -189,7 +203,7 @@ export const ServicesEditorial: React.FC<Props> = ({
       {svcModal.open && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <button type="button" className="absolute inset-0 bg-black/50 border-0 cursor-default" aria-label="Close" onClick={() => setSvcModal((m) => ({ ...m, open: false }))} />
-          <div className="relative z-[201] w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl p-6 sm:p-8 text-left" style={{ backgroundColor: cardBg, color: textColor }}>
+          <div className="relative z-[201] w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl p-6 sm:p-8 text-left" style={{ backgroundColor: cardBg }}>
             <h3 className="text-xl font-extrabold mb-3" style={{ color: titleColor }}>{svcModal.title}</h3>
             <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: textColor }}>{svcModal.body}</div>
             <div className="mt-8 flex flex-wrap gap-3 justify-end">

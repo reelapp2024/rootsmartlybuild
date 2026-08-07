@@ -414,7 +414,7 @@ const AppContent: React.FC = () => {
 
         let cleanedSections = hydrateSectionsForDisplay(data.data.sections, {
           themeSettings: apiThemeSettings,
-          stripPresetColors: themeSync.shouldStripPresetColors,
+          stripPresetColors: false,
         });
         initialSectionContentRef.current = Object.fromEntries(
           cleanedSections.map((s) => [s.id, JSON.parse(JSON.stringify(s.content || {}))])
@@ -676,10 +676,13 @@ const AppContent: React.FC = () => {
 
   const selectedElement = useMemo(() => {
     if (!selectedSection || !selectedElementId) return null;
-    const regularElement = selectedSection.elements?.find(e => e.id === selectedElementId);
-    if (regularElement) return regularElement;
-    if (selectedVirtualElement && selectedVirtualElement.id === selectedElementId) return selectedVirtualElement;
-    return null;
+    // Canvas click passes the resolved element (DNA + API merge). That snapshot is what
+    // the user sees in preview — prefer it over raw section.elements[] so the sidebar
+    // never shows stale/empty content while the canvas shows live DNA-filled text.
+    if (selectedVirtualElement && selectedVirtualElement.id === selectedElementId) {
+      return selectedVirtualElement;
+    }
+    return selectedSection.elements?.find(e => e.id === selectedElementId) || null;
   }, [selectedSection, selectedElementId, selectedVirtualElement, themeData]);
 
   // Cascading style resolvers (pure helpers in state/styleResolvers.ts)
@@ -1299,7 +1302,7 @@ const AppContent: React.FC = () => {
       loadSections && Array.isArray(body?.data?.sections)
         ? hydrateSectionsForDisplay(body.data.sections, {
             themeSettings: apiThemeForPage,
-            stripPresetColors: hasPresetThemeSettings(apiThemeForPage),
+            stripPresetColors: false,
           })
         : [];
     // Same split as initial load — never park header/footer only on one page.
@@ -1848,11 +1851,13 @@ const AppContent: React.FC = () => {
                 && elementType !== 'review-carousel'
                 && elementType !== 'button'
                 && elementType !== 'call-to-action'
+                && elementType !== 'cta-button'
                 && elementType !== 'heading'
                 && elementType !== 'text'
                 && elementType !== 'image'
                 && elementType !== 'video'
                 && elementType !== 'divider'
+                && elementType !== 'nav-menu'
                 && elementType !== 'spacer' && (
                   <TypographyBlock
                       styles={styles}
@@ -2274,7 +2279,14 @@ const AppContent: React.FC = () => {
                             selectedElementId={selectedElementId}
                             editTab={editTab}
                             onEditTabChange={setEditTab}
-                            onBack={() => { if (selectedElementId) setSelectedElementId(null); else setSelectedSectionId(null); }}
+                            onBack={() => {
+                              if (selectedElementId) {
+                                setSelectedElementId(null);
+                                setSelectedVirtualElement(null);
+                              } else {
+                                setSelectedSectionId(null);
+                              }
+                            }}
                             onClearElementSelection={() => { setSelectedElementId(null); setSelectedVirtualElement(null); }}
                             onRefreshVariant={handleRefreshVariant}
                           />

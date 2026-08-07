@@ -4,6 +4,8 @@ import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
 import { fetchBlogReviews, submitBlogReview, type BlogReviewComment } from '../../../../lib/reviewsApi';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -74,6 +76,7 @@ export const BlogCommentsDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop ?? 'pt-10 sm:pt-12 lg:pt-16';
@@ -215,17 +218,16 @@ export const BlogCommentsDefault: React.FC<Props> = ({
       highlightedText = words[words.length - 1];
       textBefore = words.slice(0, -1).join(' ');
     }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id,
       type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
-      style: {
-        fontWeight: '800',
+      style: { fontWeight: '800',
         fontSize: 'clamp(1.5rem, 3vw, 2.25rem)',
         lineHeight: '1.15',
         textAlign: 'left' as any,
       },
-    };
+    });
     return {
       ...base,
       content: {
@@ -255,13 +257,12 @@ export const BlogCommentsDefault: React.FC<Props> = ({
     borderRadius: '0.625rem',
     backgroundColor: inputBg,
     border: `1px solid ${cardBorder}`,
-    color: titleColor,
+    
     fontSize: '0.95rem',
-    outline: 'none',
-  };
+    outline: 'none'};
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -292,7 +293,6 @@ export const BlogCommentsDefault: React.FC<Props> = ({
                   <div
                     className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
                     style={{
-                      backgroundColor: accent,
                       color: btnText || '#FFFFFF',
                     }}
                     aria-hidden="true"
@@ -420,8 +420,6 @@ export const BlogCommentsDefault: React.FC<Props> = ({
                 disabled={!isLive || submitting}
                 className="disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{
-                  backgroundColor: btnBg,
-                  color: btnText,
                   padding: '0.75rem 1.75rem',
                   borderRadius: '0.5rem',
                   fontWeight: 700,

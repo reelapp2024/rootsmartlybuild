@@ -1,4 +1,5 @@
 import type { WebsiteElement } from '../../../types';
+import { getElementDna } from '../../../elements';
 
 /**
  * Canvas element factory — the palette + default builder for the freeform
@@ -10,8 +11,7 @@ import type { WebsiteElement } from '../../../types';
  * style for the picked type, ready to append to `section.elements[]`.
  *
  * Colours reference theme tokens at render time (ElementsSection resolves them);
- * the small hex here are only seed defaults, mirroring the existing element
- * defaults used across the builder.
+ * DNA style has no theme color keys (element SSOT).
  */
 
 export interface PaletteItem {
@@ -66,12 +66,15 @@ export const PALETTE_ELEMENTS: PaletteItem[] = [
 
 /** Per-type default content/style for a freshly-added element. */
 function defaultForType(type: WebsiteElement['type']): { content: any; style: any } {
+  const fromRegistry = getElementDna(type);
+  if (fromRegistry) {
+    return {
+      content: { ...fromRegistry.content },
+      style: { ...fromRegistry.style },
+    };
+  }
+
   switch (type) {
-    case 'heading':        return { content: { text: 'Your heading', htmlTag: 'h2' }, style: { fontWeight: '700', fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)', textAlign: 'left' } };
-    case 'text':           return { content: { text: 'Add your text here. Click to edit.', textSize: 'base' }, style: { textAlign: 'left', lineHeight: '1.7' } };
-    case 'button':         return { content: { text: 'Button', link: '#' }, style: { padding: '12px 24px', borderRadius: '8px', fontWeight: '600' } };
-    case 'cta-button':     return { content: { text: 'Get started', link: '#', buttonVariant: 'primary' }, style: { buttonVariant: 'primary', padding: '0 1.75rem', height: '3rem', borderRadius: '0.6rem', fontWeight: '600' } };
-    case 'badge':          return { content: { text: 'Badge', iconPosition: 'left' }, style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '6px 14px', borderRadius: '9999px' } };
     case 'highlight-text': return { content: { textBefore: 'This is ', highlightedText: 'highlighted', textAfter: ' text.' }, style: { fontSize: '1.5rem', fontWeight: '700' } };
     case 'blockquote':     return { content: { text: 'A memorable quote goes right here.', author: 'Author name' }, style: { fontStyle: 'italic', borderLeftWidth: '4px', borderLeftStyle: 'solid', padding: '16px 20px' } };
     case 'divider':        return { content: { dividerStyle: 'solid', thickness: '1px' }, style: { marginTop: '24px', marginBottom: '24px' } };

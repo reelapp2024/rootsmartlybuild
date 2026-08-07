@@ -43,8 +43,8 @@ export const CardStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, onUpda
   return (
     <AccordionGroup title="Card styles" defaultOpen={true}>
       <ResetRow onReset={reset} />
-      <ColorInput label="Background" value={styles.backgroundColor || themeColors?.cardBackgroundColor || '#FFFFFF'} onChange={(v) => onUpdate('backgroundColor', colorToHex(v) || v)} onReset={() => onUpdate('backgroundColor', '')} />
-      <ColorInput label="Border color" value={styles.borderColor || themeColors?.cardBorderColor || '#E5E7EB'} onChange={(v) => onUpdate('borderColor', colorToHex(v) || v)} onReset={() => onUpdate('borderColor', '')} />
+      <ColorInput label={styles.backgroundColor ? "Background" : "Background (Inherited)"} value={styles.backgroundColor || themeColors?.cardBackgroundColor || '#FFFFFF'} onChange={(v) => onUpdate('backgroundColor', colorToHex(v) || v)} onReset={() => onUpdate('backgroundColor', '')} />
+      <ColorInput label={styles.borderColor ? "Border color" : "Border color (Inherited)"} value={styles.borderColor || themeColors?.cardBorderColor || '#E5E7EB'} onChange={(v) => onUpdate('borderColor', colorToHex(v) || v)} onReset={() => onUpdate('borderColor', '')} />
       <RangeInput
         label="Border radius"
         value={Math.min(48, Math.max(0, borderRadiusPx))}
@@ -102,13 +102,13 @@ export const AccordionStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, o
       <AccordionGroup title="Item Card" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Background"
+            label={styles.backgroundColor ? "Background" : "Background (Inherited)"}
             value={styles.backgroundColor || themeColors?.accordionBackgroundColor || themeColors?.cardBackgroundColor || '#FFFFFF'}
             onChange={(v) => onUpdate('backgroundColor', colorToHex(v) || v)}
             onReset={() => onUpdate('backgroundColor', '')}
           />
           <ColorInput
-            label="Border Color"
+            label={styles.borderColor ? "Border Color" : "Border Color (Inherited)"}
             value={styles.borderColor || themeColors?.accordionBorderColor || themeColors?.cardBorderColor || '#E5E7EB'}
             onChange={(v) => onUpdate('borderColor', colorToHex(v) || v)}
             onReset={() => onUpdate('borderColor', '')}
@@ -234,14 +234,14 @@ export const AccordionStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, o
                 max={2.5}
               />
               <ColorInput
-                label="Icon Color"
+                label={styles.iconColor ? "Icon Color" : "Icon Color (Inherited)"}
                 value={styles.iconColor || themeColors?.accentColor || '#3b82f6'}
                 onChange={(v) => onUpdate('iconColor', colorToHex(v) || v)}
                 onReset={() => onUpdate('iconColor', '')}
               />
               {styles.iconShape !== 'none' && (
                 <ColorInput
-                  label="Icon Chip Background"
+                  label={styles.iconBackgroundColor ? "Icon Chip Background" : "Icon Chip Background (Inherited)"}
                   value={styles.iconBackgroundColor || ''}
                   onChange={(v) => onUpdate('iconBackgroundColor', colorToHex(v) || v)}
                   onReset={() => onUpdate('iconBackgroundColor', '')}
@@ -256,7 +256,7 @@ export const AccordionStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, o
       <AccordionGroup title="Question Text" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Color"
+            label={styles.titleColor ? "Color" : "Color (Inherited)"}
             value={styles.titleColor || themeColors?.accordionQuestionColor || themeColors?.titleColor || '#F8FAFC'}
             onChange={(v) => onUpdate('titleColor', colorToHex(v) || v)}
             onReset={() => onUpdate('titleColor', '')}
@@ -290,7 +290,7 @@ export const AccordionStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, o
       <AccordionGroup title="Answer Text" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Color"
+            label={styles.color ? "Color" : "Color (Inherited)"}
             value={styles.color || themeColors?.accordionAnswerColor || themeColors?.textColor || '#D1D5DB'}
             onChange={(v) => onUpdate('color', colorToHex(v) || v)}
             onReset={() => onUpdate('color', '')}
@@ -316,7 +316,7 @@ export const AccordionStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, o
             max={3}
           />
           <ColorInput
-            label="Divider (between question & answer)"
+            label={styles.dividerColor ? "Divider (between question & answer)" : "Divider (between question & answer) (Inherited)"}
             value={styles.dividerColor || ''}
             onChange={(v) => onUpdate('dividerColor', colorToHex(v) || v)}
             onReset={() => onUpdate('dividerColor', '')}
@@ -332,26 +332,26 @@ export const AccordionStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, o
           </p>
           <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">When Open</h5>
           <ColorInput
-            label="Background"
+            label={styles.activeBackgroundColor ? "Background" : "Background (Inherited)"}
             value={styles.activeBackgroundColor || ''}
             onChange={(v) => onUpdate('activeBackgroundColor', colorToHex(v) || v)}
             onReset={() => onUpdate('activeBackgroundColor', '')}
           />
           <ColorInput
-            label="Border Color"
+            label={styles.activeBorderColor ? "Border Color" : "Border Color (Inherited)"}
             value={styles.activeBorderColor || ''}
             onChange={(v) => onUpdate('activeBorderColor', colorToHex(v) || v)}
             onReset={() => onUpdate('activeBorderColor', '')}
           />
           <ColorInput
-            label="Question Color"
+            label={styles.activeTitleColor ? "Question Color" : "Question Color (Inherited)"}
             value={styles.activeTitleColor || ''}
             onChange={(v) => onUpdate('activeTitleColor', colorToHex(v) || v)}
             onReset={() => onUpdate('activeTitleColor', '')}
           />
           <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-2 border-t border-white/5">On Hover</h5>
           <ColorInput
-            label="Background"
+            label={styles.hoverBackgroundColor ? "Background" : "Background (Inherited)"}
             value={styles.hoverBackgroundColor || ''}
             onChange={(v) => onUpdate('hoverBackgroundColor', colorToHex(v) || v)}
             onReset={() => onUpdate('hoverBackgroundColor', '')}

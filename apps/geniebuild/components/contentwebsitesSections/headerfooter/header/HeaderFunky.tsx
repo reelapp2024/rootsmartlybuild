@@ -5,10 +5,11 @@ import {
   FUNKY,
   funkyFromTheme,
   funkyTextColors,
-  withFunkyTextStyle,
   resolveFunkyIsLight,
-  funkySurfaceColors
+  funkySurfaceColors,
+  resolveFunkySectionChrome,
 } from '../../funkyTheme';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -39,17 +40,16 @@ export const HeaderFunky: React.FC<Props> = ({
   const f = funkyFromTheme(tc);
   const isLight = resolveFunkyIsLight(section, tc);
   const { titleColor, textColor, themeMode: funkyThemeMode } = funkyTextColors(tc, isLight);
-  const surface = funkySurfaceColors(isLight, (styles as any)?.backgroundColor);
-  const bg = surface.bg;
+  const { wrapperStyle, overlayStyle } = resolveFunkySectionChrome(styles, isLight);
 
-  const brandEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cw-hdr-brand`) || {
+  const brandEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-cw-hdr-brand`, type: 'heading',
     content: { text: c.brand || c.siteName || 'NichePop', htmlTag: 'h2' },
-    style: { fontFamily: FUNKY.fonts.display, fontWeight: '800', fontSize: '1.4rem', color: f.ink },
-  };
-  const brandElPainted: WebsiteElement = { ...brandEl, style: { ...withFunkyTextStyle(brandEl.style as any, titleColor, isLight) } };
+    style: { fontFamily: FUNKY.fonts.display, fontWeight: '800', fontSize: '1.4rem' },
+  });
 
-  const existingNav = section.elements?.find(e => e.id === `${section.id}-cw-hdr-nav`);
+  const navId = `${section.id}-cw-hdr-nav`;
+  const existingNav = section.elements?.find(e => e.id === navId);
   const navItems = normalizeNavItems(
     (existingNav?.content as any)?.items || c.links,
     [
@@ -59,25 +59,16 @@ export const HeaderFunky: React.FC<Props> = ({
       { label: 'Contact', link: '/contact' },
     ]
   );
-  const navEl: WebsiteElement = {
-    ...(existingNav || {
-      id: `${section.id}-cw-hdr-nav`,
-      type: 'nav-menu',
-      style: {},
-    }),
+  const navEl: WebsiteElement = resolveSectionElement(section, {
+    id: navId,
     type: 'nav-menu',
-    content: { ...(existingNav?.content || {}), items: navItems },
-    style: {
-      ...(existingNav?.style || {}),
-      orientation: 'horizontal',
-      color: f.ink,
-      hoverColor: f.primary,
-      activeColor: f.primary,
+    content: { items: navItems },
+    style: { orientation: 'horizontal',
       fontWeight: '700',
       fontSize: '0.9rem',
       itemGap: '1.25rem',
     },
-  };
+  });
 
   const themeColors = { ...tc, titleColor: f.ink, textColor: f.ink };
   const passThrough = {
@@ -86,12 +77,15 @@ export const HeaderFunky: React.FC<Props> = ({
   } as const;
 
   return (
-    <header className="w-full sticky top-0 z-40" style={{ backgroundColor: bg, borderBottom: `2.5px solid ${f.ink}` }}>
+    <header className="w-full sticky top-0 z-40" style={{ ...wrapperStyle, borderBottom: `2.5px solid ${f.ink}` }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
+      {overlayStyle ? (
+        <div className="absolute inset-0 pointer-events-none z-[1]" style={overlayStyle} />
+      ) : null}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
         <div style={{ transform: 'rotate(-2deg)' }}>
           <ElementsSection
-            section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [brandElPainted] }}
+            section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [brandEl] }}
             {...passThrough}
           />
         </div>

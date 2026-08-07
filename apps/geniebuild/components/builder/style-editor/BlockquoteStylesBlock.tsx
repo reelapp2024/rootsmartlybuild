@@ -81,20 +81,20 @@ export const BlockquoteStylesBlock: React.FC<BlockquoteStylesBlockProps> = ({
       <AccordionGroup title="Colors" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Quote Text Color"
+            label={styles.color ? "Quote Text Color" : "Quote Text Color (Inherited)"}
             value={styles.color || textColor}
             onChange={(v) => onUpdate('color', v)}
             onReset={() => onUpdate('color', '')}
           />
           <ColorInput
-            label="Author Color"
+            label={styles.authorColor ? "Author Color" : "Author Color (Inherited)"}
             value={styles.authorColor || accent}
             onChange={(v) => onUpdate('authorColor', v)}
             onReset={() => onUpdate('authorColor', '')}
           />
           {showsBar && (
             <ColorInput
-              label="Accent Bar Color"
+              label={styles.borderColor ? "Accent Bar Color" : "Accent Bar Color (Inherited)"}
               value={styles.borderColor || accent}
               onChange={(v) => onUpdate('borderColor', v)}
               onReset={() => onUpdate('borderColor', '')}
@@ -103,13 +103,13 @@ export const BlockquoteStylesBlock: React.FC<BlockquoteStylesBlockProps> = ({
           {showsCard && (
             <>
               <ColorInput
-                label="Card Background"
+                label={styles.backgroundColor ? "Card Background" : "Card Background (Inherited)"}
                 value={styles.backgroundColor || ''}
                 onChange={(v) => onUpdate('backgroundColor', v)}
                 onReset={() => onUpdate('backgroundColor', '')}
               />
               <ColorInput
-                label="Card Border"
+                label={styles.borderColor ? "Card Border" : "Card Border (Inherited)"}
                 value={styles.borderColor || ''}
                 onChange={(v) => onUpdate('borderColor', v)}
                 onReset={() => onUpdate('borderColor', '')}

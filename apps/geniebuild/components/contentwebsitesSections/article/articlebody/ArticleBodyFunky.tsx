@@ -5,10 +5,9 @@ import {
   FUNKY,
   funkyFromTheme,
   funkyTextColors,
-  withFunkyTextStyle,
   resolveFunkyIsLight,
-  funkySurfaceColors
-} from '../../funkyTheme';
+  funkySurfaceColors, resolveFunkySectionChrome } from '../../funkyTheme';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -28,8 +27,7 @@ interface Props {
  */
 export const ArticleBodyFunky: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
-  selectedElementId, readOnly = false, themeColors: tc,
-}) => {
+  selectedElementId, readOnly = false, themeColors: tc }) => {
   const { content, styles } = section;
   const s = styles as any;
   const c = content as any;
@@ -38,6 +36,7 @@ export const ArticleBodyFunky: React.FC<Props> = ({
   const { titleColor, textColor, themeMode: funkyThemeMode, themeColors: funkyThemeBag } = funkyTextColors(tc, isLight);
   const surface = funkySurfaceColors(isLight, (styles as any)?.backgroundColor);
   const bg = surface.bg;
+  const { wrapperStyle, overlayStyle } = resolveFunkySectionChrome(styles, isLight);
   const padT = s.paddingTop ?? 'pt-12 sm:pt-16';
   const padB = s.paddingBottom ?? 'pb-12 sm:pb-16';
   const padX = s.paddingX ?? 'px-4 sm:px-6';
@@ -48,13 +47,10 @@ export const ArticleBodyFunky: React.FC<Props> = ({
     ? c.toc
     : [];
 
-  const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cw-artbody-title`) || {
+  const titleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-cw-artbody-title`, type: 'heading',
     content: { text: c.title || (toc.length || html.includes('article-toc') ? tocTitle : 'On this page'), htmlTag: 'h2' },
-    style: { color: titleColor, fontSize: 'clamp(1.5rem, 3vw, 2.2rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-  };
-  const titleElPainted: WebsiteElement = { ...titleEl, style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) } };
-
+    style: { fontSize: 'clamp(1.5rem, 3vw, 2.2rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display } });
   const plainFallback =
     c.body ||
     c.description ||
@@ -84,18 +80,20 @@ export const ArticleBodyFunky: React.FC<Props> = ({
   const themeColors = { ...tc, ...funkyThemeBag, titleColor, textColor };
   const passThrough = {
     onTextEdit, onElementUpdate: onElementUpdate || (() => {}), onElementSelect,
-    selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
-  } as const;
+    selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors } as const;
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...wrapperStyle }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
+      {overlayStyle ? (
+        <div className="absolute inset-0 pointer-events-none z-[1]" style={overlayStyle} />
+      ) : null}
       <style dangerouslySetInnerHTML={{ __html: proseCss }} />
       <div className={`max-w-3xl mx-auto ${padX} ${padT} ${padB}`}>
         <div style={{ background: f.white || surface.card || '#fff', border: `2.5px solid ${f.ink}`, borderRadius: 24, boxShadow: FUNKY.shadow, padding: 28 }}>
           {!html && toc.length > 0 && (
             <>
-              <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [titleElPainted] }} {...passThrough} />
+              <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [titleEl] }} {...passThrough} />
               <ol className="mt-3 space-y-1 list-decimal pl-5" style={{ color: textColor }}>
                 {toc.map((item, i) => (
                   <li key={i}>
@@ -123,9 +121,7 @@ export const ArticleBodyFunky: React.FC<Props> = ({
                     id: `${section.id}-cw-artbody-body`,
                     type: 'text',
                     content: { text: plainFallback, textSize: 'large' },
-                    style: { color: textColor, lineHeight: '1.7', fontFamily: FUNKY.fonts.body },
-                  }],
-                }}
+                    style: { lineHeight: '1.7', fontFamily: FUNKY.fonts.body } }] }}
                 {...passThrough}
               />
             </div>

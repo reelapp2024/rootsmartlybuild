@@ -13,6 +13,7 @@ import {
   stripPresetThemeColorOverrides,
   type ThemeSettingsInput,
 } from './themeResolver';
+import { normalizeSectionStyles } from './normalizeSectionStyles';
 
 export const DEFAULT_SECTION_VARIANTS: Record<string, string> = {
   navbar: 'HeaderPlumbing',
@@ -238,7 +239,7 @@ export function hydrateSectionsForDisplay(
 
   const resolved = migrated.map((section) => ({
     ...section,
-    styles: resolveSectionStyles(section),
+    styles: normalizeSectionStyles(resolveSectionStyles(section)),
   }));
 
   if (options.stripPresetColors) {

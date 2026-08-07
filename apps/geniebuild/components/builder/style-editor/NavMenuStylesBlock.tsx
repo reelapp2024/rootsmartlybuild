@@ -190,19 +190,19 @@ export const NavMenuStylesBlock: React.FC<NavMenuStylesBlockProps> = ({
       <AccordionGroup title="Colors" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Link Color"
+            label={styles.color ? 'Link Color' : 'Link Color (Inherited)'}
             value={styles.color || itemColor}
             onChange={(v) => onUpdate('color', v)}
             onReset={() => onUpdate('color', '')}
           />
           <ColorInput
-            label="Hover Color"
+            label={styles.hoverColor ? 'Hover Color' : 'Hover Color (Inherited)'}
             value={styles.hoverColor || accent}
             onChange={(v) => onUpdate('hoverColor', v)}
             onReset={() => onUpdate('hoverColor', '')}
           />
           <ColorInput
-            label="Active Color (current page)"
+            label={styles.activeColor ? 'Active Color (current page)' : 'Active Color (Inherited)'}
             value={styles.activeColor || ''}
             onChange={(v) => onUpdate('activeColor', v)}
             onReset={() => onUpdate('activeColor', '')}

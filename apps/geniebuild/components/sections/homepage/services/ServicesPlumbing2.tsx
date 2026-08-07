@@ -4,6 +4,8 @@ import { ElementsSection } from '../ElementsSection';
 import { IMAGE_BOX_DEFAULT_TITLE_HEADING } from '../../../../constants';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement } from '../../../../elements';
+import { truncateToNearestSentence } from '../../../../utils/textTruncate';
 
 interface Props {
   section: Section;
@@ -41,24 +43,16 @@ const DEFAULT_SERVICES = [
 ];
 
 /**
- * Published / read-only cards: keep a readable blurb — show up to 90 words, then "...".
+ * Published / read-only cards: even blurbs — at least N words, then to nearest ".".
+ * Full AI copy can still live in the service detail page.
  */
-const SERVICE_CARD_DESC_MAX_WORDS = 90;
+const SERVICE_CARD_DESC_MAX_WORDS = 40;
 
 function countWords(text: string): number {
   return String(text || '')
     .trim()
     .split(/\s+/)
     .filter(Boolean).length;
-}
-
-function truncateToWords(text: string, maxWords: number): string {
-  const words = String(text || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (words.length <= maxWords) return words.join(' ');
-  return `${words.slice(0, maxWords).join(' ')}...`;
 }
 
 function compactServiceCardBlurb(serviceTitle: string, rawDescription: string): string {
@@ -87,7 +81,7 @@ function compactServiceCardBlurb(serviceTitle: string, rawDescription: string): 
       : '';
   }
   if (countWords(d) > SERVICE_CARD_DESC_MAX_WORDS) {
-    return truncateToWords(d, SERVICE_CARD_DESC_MAX_WORDS);
+    return truncateToNearestSentence(d, SERVICE_CARD_DESC_MAX_WORDS);
   }
   return d;
 }
@@ -321,13 +315,9 @@ export const ServicesPlumbing2: React.FC<Props> = ({
       text: content.badgeText || 'What We Do',
       icon: 'fa-tools', iconPosition: 'left', iconSize: '0.65rem',
     },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
-      textAlign: 'center' as any,
-      backgroundColor: cardBorder,
-      color: mutedColor,
-    },
+      textAlign: 'center' as any},
   };
 
   const titleFound = section.elements?.find((e) => e.id === `${section.id}-sp2-title`);
@@ -338,12 +328,9 @@ export const ServicesPlumbing2: React.FC<Props> = ({
       text: content.title || 'Our Plumbing Services',
       htmlTag: 'h2',
     },
-    style: {
-      textAlign: 'center' as any, fontWeight: '800',
+    style: { textAlign: 'center' as any, fontWeight: '800',
       fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)',
-      lineHeight: '1.15',
-      color: titleColor,
-    },
+      lineHeight: '1.15'},
   };
 
   const descFound = section.elements?.find((e) => e.id === `${section.id}-sp2-desc`);
@@ -453,20 +440,17 @@ export const ServicesPlumbing2: React.FC<Props> = ({
         buttonLink: def.link || '#',
         buttonNewTab: false,
       } as any,
-      style: {
-        backgroundColor: 'transparent',
-        borderRadius: '0.875rem',
+      style: { borderRadius: '0.875rem',
         borderWidth: '0px',
-        borderColor: 'transparent',
+        
         contentPadding: '1rem 0 0',
         contentGap: '1rem',
         imageContentGap: '1rem',
         imageHeight: '12rem',
         imageObjectFit: 'cover',
-        titleColor,
         titleHeadingTag: IMAGE_BOX_DEFAULT_TITLE_HEADING,
         titleFontWeight: '700',
-        descriptionColor: textColor,
+        
         descriptionFontSize: '0.875rem',
         // Word truncate (90 words + "...") owns length — no CSS line clamp
         descriptionLineClamp: 0,
@@ -474,22 +458,18 @@ export const ServicesPlumbing2: React.FC<Props> = ({
         buttonVariant: 'link',
         buttonTextColor: accent,
         buttonFontSize: '0.875rem',
-        buttonFontWeight: 600,
-      } as any,
+        buttonFontWeight: 600} as any,
     };
   };
 
   // Section-level CTA button (only when content.ctaText is set)
   const ctaText: string = (content as any).ctaText || '';
-  const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sp2-cta`) || {
+  const ctaBtnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sp2-cta`, type: 'cta-button',
     content: { text: ctaText || 'View All Services', link: (content as any).ctaHref || '#', buttonVariant: 'primary' },
-    style: {
-      backgroundColor: btnBg, color: btnText,
-      padding: '0.875rem 1.75rem', borderRadius: '0.5rem',
-      fontWeight: '700', fontSize: '1rem',
-    },
-  };
+    style: { padding: '0.875rem 1.75rem', borderRadius: '0.5rem',
+      fontWeight: '700', fontSize: '1rem'},
+  });
 
   return (
     <div className="w-full relative" style={{ ...sectionBg }}>
@@ -504,7 +484,7 @@ export const ServicesPlumbing2: React.FC<Props> = ({
           />
           <div
             className="relative z-[201] w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl p-6 sm:p-8 text-left"
-            style={{ backgroundColor: cardBg, color: textColor }}
+            style={{ backgroundColor: cardBg }}
           >
             <h3 id={`${section.id}-svc-modal-title`} className="text-xl font-extrabold mb-3" style={{ color: titleColor }}>
               {svcModal.title}
@@ -709,9 +689,6 @@ export const ServicesPlumbing2: React.FC<Props> = ({
               transition={{ duration: 0.5 }}
               className="min-h-[280px] rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-3 hover:scale-[1.02]"
               style={{
-                borderColor: `${accent}55`,
-                backgroundColor: `${accent}05`,
-                color: accent,
               }}
               title="Add a new service card"
             >

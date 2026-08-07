@@ -61,7 +61,13 @@ export function resolveHeadingFontSize(opts: {
   return DEFAULT_SITE_SIZES[opts.headingTag];
 }
 
-/** Priority: element.style → section subtitle preset → content textSize → global text → theme defaultSizes */
+/**
+ * Priority: explicit element.style.fontSize (user/DNA override) → section subtitle
+ * preset → content textSize → global text (base only) → theme defaultSizes.
+ *
+ * Pass the element's own `style` bag here — never ELEMENT_DEFAULTS. A baked
+ * default fontSize would permanently shadow the Text Size dropdown.
+ */
 export function resolveTextFontSize(opts: {
   elementStyle?: Record<string, unknown>;
   textSize?: TextSizePreset;

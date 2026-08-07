@@ -55,6 +55,7 @@ export function resolveSectionStyles(section: Section | null | undefined): any {
 
 /**
  * Cascade: Global element defaults -> section's element template defaults -> DB state.
+ * Empty-string overrides are treated as cleared (inherit), not as a literal "".
  */
 export function resolveElementStyle(
   element: WebsiteElement | null,
@@ -66,9 +67,46 @@ export function resolveElementStyle(
   const sectionElementDefault = activeTemplate
     ? activeTemplate.elements?.find((e) => e.type === element.type)?.style
     : {};
-  return {
+  const raw = {
     ...baseElementDefault,
     ...sectionElementDefault,
     ...element.style,
   };
+  // Drop empty-string keys so reset-to-inherit works (sidebar onReset writes '').
+  return Object.fromEntries(
+    Object.entries(raw).filter(([, v]) => v !== '' && v !== undefined)
+  );
+}
+
+/** True when the element has an explicit (non-empty) override for `key`. */
+export function hasElementStyleOverride(
+  element: WebsiteElement | null | undefined,
+  key: string
+): boolean {
+  if (!element?.style) return false;
+  const v = (element.style as any)[key];
+  return v !== undefined && v !== null && v !== '';
+}
+
+/**
+ * Resolve a single style key with inherit metadata for sidebar ColorInputs.
+ * displayValue = override || inheritedFallback (for the picker swatch).
+ */
+export function resolveElementStyleField(
+  element: WebsiteElement | null | undefined,
+  key: string,
+  inheritedFallback: string,
+  section?: Section | null
+): { value: string; source: 'override' | 'inherited' } {
+  const override = element?.style ? (element.style as any)[key] : undefined;
+  if (override !== undefined && override !== null && String(override).trim() !== '') {
+    return { value: String(override), source: 'override' };
+  }
+  const cascaded = resolveElementStyle(element || null, section);
+  const fromCascade = cascaded?.[key];
+  if (fromCascade !== undefined && fromCascade !== null && String(fromCascade).trim() !== '') {
+    // Cascade may still be DNA default — treat as inherited for UI unless it was on element.style
+    return { value: String(fromCascade), source: 'inherited' };
+  }
+  return { value: inheritedFallback || '', source: 'inherited' };
 }

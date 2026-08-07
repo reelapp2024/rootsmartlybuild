@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -53,6 +55,7 @@ export const ServiceDetailWhyChooseDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   // Padding
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
@@ -88,17 +91,13 @@ export const ServiceDetailWhyChooseDefault: React.FC<Props> = ({
     featureBoxTextColor:  textColor,
   };
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sdw-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sdw-badge`, type: 'badge',
     content: { text: content.badgeText || 'Why Choose Us', icon: 'fa-star', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
-      textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
-    },
-  };
+      textAlign: 'center' as any},
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-sdw-title`;
@@ -112,11 +111,11 @@ export const ServiceDetailWhyChooseDefault: React.FC<Props> = ({
       highlightedText = words[words.length - 1];
       textBefore = words.slice(0, -1).join(' ');
     }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -131,11 +130,11 @@ export const ServiceDetailWhyChooseDefault: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sdw-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sdw-desc`, type: 'text',
     content: { text: content.subtitle || "Customers keep booking this service with us for one reason — we do what we say and stand behind every job.", textSize: 'large' },
     style: { textAlign: 'center' as any, maxWidth: '580px', margin: '0 auto', lineHeight: '1.65' },
-  };
+  });
 
   const getReasonEl = (i: number): WebsiteElement => {
     const id = `${section.id}-sdw-card${i}`;
@@ -153,8 +152,7 @@ export const ServiceDetailWhyChooseDefault: React.FC<Props> = ({
         subText: rawReasons[i].description,
         iconPosition: 'left',
       },
-      style: {
-        iconContainerSize: '2.75rem',
+      style: { iconContainerSize: '2.75rem',
         iconBorderRadius:  '0.625rem',
         titleFontSize:     '1.05rem',
         titleFontWeight:   '700',
@@ -167,17 +165,16 @@ export const ServiceDetailWhyChooseDefault: React.FC<Props> = ({
         borderTopRightRadius:    '0.625rem',
         borderBottomRightRadius: '0.625rem',
         padding: '1.25rem 1.5rem',
-        backgroundColor: `${accent}08`,
+        
         textAlign: 'left' as any,
         descriptionAlign: 'left' as any,
         titleAlign: 'left' as any,
-        gap: '1rem',
-      } as any,
+        gap: '1rem'} as any,
     };
   };
 
   return (
-    <div className={`w-full ${textAlignClass}`} style={{ backgroundColor: bg }}>
+    <div className={`w-full ${textAlignClass}`} style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
 
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}

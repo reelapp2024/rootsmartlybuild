@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { motion } from 'motion/react';
 import { getCtaPhoneSubText, mapCtaTrustItems } from './ctaTrustStrip';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -68,11 +69,11 @@ export const CTAEditorial: React.FC<Props> = ({
     buttonBackgroundColor: btnBg, buttonTextColor: btnText,
   };
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-c1-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-c1-badge`, type: 'badge',
     content: { text: c.badgeText || 'Ready when you are', iconPosition: 'left' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: line, color: mutedColor },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: line},
+  });
   const badgeElResolved: WebsiteElement = { ...badgeEl, content: { ...(badgeEl.content || {}), text: c.badgeText || (badgeEl.content as any)?.text } };
 
   const titleEl: WebsiteElement = (() => {
@@ -80,38 +81,38 @@ export const CTAEditorial: React.FC<Props> = ({
     const existing = section.elements?.find(e => e.id === id);
     const cc = (existing?.content || {}) as any;
     const src = (cc.text || c.title || 'Need it sorted? Let’s talk today.').toString().replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { textAlign: 'left' as any, color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.1', letterSpacing: '-0.03em' },
-    };
+      style: { textAlign: 'left' as any,  fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.1', letterSpacing: '-0.03em' },
+    });
     if (existing) {
       return { ...existing, type: 'heading', content: { ...(existing.content || {}), htmlTag: (existing.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), ...(existing.style as any) } } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-c1-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-c1-desc`, type: 'text',
     content: { text: c.subtitle || c.description || 'Get a fast, friendly response and a fair quote before any work starts. No pressure, no surprises.', textSize: 'large' },
-    style: { textAlign: 'left' as any, color: textColor, maxWidth: '480px', lineHeight: '1.7' },
-  };
+    style: { textAlign: 'left' as any,  maxWidth: '480px', lineHeight: '1.7' },
+  });
   const descElResolved: WebsiteElement = { ...descEl, content: { ...(descEl.content || {}), text: c.subtitle || c.description || (descEl.content as any)?.text } };
 
   const ctaText = String(c.ctaText || c.contactText || 'Get your free quote');
   const ctaHref = String(c.ctaHref || c.contactHref || '#');
-  const btnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-c1-btn`) || {
+  const btnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-c1-btn`, type: 'cta-button',
     content: { text: ctaText, link: ctaHref, buttonVariant: 'primary' },
-    style: { buttonVariant: 'primary', backgroundColor: btnBg, color: btnText, padding: '0 2rem', height: '3.1rem', borderRadius: '0.6rem', fontWeight: '700', fontSize: '0.95rem' } as any,
-  };
+    style: { buttonVariant: 'primary',   padding: '0 2rem', height: '3.1rem', borderRadius: '0.6rem', fontWeight: '700', fontSize: '0.95rem' } as any,
+  });
   const btnElResolved: WebsiteElement = { ...btnEl, content: { ...(btnEl.content || {}), text: ctaText, link: ctaHref } };
 
-  const phoneEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-c1-phone`) || {
+  const phoneEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-c1-phone`, type: 'heading',
     content: { text: c.phoneNumber || '(555) 123-4567', htmlTag: 'div' as any },
-    style: { color: accent, fontWeight: '900', fontSize: 'clamp(1.75rem, 5vw, 3rem)', letterSpacing: '-0.02em', textAlign: 'center' as any },
-  };
+    style: { fontWeight: '900', fontSize: 'clamp(1.75rem, 5vw, 3rem)', letterSpacing: '-0.02em', textAlign: 'center' as any },
+  });
 
   const phoneSubText = getCtaPhoneSubText(content as Record<string, unknown>);
   const existingPhoneSub = section.elements?.find(e => e.id === `${section.id}-c1-phone-sub`);
@@ -120,12 +121,12 @@ export const CTAEditorial: React.FC<Props> = ({
     : {
         id: `${section.id}-c1-phone-sub`, type: 'text',
         content: { text: phoneSubText || 'Call us direct', textSize: 'small' },
-        style: { fontWeight: '600', textTransform: 'uppercase' as any, letterSpacing: '0.1em', textAlign: 'center' as any, fontSize: '0.72rem', color: textColor },
+        style: { fontWeight: '600', textTransform: 'uppercase' as any, letterSpacing: '0.1em', textAlign: 'center' as any, fontSize: '0.72rem' },
       };
 
   const trustItems = mapCtaTrustItems(content as Record<string, unknown>);
   const existingTrust = section.elements?.find(e => e.id === `${section.id}-c1-trust`);
-  const trustStripStyle = { gap: '32px', iconColor: accent, iconBackgroundColor: `${accent}20`, titleColor, iconContainerSize: '28px', iconSize: '12px', justifyContent: 'center' } as any;
+  const trustStripStyle = { gap: '32px',   titleColor, iconContainerSize: '28px', iconSize: '12px', justifyContent: 'center' } as any;
   const trustStripEl: WebsiteElement = existingTrust
     ? { ...existingTrust, content: { ...(existingTrust.content || {}), items: trustItems.length > 0 ? trustItems : (existingTrust.content as any)?.items || [] } as any, style: { ...(existingTrust.style || {}), ...trustStripStyle } }
     : { id: `${section.id}-c1-trust`, type: 'trust-strip', content: { items: trustItems } as any, style: trustStripStyle };

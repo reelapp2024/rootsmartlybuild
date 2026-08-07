@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -55,6 +57,7 @@ export const LegalContentDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-14 sm:pt-16 lg:pt-20';
@@ -81,16 +84,16 @@ export const LegalContentDefault: React.FC<Props> = ({
   const getHeadingEl = (i: number, heading: string): WebsiteElement => {
     const id = `${section.id}-lc-h${i}`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: heading, htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: '1.375rem', lineHeight: '1.3', textAlign: 'left' as any },
-    };
+    });
     return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || heading } };
   };
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
         <div className="space-y-9">
           {docSections.map((sec, i) => {

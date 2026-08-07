@@ -13,6 +13,8 @@ import {
 } from '../../../../lib/blogsApi';
 import { toAbsoluteMediaUrl, extractMediaUrl } from '../../../../config';
 import { getDemoBlogListItems } from '../../../../demoBlogs';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -120,6 +122,7 @@ export const BlogsListDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-6 sm:pt-8';
@@ -197,21 +200,21 @@ export const BlogsListDefault: React.FC<Props> = ({
   const getCardTitleEl = (i: number, title: string): WebsiteElement => {
     const id = `${section.id}-bl-title${i}`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: title, htmlTag: 'h3' },
       style: { fontWeight: '700', fontSize: '1.125rem', lineHeight: '1.3', textAlign: 'left' as any },
-    };
+    });
     return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || title } };
   };
   const getCardExcerptEl = (i: number, excerpt: string): WebsiteElement => {
     const id = `${section.id}-bl-desc${i}`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'text',
       content: { text: excerpt, textSize: 'base' },
       style: { lineHeight: '1.6', textAlign: 'left' as any },
-    };
+    });
     return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || excerpt } };
   };
 
@@ -236,7 +239,7 @@ export const BlogsListDefault: React.FC<Props> = ({
   }, [page, pages]);
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">

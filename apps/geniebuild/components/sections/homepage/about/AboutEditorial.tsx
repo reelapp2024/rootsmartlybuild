@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -103,33 +104,33 @@ export const AboutEditorial: React.FC<Props> = ({
   })();
 
   // ── editable elements (about- ids) ──
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-badge`, type: 'badge',
     content: { text: apiBadge, iconPosition: 'left' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.2em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: cardBorder, color: mutedColor },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.2em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any},
+  });
   const badgeElResolved: WebsiteElement = { ...badgeEl, content: { ...(badgeEl.content || {}), text: apiBadge } };
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-about-title`;
     const existing = section.elements?.find(e => e.id === id);
     const src = (existing?.content as any)?.text || apiTitle;
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 2.875rem)', lineHeight: '1.1', letterSpacing: '-0.035em', textAlign: 'left' as any },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 2.875rem)', lineHeight: '1.1', letterSpacing: '-0.035em', textAlign: 'left' as any },
+    });
     if (existing) {
       return { ...existing, type: 'heading', content: { ...(existing.content || {}), htmlTag: (existing.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), ...(existing.style as any) } } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-desc`, type: 'text',
     content: { text: apiDesc, textSize: 'large' },
-    style: { color: textColor, textAlign: 'left' as any, maxWidth: '560px', lineHeight: '1.75' },
-  };
+    style: { textAlign: 'left' as any, maxWidth: '560px', lineHeight: '1.75' },
+  });
   const descElResolved: WebsiteElement = { ...descEl, content: { ...(descEl.content || {}), text: apiDesc } };
 
   const getFeatureBoxEl = (i: number, def: { icon: string; heading: string; description: string }): WebsiteElement => {
@@ -140,19 +141,18 @@ export const AboutEditorial: React.FC<Props> = ({
       iconContainerSize: '2.5rem', iconBorderRadius: '0.6rem',
       titleFontSize: '1rem', titleFontWeight: '700', descriptionFontSize: '0.85rem',
       borderWidth: '1px', borderStyle: 'solid', borderRadius: '1rem', padding: '1.1rem',
-      backgroundColor: cardBg, textAlign: 'left' as any, titleAlign: 'left' as any, descriptionAlign: 'left' as any,
-    };
+       textAlign: 'left' as any, titleAlign: 'left' as any, descriptionAlign: 'left' as any};
     if (existing) {
       return { ...existing, content: { ...defaultContent, ...(existing.content || {}) }, style: { ...defaultStyle, ...(existing.style as any) } };
     }
     return { id, type: 'feature-box', content: defaultContent, style: defaultStyle };
   };
 
-  const ctaEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-cta`) || {
+  const ctaEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-cta`, type: 'cta-button',
     content: { text: apiCta, link: apiCtaHref, buttonVariant: 'primary' },
     style: { buttonVariant: 'primary', padding: '0 1.75rem', height: '3rem', borderRadius: '0.7rem', fontWeight: '600', fontSize: '0.92rem' } as any,
-  };
+  });
   const ctaElResolved: WebsiteElement = { ...ctaEl, content: { ...(ctaEl.content || {}), text: apiCta, link: apiCtaHref } };
 
   const themeColors = {

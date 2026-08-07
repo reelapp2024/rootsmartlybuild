@@ -467,3 +467,25 @@ export function createEditableHtmlProps(
     ...editableFocusBlur(elementId, readOnly, onCommit, liveCommit),
   };
 }
+
+/**
+ * Browsers collapse trailing spaces in contentEditable. Convert trailing ASCII
+ * spaces to NBSP so caret/space after the last letter works (badges, short labels).
+ */
+export function htmlPreserveTrailingSpaces(htmlOrText: string): string {
+  const raw = String(htmlOrText ?? '');
+  if (!raw) return '';
+  if (/<[a-z][\s\S]*>/i.test(raw)) {
+    return raw.replace(/(?: |&nbsp;|\u00a0)+$/i, (m) => {
+      const normalized = m.replace(/&nbsp;/gi, ' ').replace(/\u00a0/g, ' ');
+      return '\u00a0'.repeat(Math.max(1, normalized.length));
+    });
+  }
+  const escaped = raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const trail = escaped.match(/ +$/);
+  if (!trail) return escaped;
+  return escaped.slice(0, -trail[0].length) + '\u00a0'.repeat(trail[0].length);
+}

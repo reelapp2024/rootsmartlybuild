@@ -21,6 +21,7 @@ import {
   resolveSectionImageUrl,
   toDisplayImageUrl,
 } from './sections/homepage/utils/sectionImageResolve';
+import { resolveSectionBackground } from '../utils/sectionBackground';
 import { SectionEffectsLayer } from './sections/homepage/utils/SectionEffectsLayer';
 import { resolveStyleFieldUpdate, composeHeadingPlainText, mergeElementContent } from './builder/state/sectionUpdaters';
 import { useAboutUsContact } from './builder/context/AboutUsContactContext';
@@ -820,105 +821,55 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
       return { backgroundColor: 'transparent' };
     }
 
-    const bgStyles: React.CSSProperties = {};
-    
-    if (styles.background) {
-      if (styles.background.type === 'color') {
-        bgStyles.backgroundColor = styles.background.color || styles.backgroundColor || activeGlobalTheme?.surface || '#000000';
-      } else if (styles.background.type === 'gradient') {
-        const gradient = styles.background.gradient;
-        if (gradient) {
-          const stops = gradient.stops.map((stop: any) => `${stop.color} ${stop.position}%`).join(', ');
-          if (gradient.type === 'linear') {
-            bgStyles.backgroundImage = `linear-gradient(${gradient.direction || 90}deg, ${stops})`;
-          } else {
-            bgStyles.backgroundImage = `radial-gradient(circle, ${stops})`;
-          }
-        }
-      } else if (styles.background.type === 'image') {
-        type BgImageConfig = {
-          url?: string;
-          mode?: 'single' | 'multiple';
-          images?: Array<{ id?: string; url?: string }>;
-          carouselSettings?: { enabled?: boolean; autoplay?: boolean; duration?: number; pauseOnHover?: boolean; transitionType?: string; transitionSpeed?: number; buttonVariant?: string };
-          position?: string;
-          size?: string;
-          repeat?: string;
-          attachment?: string;
-        };
-        const imgConfig = (styles.background.image || {}) as BgImageConfig;
-        const contentOnlyImageLen = collectSectionImageUrls(
-          section.content as Record<string, unknown>,
-          {} as Record<string, unknown>
-        ).length;
-        const imagePoolLen = collectSectionImageUrls(
-          section.content as Record<string, unknown>,
-          styles as unknown as Record<string, unknown>
-        ).length;
-        const isCarousel =
-          imgConfig.mode === 'multiple' &&
-          !!imgConfig.carouselSettings?.enabled &&
-          ((Array.isArray(imgConfig.images) && imgConfig.images.length > 0) ||
-            contentOnlyImageLen > 0 ||
-            imagePoolLen > 0);
+    const defaultSurface =
+      (defaultBg && String(defaultBg).trim()) ||
+      activeGlobalTheme?.surface ||
+      '#FFFFFF';
 
-        const hasExplicitSingleImage =
-          !!((typeof imgConfig.url === 'string' && imgConfig.url.trim()) ||
-            (typeof styles.backgroundImage === 'string' && styles.backgroundImage.trim()));
-        const hasResolvedImagePool = imagePoolLen > 0;
+    // Shared resolver (color | gradient | image + legacy flats).
+    const resolved = resolveSectionBackground(styles, { defaultSurface });
 
-        if (!isCarousel && (hasExplicitSingleImage || hasResolvedImagePool)) {
-          const explicit =
-            (typeof imgConfig.url === 'string' && imgConfig.url.trim()) ||
-            (typeof styles.backgroundImage === 'string' && styles.backgroundImage.trim()) ||
-            undefined;
-          const resolved = toDisplayImageUrl(
-            resolveSectionImageUrl(section, {
-              elementId: `${section.id}-section-background`,
-              elementImageUrl: explicit,
-            })
-          );
-          bgStyles.backgroundImage = `url(${resolved})`;
-          bgStyles.backgroundPosition = imgConfig.position || styles.backgroundPosition || 'center';
-          bgStyles.backgroundSize = imgConfig.size || styles.backgroundSize || 'cover';
-          bgStyles.backgroundRepeat = imgConfig.repeat || styles.backgroundRepeat || 'no-repeat';
-          bgStyles.backgroundAttachment = imgConfig.attachment || styles.backgroundAttachment || 'scroll';
-        }
-      }
-    } else {
-      if (styles.backgroundImage) {
-        const resolved = toDisplayImageUrl(
+    // Image URL may still need section-content pool resolution when rich bg has no url yet.
+    if (styles.background?.type === 'image' && !resolved.backgroundImage) {
+      type BgImageConfig = {
+        url?: string;
+        mode?: 'single' | 'multiple';
+        images?: Array<{ id?: string; url?: string }>;
+        carouselSettings?: { enabled?: boolean };
+        position?: string;
+        size?: string;
+        repeat?: string;
+        attachment?: string;
+      };
+      const imgConfig = (styles.background.image || {}) as BgImageConfig;
+      const imagePoolLen = collectSectionImageUrls(
+        section.content as Record<string, unknown>,
+        styles as unknown as Record<string, unknown>
+      ).length;
+      const isCarousel =
+        imgConfig.mode === 'multiple' &&
+        !!imgConfig.carouselSettings?.enabled &&
+        imagePoolLen > 0;
+      const hasResolvedImagePool = imagePoolLen > 0;
+      if (!isCarousel && hasResolvedImagePool) {
+        const resolvedUrl = toDisplayImageUrl(
           resolveSectionImageUrl(section, {
             elementId: `${section.id}-section-background`,
-            elementImageUrl: styles.backgroundImage,
+            elementImageUrl: imgConfig.url || styles.backgroundImage,
           })
         );
-        bgStyles.backgroundImage = `url(${resolved})`;
-        bgStyles.backgroundSize = 'cover';
-        bgStyles.backgroundPosition = 'center';
-      }
-      if (isCustomColor(styles.backgroundColor)) {
-        bgStyles.backgroundColor = styles.backgroundColor;
-      } else {
-        // Fall back to theme surface color if no background is set (including empty string, null, undefined)
-        const hasBackground = styles.backgroundColor && styles.backgroundColor.trim() !== '';
-        if (!hasBackground && defaultBg) {
-          bgStyles.backgroundColor = defaultBg;
-        } else if (hasBackground && !isCustomColor(styles.backgroundColor)) {
-          // Keep Tailwind class-based backgrounds
-          bgStyles.backgroundColor = undefined;
-        }
+        return {
+          ...resolved,
+          backgroundImage: `url(${resolvedUrl})`,
+          backgroundPosition: imgConfig.position || styles.backgroundPosition || 'center',
+          backgroundSize: imgConfig.size || styles.backgroundSize || 'cover',
+          backgroundRepeat: imgConfig.repeat || styles.backgroundRepeat || 'no-repeat',
+          backgroundAttachment: (imgConfig.attachment || styles.backgroundAttachment || 'scroll') as any,
+        };
       }
     }
-    
-    // Fallback chain: saved inline backgroundColor → theme surface
-    if (!bgStyles.backgroundColor) {
-      bgStyles.backgroundColor = (styles.backgroundColor && isCustomColor(styles.backgroundColor)
-        ? styles.backgroundColor
-        : null) || defaultBg;
-    }
-    
-    return bgStyles;
+
+    return resolved;
   };
 
   const isFullBleed = styles.maxWidth === 'max-w-full' || 

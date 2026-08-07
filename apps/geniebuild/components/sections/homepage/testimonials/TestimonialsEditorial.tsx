@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -119,33 +120,33 @@ export const TestimonialsEditorial: React.FC<Props> = ({
 
   const themeColors = { ...tc, titleColor, textColor, accentColor: accent, testimonialCardAccent: accent, testimonialCardStarColor: accent };
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-tp-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-tp-badge`, type: 'badge',
     content: { text: apiBadgeText, iconPosition: 'left' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any, backgroundColor: 'transparent', color: mutedColor },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any},
+  });
   const badgeElResolved: WebsiteElement = { ...badgeEl, content: { ...(badgeEl.content || {}), text: apiBadgeText } };
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-tp-title`;
     const existing = section.elements?.find(e => e.id === id);
     const src = String((existing?.content as any)?.text || apiTitleText).replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.1', letterSpacing: '-0.03em', textAlign: 'left' as any },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.1', letterSpacing: '-0.03em', textAlign: 'left' as any },
+    });
     if (existing) {
       return { ...existing, type: 'heading', content: { ...(existing.content || {}), htmlTag: (existing.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), ...(existing.style as any) } } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-tp-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-tp-desc`, type: 'text',
     content: { text: apiDescriptionText, textSize: 'large' },
-    style: { color: textColor, textAlign: 'left' as any, maxWidth: '520px', lineHeight: '1.7' },
-  };
+    style: { textAlign: 'left' as any, maxWidth: '520px', lineHeight: '1.7' },
+  });
   const descElResolved: WebsiteElement = { ...descEl, content: { ...(descEl.content || {}), text: apiDescriptionText } };
 
   const getReviewCardEl = (rev: any): WebsiteElement => {

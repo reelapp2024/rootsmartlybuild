@@ -252,6 +252,12 @@ export interface WebsiteElement {
     marqueeDirection?: 'left' | 'right';
     htmlTag?: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'div' | 'span';
     textSize?: 'base' | 'small' | 'large' | 'xl' | 'subheading'; // Text size variant for p tags
+    /** Limit visible length without deleting stored copy. */
+    textLimitMode?: 'none' | 'lines' | 'words';
+    /** CSS line-clamp when textLimitMode is 'lines' (1–12). */
+    maxLines?: number;
+    /** Soft word floor when textLimitMode is 'words' (20–100); extends to nearest sentence end. */
+    wordLimit?: number;
     link?: string;
     src?: string; 
     alt?: string;

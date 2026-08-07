@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -82,57 +83,55 @@ export const HeroEditorial: React.FC<Props> = ({
   })();
 
   // ── editable elements (h4- ids → carry across hero variants) ──
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-badge`, type: 'badge',
     content: { text: badgeText, icon: 'fa-star', iconPosition: 'left', iconSize: '0.65rem' },
-    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: surface, color: mutedColor },
-  };
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: surface},
+  });
   const badgeElResolved: WebsiteElement = { ...badgeEl, content: { ...(badgeEl.content || {}), text: badgeText } };
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-h4-title`;
     const existing = section.elements?.find(e => e.id === id);
     const src = (existing?.content as any)?.text || headlineText;
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h1' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2.5rem, 5vw, 4.25rem)', lineHeight: '1.05', letterSpacing: '-0.03em', textAlign: 'left' as any },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(2.5rem, 5vw, 4.25rem)', lineHeight: '1.05', letterSpacing: '-0.03em', textAlign: 'left' as any },
+    });
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: (base.content as any)?.htmlTag || 'h1' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-desc`, type: 'text',
     content: { text: subheadText, textSize: 'large' },
-    style: { color: textColor, textAlign: 'left' as any, maxWidth: '520px', lineHeight: '1.7' },
-  };
+    style: { textAlign: 'left' as any, maxWidth: '520px', lineHeight: '1.7' },
+  });
   const descElResolved: WebsiteElement = { ...descEl, content: { ...(descEl.content || {}), text: subheadText } };
 
-  const btn1El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn1`) || {
+  const btn1El: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-btn1`, type: 'cta-button',
     content: { text: primaryText, link: primaryHref, buttonVariant: 'primary' },
     style: { buttonVariant: 'primary', padding: '0 1.9rem', height: '3.1rem', borderRadius: '0.7rem', fontWeight: '600', fontSize: '0.95rem' } as any,
-  };
+  });
   const btn1ElResolved: WebsiteElement = { ...btn1El, content: { ...(btn1El.content || {}), text: primaryText, link: primaryHref } };
 
-  const btn2El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn2`) || {
+  const btn2El: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-btn2`, type: 'cta-button',
     content: { text: secondaryText, link: secondaryHref, buttonVariant: 'secondary' },
     style: { buttonVariant: 'secondary', padding: '0 1.9rem', height: '3.1rem', borderRadius: '0.7rem', fontWeight: '500', fontSize: '0.95rem' } as any,
-  };
+  });
   const btn2ElResolved: WebsiteElement = { ...btn2El, content: { ...(btn2El.content || {}), text: secondaryText, link: secondaryHref } };
 
   const trustStripItems = trustItems.map((label) => ({ icon: 'fa-check', label }));
-  const trustStripEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-trust`) || ({
+  const trustStripEl: WebsiteElement = resolveSectionElement(section, ({
     id: `${section.id}-h4-trust`, type: 'trust-strip',
     content: { items: trustStripItems } as any,
-    style: {
-      iconColor: accent, iconBackgroundColor: `${accent}1F`, iconContainerSize: '24px',
-      iconSize: '11px', iconBorderRadius: '9999px', titleColor: `${textColor}`,
+    style: { iconContainerSize: '24px',
+      iconSize: '11px', iconBorderRadius: '9999px', 
       titleFontSize: '13px', titleFontWeight: '500', gap: '20px', padding: '0',
-      justifyContent: 'flex-start',
-    } as any,
-  } as WebsiteElement);
+      justifyContent: 'flex-start'} as any,
+  } as WebsiteElement));
   const trustStripElResolved: WebsiteElement = {
     ...trustStripEl,
     content: { ...(trustStripEl.content || {}), items: (trustStripEl.content as any)?.items?.length ? (trustStripEl.content as any).items : trustStripItems },

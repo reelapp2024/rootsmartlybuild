@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { motion } from 'motion/react';
 import { mergeSectionContent } from '../aboutservice/aboutServiceShared';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -39,6 +41,7 @@ export const ServiceHeroConsistent: React.FC<Props> = ({
   // tc.backgroundColor resolves to the active theme surface (styles.backgroundColor
   // was stripped for this consistent variant), so switching themes updates the hero.
   const bg = s.backgroundColor || tc?.backgroundColor || '#0C1015';
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-24 sm:pt-28 lg:pt-32';
@@ -78,16 +81,15 @@ export const ServiceHeroConsistent: React.FC<Props> = ({
     themeColors,
   } as const;
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sh-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sh-badge`, type: 'badge',
     content: { text: badgeText, icon: 'fa-screwdriver-wrench', iconPosition: 'left', iconSize: '0.7rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '8px 16px', borderRadius: '9999px',
       textAlign: 'center' as any,
       // No backgroundColor/color — ElementsSection applies the LIVE theme badge colors.
     },
-  };
+  });
   const badgeElResolved: WebsiteElement = { ...badgeEl, content: { ...(badgeEl.content || {}), text: badgeText } };
 
   const titleEl: WebsiteElement = (() => {
@@ -98,11 +100,11 @@ export const ServiceHeroConsistent: React.FC<Props> = ({
     let textBefore = '';
     let highlightedText = sourceText;
     if (words.length > 1) { highlightedText = words[words.length - 1]; textBefore = words.slice(0, -1).join(' '); }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h1' },
       style: { fontWeight: '900', fontSize: s.titleSize || 'clamp(2.25rem, 5.5vw, 3.75rem)', lineHeight: '1.08', letterSpacing: '-0.02em', textAlign: 'center' as any },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -117,15 +119,15 @@ export const ServiceHeroConsistent: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h1' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sh-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sh-desc`, type: 'text',
     content: { text: descText, textSize: 'large' },
     style: { lineHeight: '1.75', textAlign: 'center' as any, maxWidth: '40rem', marginLeft: 'auto', marginRight: 'auto' },
-  };
+  });
   const descElResolved: WebsiteElement = { ...descEl, content: { ...(descEl.content || {}), text: descText } };
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...bgStyle }}>
       {/* Subtle accent glow — identical to About hero (no image backdrop, so both
           sub-page heroes look exactly the same on every theme). */}
       <div className="absolute inset-0 pointer-events-none">

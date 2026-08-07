@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -48,35 +49,35 @@ export const HeroAurora: React.FC<Props> = ({
   const padB = s.paddingBottom || 'pb-28 sm:pb-32 lg:pb-40';
   const padX = s.paddingX || 'px-4 sm:px-6 lg:px-8';
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-badge`, type: 'badge',
     content: { text: content.badgeText || 'Trusted by 5,000+ homes', icon: 'fa-sparkles', iconPosition: 'left', iconSize: '0.7rem' },
     style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase' as any, padding: '9px 18px', borderRadius: '9999px', textAlign: 'center' as any },
-  };
+  });
 
-  const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-title`) || {
+  const titleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-title`, type: 'heading',
     content: { text: content.title || `Plumbing Done <span style="color:${accent}">Right.</span> First Time.`, htmlTag: 'h1' },
-    style: { color: titleColor, fontSize: s.titleSize || 'clamp(2.75rem, 8vw, 6rem)', fontWeight: '900', lineHeight: '1.0', textAlign: 'center' as any, letterSpacing: '-0.04em' },
-  };
+    style: { fontSize: s.titleSize || 'clamp(2.75rem, 8vw, 6rem)', fontWeight: '900', lineHeight: '1.0', textAlign: 'center' as any, letterSpacing: '-0.04em' },
+  });
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-desc`, type: 'text',
     content: { text: content.subtitle || 'Licensed, insured, and on-call 24/7. Transparent pricing, no surprises — just dependable service.', textSize: 'large' },
-    style: { color: textColor, textAlign: 'center' as any, maxWidth: '640px', margin: '0 auto' },
-  };
+    style: { textAlign: 'center' as any, maxWidth: '640px', margin: '0 auto' },
+  });
 
-  const btn1El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn1`) || {
+  const btn1El: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-btn1`, type: 'cta-button',
     content: { text: content.ctaText || 'Book a Plumber', link: content.ctaHref || '#' },
-    style: { backgroundColor: btnBg, color: btnText, padding: '1rem 2.25rem', borderRadius: '9999px', fontWeight: '700', fontSize: '1rem' },
-  };
+    style: { padding: '1rem 2.25rem', borderRadius: '9999px', fontWeight: '700', fontSize: '1rem' },
+  });
 
-  const btn2El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn2`) || {
+  const btn2El: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-btn2`, type: 'cta-button',
     content: { text: content.secondaryCtaText || 'Call Now', link: content.secondaryCtaHref || 'tel:5551234567', buttonVariant: 'secondary' },
     style: { backgroundColor: 'rgba(255,255,255,0.06)', padding: '1rem 2.25rem', borderRadius: '9999px', fontWeight: '600', fontSize: '1rem' },
-  };
+  });
 
   const contentTrustStripItems = Array.isArray((content as any)?.trustStripItems)
     ? (content as any).trustStripItems
@@ -85,7 +86,7 @@ export const HeroAurora: React.FC<Props> = ({
         .slice(0, 3)
     : [];
 
-  const trustStripEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-trust`) || ({
+  const trustStripEl: WebsiteElement = resolveSectionElement(section, ({
     id: `${section.id}-h4-trust`, type: 'trust-strip',
     content: {
       items: contentTrustStripItems.length ? contentTrustStripItems : [
@@ -94,12 +95,10 @@ export const HeroAurora: React.FC<Props> = ({
         { icon: 'fa-star',  label: '4.9 / 5 Rating' },
       ],
     } as any,
-    style: {
-      iconColor: accent, iconBackgroundColor: `${accent}25`, iconContainerSize: '32px',
-      iconSize: '14px', iconBorderRadius: '9999px', titleColor: titleColor,
-      titleFontSize: '13px', titleFontWeight: '600', gap: '32px', padding: '0',
-    } as any,
-  } as WebsiteElement);
+    style: { iconContainerSize: '32px',
+      iconSize: '14px', iconBorderRadius: '9999px', 
+      titleFontSize: '13px', titleFontWeight: '600', gap: '32px', padding: '0'} as any,
+  } as WebsiteElement));
 
   const themeColors = { ...tc, titleColor, textColor, buttonBackgroundColor: btnBg, buttonTextColor: btnText, secondaryButtonBorder: accent, secondaryButtonBg: 'transparent', secondaryButtonText: titleColor };
 

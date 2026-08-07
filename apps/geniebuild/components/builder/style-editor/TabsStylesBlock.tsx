@@ -77,26 +77,26 @@ export const TabsStylesBlock: React.FC<TabsStylesBlockProps> = ({
       <AccordionGroup title="Tab Colors" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Active Color (accent)"
+            label={styles.activeColor ? "Active Color (accent)" : "Active Color (accent) (Inherited)"}
             value={styles.activeColor || accent}
             onChange={(v) => onUpdate('activeColor', v)}
             onReset={() => onUpdate('activeColor', '')}
           />
           <ColorInput
-            label="Active Text Color"
+            label={styles.activeTextColor ? "Active Text Color" : "Active Text Color (Inherited)"}
             value={styles.activeTextColor || titleCol}
             onChange={(v) => onUpdate('activeTextColor', v)}
             onReset={() => onUpdate('activeTextColor', '')}
           />
           <ColorInput
-            label="Inactive Tab Color"
+            label={styles.inactiveColor ? "Inactive Tab Color" : "Inactive Tab Color (Inherited)"}
             value={styles.inactiveColor || ''}
             onChange={(v) => onUpdate('inactiveColor', v)}
             onReset={() => onUpdate('inactiveColor', '')}
           />
           {tabStyle === 'segmented' && (
             <ColorInput
-              label="Segmented Background"
+              label={styles.segmentedBg ? "Segmented Background" : "Segmented Background (Inherited)"}
               value={styles.segmentedBg || ''}
               onChange={(v) => onUpdate('segmentedBg', v)}
               onReset={() => onUpdate('segmentedBg', '')}
@@ -112,13 +112,13 @@ export const TabsStylesBlock: React.FC<TabsStylesBlockProps> = ({
             Toggle <b>Show Panel</b> in the Content tab to hide the panel border / background.
           </p>
           <ColorInput
-            label="Panel Background"
+            label={styles.panelBackground ? "Panel Background" : "Panel Background (Inherited)"}
             value={styles.panelBackground || ''}
             onChange={(v) => onUpdate('panelBackground', v)}
             onReset={() => onUpdate('panelBackground', '')}
           />
           <ColorInput
-            label="Panel Border"
+            label={styles.panelBorder ? "Panel Border" : "Panel Border (Inherited)"}
             value={styles.panelBorder || ''}
             onChange={(v) => onUpdate('panelBorder', v)}
             onReset={() => onUpdate('panelBorder', '')}

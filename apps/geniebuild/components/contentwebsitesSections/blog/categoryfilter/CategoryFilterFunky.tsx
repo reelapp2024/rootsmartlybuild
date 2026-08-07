@@ -6,10 +6,8 @@ import {
   funkyFromTheme,
   funkyTextColors,
   mergeFunkyElement,
-  withFunkyTextStyle,
   resolveFunkyIsLight,
-  funkySurfaceColors
-} from '../../funkyTheme';
+  funkySurfaceColors, resolveFunkySectionChrome } from '../../funkyTheme';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -25,8 +23,7 @@ interface Props {
 
 export const CategoryFilterFunky: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
-  selectedElementId, readOnly = false, themeColors: tc,
-}) => {
+  selectedElementId, readOnly = false, themeColors: tc }) => {
   const { content, styles } = section;
   const s = styles as any;
   const c = content as any;
@@ -35,6 +32,7 @@ export const CategoryFilterFunky: React.FC<Props> = ({
   const { titleColor, textColor, themeMode: funkyThemeMode, themeColors: funkyThemeBag } = funkyTextColors(tc, isLight);
   const surface = funkySurfaceColors(isLight, (styles as any)?.backgroundColor);
   const bg = surface.bg;
+  const { wrapperStyle, overlayStyle } = resolveFunkySectionChrome(styles, isLight);
   const padT = s.paddingTop ?? 'pt-12 sm:pt-16';
   const padB = s.paddingBottom ?? 'pb-12 sm:pb-16';
   const padX = s.paddingX ?? 'px-4 sm:px-6';
@@ -44,35 +42,29 @@ export const CategoryFilterFunky: React.FC<Props> = ({
   const titleEl = mergeFunkyElement(section, `${section.id}-cw-catfilter-title`, {
     id: `${section.id}-cw-catfilter-title`, type: 'heading',
     content: { text: c.title || "Filter by vibe", htmlTag: 'h2' },
-    style: { color: titleColor, fontSize: 'clamp(1.6rem, 3.5vw, 2.6rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-  }, { preferFallbackText: live });
-  const titleElPainted: WebsiteElement = { ...titleEl, style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) } };
-
+    style: { fontSize: 'clamp(1.6rem, 3.5vw, 2.6rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display } }, { preferFallbackText: live });
   const items: any[] = Array.isArray(c.items) && c.items.length ? c.items : [{"title":"All","description":"Everything","link":"/blog"},{"title":"DIY","description":"Projects"},{"title":"Printables","description":"Downloads"},{"title":"Guides","description":"How-tos"}];
 
   const themeColors = { ...tc, ...funkyThemeBag, titleColor, textColor };
   const lightStyles = { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor };
   const passThrough = {
     onTextEdit, onElementUpdate: onElementUpdate || (() => {}), onElementSelect,
-    selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
-  } as const;
+    selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors } as const;
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...wrapperStyle }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
+      {overlayStyle ? (
+        <div className="absolute inset-0 pointer-events-none z-[1]" style={overlayStyle} />
+      ) : null}
       <div className={`max-w-7xl mx-auto ${padX} ${padT} ${padB}`}>
-        <div className="mb-8"><ElementsSection section={{ ...section, styles: lightStyles, elements: [titleElPainted] }} {...passThrough} /></div>
+        <div className="mb-8"><ElementsSection section={{ ...section, styles: lightStyles, elements: [titleEl] }} {...passThrough} /></div>
         <div className="flex flex-wrap gap-3 sm:gap-4">
           {items.map((item, i) => {
             const itemTitle = mergeFunkyElement(section, `${section.id}-cw-catfilter-item-${i}-title`, {
               id: `${section.id}-cw-catfilter-item-${i}-title`, type: 'heading',
               content: { text: item.title || item.name || 'Item', htmlTag: 'h3' },
-              style: { color: titleColor, fontSize: '1rem', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-            }, { preferFallbackText: live });
-            const itemTitlePainted: WebsiteElement = {
-              ...itemTitle,
-              style: { ...withFunkyTextStyle(itemTitle.style as any, titleColor, isLight) },
-            };
+              style: { fontSize: '1rem', fontWeight: '800', fontFamily: FUNKY.fonts.display } }, { preferFallbackText: live });
             const href = String(item.link || item.href || '').trim();
             const chip = (
               <div
@@ -82,12 +74,11 @@ export const CategoryFilterFunky: React.FC<Props> = ({
                   borderRadius: 999,
                   boxShadow: FUNKY.shadow,
                   padding: '10px 18px',
-                  minWidth: 100,
-                }}
+                  minWidth: 100 }}
               >
-                <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemTitlePainted] }} {...passThrough} />
+                <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemTitle] }} {...passThrough} />
                 {(item.description || item.subtitle) ? (
-                  <div className="text-xs mt-0.5 opacity-80" style={{ color: textColor, fontFamily: FUNKY.fonts.body }}>
+                  <div className="text-xs mt-0.5 opacity-80" style={{ fontFamily: FUNKY.fonts.body }}>
                     {item.description || item.subtitle}
                   </div>
                 ) : null}

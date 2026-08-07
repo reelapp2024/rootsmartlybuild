@@ -4,6 +4,8 @@ import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
 import { BLOGS_CATEGORIES_EVENT, emitBlogsFilter } from '../../../../lib/blogsApi';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -49,6 +51,7 @@ export const BlogsSearchDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-8 sm:pt-10';
@@ -108,14 +111,14 @@ export const BlogsSearchDefault: React.FC<Props> = ({
     selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
   } as const;
 
-  const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-bs-title`) || {
+  const titleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-bs-title`, type: 'text',
     content: { text: String(c.filterHelperText || 'Browse by topic or search for exactly what you need.'), textSize: 'base' },
     style: { textAlign: 'center' as any, maxWidth: '520px', margin: '0 auto', lineHeight: '1.6' },
-  };
+  });
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
         <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
           transition={{ duration: 0.5 }} className="flex flex-col items-center gap-5">

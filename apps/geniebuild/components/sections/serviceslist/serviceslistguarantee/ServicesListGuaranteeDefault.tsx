@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -89,6 +91,7 @@ export const ServicesListGuaranteeDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   // Padding
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
@@ -117,17 +120,13 @@ export const ServicesListGuaranteeDefault: React.FC<Props> = ({
   };
 
   // Badge — accent-tinted pill
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-slgt-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-slgt-badge`, type: 'badge',
     content: { text: content.badgeText || 'Our Promise', icon: 'fa-shield-halved', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
-      textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
-    },
-  };
+      textAlign: 'center' as any},
+  });
   const badgeElResolved: WebsiteElement = {
     ...badgeEl,
     content: { ...(badgeEl.content || {}), text: apiBadgeText },
@@ -146,11 +145,11 @@ export const ServicesListGuaranteeDefault: React.FC<Props> = ({
       highlightedText = words[words.length - 1];
       textBefore = words.slice(0, -1).join(' ');
     }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -166,42 +165,40 @@ export const ServicesListGuaranteeDefault: React.FC<Props> = ({
   })();
 
   // Description
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-slgt-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-slgt-desc`, type: 'text',
     content: { text: apiDescriptionText, textSize: 'large' },
     style: { textAlign: 'center' as any, maxWidth: '560px', margin: '0 auto', lineHeight: '1.65' },
-  };
+  });
   const descElResolved: WebsiteElement = {
     ...descEl,
     content: { ...(descEl.content || {}), text: apiDescriptionText },
   };
 
   // Stat card — the big "10 / YEAR GUARANTEE" callout on the left
-  const statEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-slgt-stat`) || {
+  const statEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-slgt-stat`, type: 'stat-card',
     content: {
       value: apiStatValue,
       text: apiStatLabel,
       icon: apiStatIcon,
     } as any,
-    style: {
-      padding: '1.5rem',
+    style: { padding: '1.5rem',
       borderRadius: '1rem',
-      backgroundColor: `${accent}10`,
-      borderColor: `${accent}30`,
+      
+      
       borderWidth: '1px',
       borderStyle: 'solid',
-      titleColor: accent,
+      
       titleFontSize: 'clamp(3rem, 7vw, 5rem)',
       titleFontWeight: '900',
-      descriptionColor: titleColor,
+      
       descriptionFontSize: '0.85rem',
       descriptionFontWeight: '700',
       textAlign: 'center' as any,
-      iconColor: accent,
-      iconSize: '1.5rem',
-    } as any,
-  };
+      
+      iconSize: '1.5rem'} as any,
+  });
   const statElResolved: WebsiteElement = {
     ...statEl,
     content: {
@@ -225,35 +222,30 @@ export const ServicesListGuaranteeDefault: React.FC<Props> = ({
           }))
         : DEFAULT_POINTS.map(p => ({ title: p.title }))
   );
-  const listEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-slgt-list`) || {
+  const listEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-slgt-list`, type: 'list',
     content: { items: listItemsResolved } as any,
-    style: {
-      listType: 'check',
+    style: { listType: 'check',
       itemGap: '0.875rem',
       indent: '0px',
-      color: textColor,
-      markerColor: accent,
-      iconColor: accent,
+      
+      
+      
       fontSize: '0.95rem',
-      fontWeight: '500',
-    } as any,
-  };
+      fontWeight: '500'} as any,
+  });
   const listElResolved: WebsiteElement = {
     ...listEl,
     content: { ...(listEl.content || {}), items: listItemsResolved },
   };
 
   // CTA button
-  const btnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-slgt-btn`) || {
+  const btnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-slgt-btn`, type: 'cta-button',
     content: { text: apiCtaText, link: apiCtaHref },
-    style: {
-      backgroundColor: btnBg, color: btnText,
-      padding: '0.875rem 2rem', borderRadius: '0.5rem',
-      fontWeight: '700', fontSize: '0.95rem',
-    } as any,
-  };
+    style: { padding: '0.875rem 2rem', borderRadius: '0.5rem',
+      fontWeight: '700', fontSize: '0.95rem'} as any,
+  });
   const btnElResolved: WebsiteElement = {
     ...btnEl,
     content: {
@@ -264,7 +256,7 @@ export const ServicesListGuaranteeDefault: React.FC<Props> = ({
   };
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...bgStyle }}>
       {/* Subtle accent halo behind the callout card — keeps the white feeling premium */}
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: `radial-gradient(ellipse at 50% 60%, ${accent}10 0%, transparent 60%)` }} />
@@ -303,7 +295,6 @@ export const ServicesListGuaranteeDefault: React.FC<Props> = ({
           viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.2 }}
           className="rounded-2xl p-6 sm:p-8 lg:p-10 grid grid-cols-1 lg:grid-cols-[minmax(220px,280px)_1fr] gap-6 lg:gap-10 items-center"
           style={{
-            backgroundColor: cardBg,
             border: `1px solid ${cardBorder}`,
             boxShadow: `0 12px 32px -16px ${accent}20`,
           }}

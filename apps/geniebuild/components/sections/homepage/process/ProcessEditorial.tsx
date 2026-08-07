@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -117,11 +118,11 @@ export const ProcessEditorial: React.FC<Props> = ({
     featureBoxTitleColor: titleColor, featureBoxTextColor: textColor,
   };
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-pp-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-pp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Our process', icon: 'fa-list-ol', iconPosition: 'left', iconSize: '0.65rem' },
-    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: cardBorder, color: mutedColor },
-  };
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any},
+  });
 
   // Professional/restrained: heading stays fully neutral (no accent-coloured
   // last word). Colour is reserved for buttons + the timeline rail/nodes only.
@@ -130,22 +131,22 @@ export const ProcessEditorial: React.FC<Props> = ({
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
     const src = (c.text || content.title || 'How our service works').toString().replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.1', letterSpacing: '-0.03em', textAlign: 'center' as any },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.1', letterSpacing: '-0.03em', textAlign: 'center' as any },
+    });
     if (existing) {
       return { ...existing, type: 'heading', content: { ...(existing.content || {}), htmlTag: (existing.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), ...(existing.style as any) } } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-pp-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-pp-desc`, type: 'text',
     content: { text: content.subtitle || 'A simple, transparent path from your first call to a finished job you are happy with.', textSize: 'large' },
-    style: { color: textColor, textAlign: 'center' as any, maxWidth: '600px', margin: '0 auto', lineHeight: '1.7' },
-  };
+    style: { textAlign: 'center' as any, maxWidth: '600px', margin: '0 auto', lineHeight: '1.7' },
+  });
 
   const getStepNumberEl = (i: number): WebsiteElement => {
     const id = `${section.id}-pp-step-num${i}`;
@@ -154,7 +155,7 @@ export const ProcessEditorial: React.FC<Props> = ({
     return {
       id, type: 'text',
       content: { text: String(i + 1), textSize: 'small' } as any,
-      style: { fontSize: '0.9rem', fontWeight: '900', color: btnText, textAlign: 'center' as any, lineHeight: '1', margin: 0 } as any,
+      style: { fontSize: '0.9rem', fontWeight: '900',  textAlign: 'center' as any, lineHeight: '1', margin: 0 } as any,
     };
   };
 
@@ -167,12 +168,10 @@ export const ProcessEditorial: React.FC<Props> = ({
     return {
       id, type: 'feature-box',
       content: { icon: hideAllIcons ? 'none' : rawSteps[i].icon, text: rawSteps[i].title, subText: rawSteps[i].description, iconPosition: 'left' },
-      style: {
-        iconContainerSize: '2.75rem', iconBorderRadius: '0.75rem',
+      style: { iconContainerSize: '2.75rem', iconBorderRadius: '0.75rem',
         titleFontSize: '1.15rem', titleFontWeight: '700', descriptionFontSize: '0.9rem',
-        padding: '0', borderWidth: '0', backgroundColor: 'transparent',
-        textAlign: 'left' as any, titleAlign: 'left' as any, descriptionAlign: 'left' as any,
-      } as any,
+        padding: '0', borderWidth: '0', 
+        textAlign: 'left' as any, titleAlign: 'left' as any, descriptionAlign: 'left' as any} as any,
     };
   };
 

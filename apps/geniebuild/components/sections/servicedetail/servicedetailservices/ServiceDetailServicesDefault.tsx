@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -56,6 +58,7 @@ export const ServiceDetailServicesDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-10 sm:pt-12 lg:pt-16';
@@ -102,15 +105,14 @@ export const ServiceDetailServicesDefault: React.FC<Props> = ({
     themeColors,
   } as const;
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sdg-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sdg-badge`, type: 'badge',
     content: { text: content.badgeText || 'Sub-Services', icon: 'fa-layer-group', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
       textAlign: 'center' as any,
     },
-  };
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-sdg-title`;
@@ -121,11 +123,11 @@ export const ServiceDetailServicesDefault: React.FC<Props> = ({
     let textBefore = '';
     let highlightedText = sourceText;
     if (words.length > 1) { highlightedText = words[words.length - 1]; textBefore = words.slice(0, -1).join(' '); }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -140,11 +142,11 @@ export const ServiceDetailServicesDefault: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sdg-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sdg-desc`, type: 'text',
     content: { text: String(content.subtitle || (content as any).intro || 'Here is everything included when you book this service with our team.'), textSize: 'large' },
     style: { textAlign: 'center' as any, maxWidth: '580px', margin: '0 auto', lineHeight: '1.65' },
-  };
+  });
 
   const getItemEl = (i: number): WebsiteElement => {
     const id = `${section.id}-sdg-card${i}`;
@@ -162,8 +164,7 @@ export const ServiceDetailServicesDefault: React.FC<Props> = ({
         subText: rawItems[i].description,
         iconPosition: 'top',
       },
-      style: {
-        iconContainerSize: '3rem',
+      style: { iconContainerSize: '3rem',
         iconBorderRadius:  '0.75rem',
         titleFontSize:     '1.0625rem',
         titleFontWeight:   '700',
@@ -172,16 +173,15 @@ export const ServiceDetailServicesDefault: React.FC<Props> = ({
         borderStyle:       'solid',
         borderRadius:      '1rem',
         padding:           '1.5rem',
-        backgroundColor:   cardBg,
+        
         textAlign:         'center' as any,
         titleAlign:        'center' as any,
-        descriptionAlign:  'center' as any,
-      } as any,
+        descriptionAlign:  'center' as any} as any,
     };
   };
 
   return (
-    <div className={`w-full ${textAlignClass}`} style={{ backgroundColor: bg }}>
+    <div className={`w-full ${textAlignClass}`} style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
 
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}

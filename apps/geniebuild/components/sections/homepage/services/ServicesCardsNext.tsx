@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -124,11 +125,11 @@ export const ServicesCardsNext: React.FC<Props> = ({
 
   const themeColors = { ...tc, titleColor, textColor, accentColor: accent, secondaryHeadingColor: titleColor };
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sp2-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sp2-badge`, type: 'badge',
     content: { text: content.badgeText || 'What we do', iconPosition: 'left' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any, backgroundColor: 'transparent', color: mutedColor },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any},
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-sp2-title`;
@@ -141,50 +142,60 @@ export const ServicesCardsNext: React.FC<Props> = ({
           ...(existing.content || {}),
           htmlTag: (existing.content as any)?.htmlTag || 'h2',
         },
-        style: {
-          color: titleColor,
-          fontWeight: '800',
+        style: { fontWeight: '800',
           fontSize: 'clamp(2rem, 4vw, 3rem)',
           lineHeight: '1.08',
           letterSpacing: '-0.035em',
           textAlign: 'left' as any,
-          ...(existing.style as any),
-        },
+          ...(existing.style as any)},
       };
     }
     const src = content.title || 'Straightforward services, priced up front.';
     return {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'left' as any },
+      style: { fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'left' as any },
     };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sp2-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sp2-desc`, type: 'text',
     content: { text: content.description || content.subtitle || 'Whatever you need doing, you get the same deal: a clear written quote before we start, a tidy job, and a guarantee in writing.', textSize: 'large' },
-    style: { color: textColor, textAlign: 'left' as any, maxWidth: '620px', lineHeight: '1.75' },
-  };
+    style: { textAlign: 'left' as any, maxWidth: '620px', lineHeight: '1.75' },
+  });
 
   const getTitleEl = (i: number, def: any): WebsiteElement => {
     const id = `${section.id}-sp2-svc${i}-title`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: def.title, htmlTag: 'h3' },
-      style: { color: titleColor, fontWeight: '700', fontSize: '1.35rem', lineHeight: '1.2', letterSpacing: '-0.025em', textAlign: 'left' as any },
-    };
+      style: { fontWeight: '700', fontSize: '1.35rem', lineHeight: '1.2', letterSpacing: '-0.025em', textAlign: 'left' as any },
+    });
     return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || def.title } };
   };
   const getBodyEl = (i: number, def: any): WebsiteElement => {
     const id = `${section.id}-sp2-svc${i}-body`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'text',
-      content: { text: def.desc, textSize: 'base' },
-      style: { color: textColor, textAlign: 'left' as any, lineHeight: '1.7' },
+      content: {
+        text: def.desc,
+        textSize: 'base',
+        textLimitMode: 'words',
+        wordLimit: 40,
+      },
+      style: { textAlign: 'left' as any, lineHeight: '1.7' },
+    });
+    return {
+      ...base,
+      content: {
+        ...(base.content || {}),
+        text: (existing?.content as any)?.text || def.desc,
+        textLimitMode: (base.content as any)?.textLimitMode || 'words',
+        wordLimit: (base.content as any)?.wordLimit || 40,
+      },
     };
-    return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || def.desc } };
   };
 
   const pass = {
@@ -206,7 +217,7 @@ export const ServicesCardsNext: React.FC<Props> = ({
       {svcModal.open && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <button type="button" className="absolute inset-0 bg-black/50 border-0 cursor-default" aria-label="Close" onClick={() => setSvcModal((m) => ({ ...m, open: false }))} />
-          <div className="relative z-[201] w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl p-6 sm:p-8 text-left" style={{ backgroundColor: cardBg, color: textColor }}>
+          <div className="relative z-[201] w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl p-6 sm:p-8 text-left" style={{ backgroundColor: cardBg }}>
             <h3 className="text-xl font-extrabold mb-3" style={{ color: titleColor }}>{svcModal.title}</h3>
             <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: textColor }}>{svcModal.body}</div>
             <div className="mt-8 flex flex-wrap gap-3 justify-end">
@@ -269,7 +280,7 @@ export const ServicesCardsNext: React.FC<Props> = ({
                 </ul>
                 <div className="mt-auto flex items-center justify-between gap-3 pt-7">
                   {def.price ? (
-                    <span className="rounded-full px-3 py-1.5 text-[12px] font-medium" style={{ border: `1px solid ${cardBorder}`, backgroundColor: '#FFFFFF', color: titleColor }}>{def.price}</span>
+                    <span className="rounded-full px-3 py-1.5 text-[12px] font-medium" style={{ border: `1px solid ${cardBorder}`, backgroundColor: '#FFFFFF' }}>{def.price}</span>
                   ) : <span />}
                   <button type="button"
                     onClick={(e) => { e.stopPropagation(); if (!readOnly) return; if (serviceNavMode === 'card' && def.link !== '#') { window.location.href = def.link; } else { setSvcModal({ open: true, title: def.title, body: def.desc, href: pickPreferredLink(def.link) }); } }}

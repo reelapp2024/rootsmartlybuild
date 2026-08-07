@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -64,35 +65,35 @@ export const HeroImageLeft: React.FC<Props> = ({
   const padB = s.paddingBottom || 'pb-20 sm:pb-24 lg:pb-32';
   const padX = s.paddingX || 'px-4 sm:px-6 lg:px-8';
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-badge`, type: 'badge',
     content: { text: content.badgeText || 'Trusted by 5,000+ homes', icon: 'fa-shield-halved', iconPosition: 'left', iconSize: '0.7rem' },
     style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '8px 16px', borderRadius: '9999px', textAlign: 'left' as any },
-  };
+  });
 
-  const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-title`) || {
+  const titleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-title`, type: 'heading',
     content: { text: content.title || 'Plumbing Done Right. First Time.', htmlTag: 'h1' },
-    style: { color: titleColor, fontSize: s.titleSize || 'clamp(2.25rem, 5vw, 3.75rem)', fontWeight: '900', lineHeight: '1.08', textAlign: 'left' as any, letterSpacing: '-0.02em' },
-  };
+    style: { fontSize: s.titleSize || 'clamp(2.25rem, 5vw, 3.75rem)', fontWeight: '900', lineHeight: '1.08', textAlign: 'left' as any, letterSpacing: '-0.02em' },
+  });
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-desc`, type: 'text',
     content: { text: content.subtitle || 'Licensed, insured, and on-call 24/7. Transparent pricing, no surprises — just dependable service.', textSize: 'large' },
-    style: { color: textColor, textAlign: 'left' as any, maxWidth: '540px' },
-  };
+    style: { textAlign: 'left' as any, maxWidth: '540px' },
+  });
 
-  const btn1El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn1`) || {
+  const btn1El: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-btn1`, type: 'cta-button',
     content: { text: content.ctaText || 'Book a Plumber', link: content.ctaHref || '#' },
-    style: { backgroundColor: btnBg, color: btnText, padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '700', fontSize: '1rem' },
-  };
+    style: { padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '700', fontSize: '1rem' },
+  });
 
-  const btn2El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn2`) || {
+  const btn2El: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-btn2`, type: 'cta-button',
     content: { text: content.secondaryCtaText || 'Call Now', link: content.secondaryCtaHref || 'tel:5551234567', buttonVariant: 'secondary' },
-    style: { backgroundColor: 'transparent', padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '600', fontSize: '1rem' },
-  };
+    style: { padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '600', fontSize: '1rem' },
+  });
 
   const contentTrustStripItems = Array.isArray((content as any)?.trustStripItems)
     ? (content as any).trustStripItems
@@ -101,7 +102,7 @@ export const HeroImageLeft: React.FC<Props> = ({
         .slice(0, 3)
     : [];
 
-  const trustStripEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-trust`) || ({
+  const trustStripEl: WebsiteElement = resolveSectionElement(section, ({
     id: `${section.id}-h4-trust`, type: 'trust-strip',
     content: {
       items: contentTrustStripItems.length ? contentTrustStripItems : [
@@ -110,12 +111,10 @@ export const HeroImageLeft: React.FC<Props> = ({
         { icon: 'fa-star',  label: '4.9 / 5 Rating' },
       ],
     } as any,
-    style: {
-      iconColor: accent, iconBackgroundColor: `${accent}25`, iconContainerSize: '32px',
-      iconSize: '14px', iconBorderRadius: '9999px', titleColor: titleColor,
-      titleFontSize: '13px', titleFontWeight: '600', gap: '28px', padding: '0',
-    } as any,
-  } as WebsiteElement);
+    style: { iconContainerSize: '32px',
+      iconSize: '14px', iconBorderRadius: '9999px', 
+      titleFontSize: '13px', titleFontWeight: '600', gap: '28px', padding: '0'} as any,
+  } as WebsiteElement));
 
   const themeColors = { ...tc, titleColor, textColor, buttonBackgroundColor: btnBg, buttonTextColor: btnText, secondaryButtonBorder: accent, secondaryButtonBg: 'transparent', secondaryButtonText: '#FFFFFF' };
 

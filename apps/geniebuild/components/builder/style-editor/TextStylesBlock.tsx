@@ -181,13 +181,13 @@ export const TextStylesBlock: React.FC<TextStylesBlockProps> = ({ styles, onUpda
       <AccordionGroup title="Color" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Text Color"
+            label={styles.color ? 'Text Color' : 'Text Color (Inherited)'}
             value={styles.color || textFallback}
             onChange={(v) => onUpdate('color', v)}
             onReset={() => onUpdate('color', '')}
           />
           <ColorInput
-            label="Inline Link Color"
+            label={styles.linkColor ? 'Inline Link Color' : 'Inline Link Color (Inherited)'}
             value={styles.linkColor || linkFallback}
             onChange={(v) => onUpdate('linkColor', v)}
             onReset={() => onUpdate('linkColor', '')}

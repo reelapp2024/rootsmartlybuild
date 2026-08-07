@@ -2,7 +2,12 @@ import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
+import {
+  resolveSectionBackground,
+  resolveSectionOverlay,
+} from '../../../../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -16,9 +21,9 @@ interface Props {
 }
 
 /**
- * HeroPlumbing4 — full-bleed image background with dark overlay + centered content.
- * Self-contained: paints its own image + overlay, doesn't depend on SectionRenderer.
- * That way it always shows the image, no matter the bg-type state.
+ * HeroPlumbing4 — full-bleed hero.
+ * Respects styles.background.type: color/gradient use shared resolver;
+ * image (or legacy unset) keeps the cover-image layout.
  */
 export const HeroPlumbing4: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
@@ -33,7 +38,9 @@ export const HeroPlumbing4: React.FC<Props> = ({
   const btnBg = tc?.buttonBackgroundColor || '#E11D48';
   const btnText = tc?.buttonTextColor || '#FFFFFF';
 
-  // Image source: section content imageUrl → legacy backgroundImage → fallback.
+  const bgType = String(s.background?.type || '').toLowerCase();
+  const useImageLayout = !bgType || bgType === 'image';
+
   const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=1600&q=80';
   const bgImage = (() => {
     const fromBg = (s.background as any)?.image?.url;
@@ -44,7 +51,6 @@ export const HeroPlumbing4: React.FC<Props> = ({
     return FALLBACK_IMAGE;
   })();
 
-  // Overlay opacity: respect saved slider value, else theme default, else 0.6.
   const overlayOpacity = (() => {
     const saved = (s.background as any)?.image?.overlay?.opacity ?? (s.background as any)?.overlay?.opacity;
     if (typeof saved === 'number') return saved;
@@ -61,36 +67,41 @@ export const HeroPlumbing4: React.FC<Props> = ({
     || s.overlayBlendMode
     || 'normal';
 
+  const solidBgStyle = !useImageLayout
+    ? resolveSectionBackground(s, { defaultSurface: '#0B0F14' })
+    : null;
+  const solidOverlay = !useImageLayout ? resolveSectionOverlay(s) : null;
+
   // ── Editable elements ─────────────────────────────────────────────────
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-badge`, type: 'badge',
     content: { text: content.badgeText || 'Trusted by 5,000+ homes', icon: 'fa-shield-halved', iconPosition: 'left', iconSize: '0.7rem' },
     style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '8px 16px', borderRadius: '9999px', textAlign: 'center' as any },
-  };
+  });
 
-  const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-title`) || {
+  const titleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-title`, type: 'heading',
     content: { text: content.title || `Plumbing Done <span style="color:${accent}">Right.</span> First Time.`, htmlTag: 'h1' },
-    style: { color: titleColor, fontSize: s.titleSize || 'clamp(2.25rem, 6vw, 4.5rem)', fontWeight: '900', lineHeight: '1.05', textAlign: 'center' as any, letterSpacing: '-0.02em' },
-  };
+    style: { fontSize: s.titleSize || 'clamp(2.25rem, 6vw, 4.5rem)', fontWeight: '900', lineHeight: '1.05', textAlign: 'center' as any, letterSpacing: '-0.02em' },
+  });
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-desc`, type: 'text',
     content: { text: content.subtitle || 'Licensed, insured, and on-call 24/7. Transparent pricing, no surprises — just dependable service.', textSize: 'large' },
-    style: { color: textColor, textAlign: 'center' as any, maxWidth: '600px', margin: '0 auto' },
-  };
+    style: { textAlign: 'center' as any, maxWidth: '600px', margin: '0 auto' },
+  });
 
-  const btn1El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn1`) || {
+  const btn1El: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-btn1`, type: 'cta-button',
     content: { text: content.ctaText || 'Book a Plumber', link: content.ctaHref || '#' },
-    style: { backgroundColor: btnBg, color: btnText, padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '700', fontSize: '1rem' },
-  };
+    style: { padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '700', fontSize: '1rem' },
+  });
 
-  const btn2El: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-btn2`) || {
+  const btn2El: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-h4-btn2`, type: 'cta-button',
     content: { text: content.secondaryCtaText || 'Call Now', link: content.secondaryCtaHref || 'tel:5551234567', buttonVariant: 'secondary' },
-    style: { backgroundColor: 'transparent', padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '600', fontSize: '1rem' },
-  };
+    style: { padding: '1rem 2rem', borderRadius: '0.625rem', fontWeight: '600', fontSize: '1rem' },
+  });
 
   const themeColors = { ...tc, titleColor, textColor, buttonBackgroundColor: btnBg, buttonTextColor: btnText, secondaryButtonBorder: accent, secondaryButtonBg: 'transparent', secondaryButtonText: '#FFFFFF' };
 
@@ -100,11 +111,11 @@ export const HeroPlumbing4: React.FC<Props> = ({
 
   // Divider above trust strip — sidebar-editable `divider` element.
   // marginY gives breathing room above + below the line so it doesn't touch siblings.
-  const dividerEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-divider`) || ({
+  const dividerEl: WebsiteElement = resolveSectionElement(section, ({
     id: `${section.id}-h4-divider`, type: 'divider',
     content: { dividerStyle: 'solid', thickness: '1px', marginY: '24px' } as any,
     style: { borderColor: 'rgba(255,255,255,0.12)' } as any,
-  } as WebsiteElement);
+  } as WebsiteElement));
 
   const contentTrustStripItems = Array.isArray((content as any)?.trustStripItems)
     ? (content as any).trustStripItems
@@ -117,7 +128,7 @@ export const HeroPlumbing4: React.FC<Props> = ({
     : [];
 
   // Trust strip — single editable `trust-strip` element.
-  const trustStripEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-trust`) || ({
+  const trustStripEl: WebsiteElement = resolveSectionElement(section, ({
     id: `${section.id}-h4-trust`, type: 'trust-strip',
     content: {
       items: contentTrustStripItems.length
@@ -129,35 +140,36 @@ export const HeroPlumbing4: React.FC<Props> = ({
           ],
     } as any,
     style: {
-      iconColor: accent,
-      iconBackgroundColor: `${accent}25`,
       iconContainerSize: '32px',
       iconSize: '14px',
       iconBorderRadius: '9999px',
-      titleColor: titleColor,
       titleFontSize: '13px',
       titleFontWeight: '600',
       gap: '32px',
       padding: '0',
     } as any,
-  } as WebsiteElement);
+  } as WebsiteElement));
 
   return (
-    <div className="relative w-full overflow-hidden">
-      {/* ── Background image ────────────────────────────────────────────── */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <img src={bgImage} alt="" className="w-full h-full object-cover" />
-        {/* Dark overlay on top of image */}
-        <div className="absolute inset-0" style={{
-          backgroundColor: overlayColor,
-          opacity: overlayOpacity,
-          mixBlendMode: overlayBlend as any,
-        }} />
-        {/* Subtle accent gradient at bottom for depth */}
-        <div className="absolute inset-x-0 bottom-0 h-1/2 pointer-events-none" style={{
-          background: `linear-gradient(to top, ${overlayColor}E6, transparent)`,
-        }} />
-      </div>
+    <div className="relative w-full overflow-hidden" style={solidBgStyle || undefined}>
+      {/* ── Background image (only when bg type is image / legacy) ──────── */}
+      {useImageLayout ? (
+        <div className="absolute inset-0 z-0 pointer-events-none">
+          <img src={bgImage} alt="" className="w-full h-full object-cover" />
+          <div className="absolute inset-0" style={{
+            backgroundColor: overlayColor,
+            opacity: overlayOpacity,
+            mixBlendMode: overlayBlend as any,
+          }} />
+          <div className="absolute inset-x-0 bottom-0 h-1/2 pointer-events-none" style={{
+            background: `linear-gradient(to top, ${overlayColor}E6, transparent)`,
+          }} />
+        </div>
+      ) : (
+        solidOverlay ? (
+          <div className="absolute inset-0 z-0 pointer-events-none" style={solidOverlay} />
+        ) : null
+      )}
 
       {/* ── Content ─────────────────────────────────────────────────────── */}
       <div className={`relative z-10 w-full max-w-4xl mx-auto ${padX} ${padT} ${padB}`}>

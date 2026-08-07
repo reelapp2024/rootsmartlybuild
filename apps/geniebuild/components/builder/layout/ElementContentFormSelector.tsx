@@ -235,11 +235,23 @@ export const ElementContentFormSelector: React.FC<Props> = ({
   onUpdateSectionStyle,
   onTriggerUpload,
 }) => {
-  const updateContent = (updates: any) =>
+  const updateContent = (updates: any) => {
+    const clearFontSize = updates && Object.prototype.hasOwnProperty.call(updates, '__clearFontSize');
+    const { __clearFontSize: _drop, ...contentUpdates } = updates || {};
+    if (clearFontSize) {
+      onUpdateElement(selectedSection.id, selectedElement.id, {
+        type: selectedElement.type,
+        content: { ...(selectedElement.content || {}), ...contentUpdates },
+        // Empty string = explicit clear; resolveSectionElement drops DNA fontSize.
+        style: { ...(selectedElement.style as any || {}), fontSize: '' },
+      });
+      return;
+    }
     onUpdateElement(selectedSection.id, selectedElement.id, {
       type: selectedElement.type,
-      content: { ...(selectedElement.content || {}), ...updates },
+      content: { ...(selectedElement.content || {}), ...contentUpdates },
     });
+  };
   const linkVal = String(selectedElement.content?.link || '');
   const linkContactKind = inferKindFromLink(linkVal);
   const contactKind = inferElementContactKind(selectedElement) || linkContactKind;

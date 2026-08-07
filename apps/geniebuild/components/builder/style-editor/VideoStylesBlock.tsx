@@ -62,7 +62,7 @@ export const VideoStylesBlock: React.FC<VideoStylesBlockProps> = ({
             onChange={(v) => onUpdate('videoAspectRatio', v)}
           />
           <ColorInput
-            label="Background (letterbox)"
+            label={styles.videoBg ? "Background (letterbox)" : "Background (letterbox) (Inherited)"}
             value={styles.videoBg || ''}
             onChange={(v) => onUpdate('videoBg', v)}
             onReset={() => onUpdate('videoBg', '')}

@@ -4,6 +4,8 @@ import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
 import { enhanceBlogHtmlClient, splitBlogFaqFromHtml } from '../../../../utils/blogHtmlEnhance';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -164,6 +166,7 @@ export const BlogContentDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-16 sm:pt-20 lg:pt-24';
@@ -224,9 +227,8 @@ export const BlogContentDefault: React.FC<Props> = ({
           })),
           exclusive: true,
         } as any,
-        style: {
-          backgroundColor: bg,
-          borderColor: `${accent}33`,
+        style: { backgroundColor: bg,
+          
           borderWidth: '1px',
           borderStyle: 'solid',
           borderRadius: '0.875rem',
@@ -236,28 +238,25 @@ export const BlogContentDefault: React.FC<Props> = ({
           iconPosition: 'right',
           iconShape: 'circle',
           iconSize: '0.875rem',
-          iconColor: accent,
-          iconBackgroundColor: `${accent}15`,
-          titleColor,
+          
+          
           questionFontSize: '1.0625rem',
           questionFontWeight: '700',
-          color: textColor,
+          
           answerFontSize: '0.9375rem',
           answerLineHeight: '1.65',
           activeBackgroundColor: bg,
-          activeBorderColor: `${accent}33`,
-          hoverBackgroundColor: '',
-          dividerColor: `${accent}22`,
-        } as any,
+          
+          hoverBackgroundColor: ''} as any,
       }
     : null;
 
-  const leadEl: WebsiteElement = section.elements?.find((e) => e.id === `${section.id}-bc-lead`) || {
+  const leadEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-bc-lead`,
     type: 'text',
     content: { text: paragraphs[0] || '', textSize: 'large' },
     style: { lineHeight: '1.8', textAlign: 'left' as any, fontWeight: '500' },
-  };
+  });
 
   const proseScopeId = `blog-prose-${String(section.id || 'body').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
@@ -271,12 +270,11 @@ export const BlogContentDefault: React.FC<Props> = ({
     ['--blog-surface-color' as any]: bg,
     ['--blog-title-font' as any]: titleFont,
     ['--blog-body-font' as any]: bodyFont,
-    color: textColor,
     fontFamily: bodyFont,
   } as React.CSSProperties;
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -472,7 +470,6 @@ export const BlogContentDefault: React.FC<Props> = ({
                   <h2
                     className="gb-h2 gb-el"
                     style={{
-                      color: titleColor,
                       fontFamily: titleFont,
                       fontWeight: 700,
                       fontSize: 'var(--heading-h2-size, 1.75rem)',

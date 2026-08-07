@@ -106,7 +106,7 @@ export const CounterStylesBlock: React.FC<CounterStylesBlockProps> = ({
       <AccordionGroup title="Number" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Number Color"
+            label={styles.numberColor ? "Number Color" : "Number Color (Inherited)"}
             value={styles.numberColor || accent}
             onChange={(v) => onUpdate('numberColor', v)}
             onReset={() => onUpdate('numberColor', '')}
@@ -146,7 +146,7 @@ export const CounterStylesBlock: React.FC<CounterStylesBlockProps> = ({
       <AccordionGroup title="Label" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Label Color"
+            label={styles.subheadingColor ? "Label Color" : "Label Color (Inherited)"}
             value={styles.subheadingColor || styles.labelColor || textColor}
             onChange={(v) => onUpdate('subheadingColor', v)}
             onReset={() => onUpdate('subheadingColor', '')}
@@ -165,13 +165,13 @@ export const CounterStylesBlock: React.FC<CounterStylesBlockProps> = ({
         <AccordionGroup title="Card" defaultOpen={false}>
           <div className="space-y-3">
             <ColorInput
-              label="Card Background"
+              label={styles.backgroundColor ? "Card Background" : "Card Background (Inherited)"}
               value={styles.backgroundColor || ''}
               onChange={(v) => onUpdate('backgroundColor', v)}
               onReset={() => onUpdate('backgroundColor', '')}
             />
             <ColorInput
-              label="Card Border"
+              label={styles.borderColor ? "Card Border" : "Card Border (Inherited)"}
               value={styles.borderColor || ''}
               onChange={(v) => onUpdate('borderColor', v)}
               onReset={() => onUpdate('borderColor', '')}

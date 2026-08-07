@@ -6,10 +6,8 @@ import {
   funkyFromTheme,
   funkyTextColors,
   mergeFunkyElement,
-  withFunkyTextStyle,
   resolveFunkyIsLight,
-  funkySurfaceColors
-} from '../../funkyTheme';
+  funkySurfaceColors, resolveFunkySectionChrome } from '../../funkyTheme';
 import { motion } from 'motion/react';
 
 interface Props {
@@ -25,8 +23,7 @@ interface Props {
 
 export const PostGridFunky: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
-  selectedElementId, readOnly = false, themeColors: tc,
-}) => {
+  selectedElementId, readOnly = false, themeColors: tc }) => {
   const { content, styles } = section;
   const s = styles as any;
   const c = content as any;
@@ -35,6 +32,7 @@ export const PostGridFunky: React.FC<Props> = ({
   const { titleColor, textColor, themeMode: funkyThemeMode, themeColors: funkyThemeCfg } = funkyTextColors(tc, isLight);
   const surface = funkySurfaceColors(isLight, (styles as any)?.backgroundColor);
   const bg = surface.bg;
+  const { wrapperStyle, overlayStyle } = resolveFunkySectionChrome(styles, isLight);
   const padT = s.paddingTop ?? 'pt-12 sm:pt-16';
   const padB = s.paddingBottom ?? 'pb-12 sm:pb-16';
   const padX = s.paddingX ?? 'px-4 sm:px-6';
@@ -44,10 +42,7 @@ export const PostGridFunky: React.FC<Props> = ({
   const titleEl = mergeFunkyElement(section, `${section.id}-cw-postgrid-title`, {
     id: `${section.id}-cw-postgrid-title`, type: 'heading',
     content: { text: c.title || 'Latest posts', htmlTag: 'h2' },
-    style: { color: titleColor, fontSize: 'clamp(1.6rem, 3.5vw, 2.6rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-  }, { preferFallbackText: live });
-  const titleElPainted: WebsiteElement = { ...titleEl, style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) } };
-
+    style: { fontSize: 'clamp(1.6rem, 3.5vw, 2.6rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display } }, { preferFallbackText: live });
   const items: any[] = Array.isArray(c.items) && c.items.length
     ? c.items
     : [
@@ -60,40 +55,32 @@ export const PostGridFunky: React.FC<Props> = ({
   const lightStyles = { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor };
   const passThrough = {
     onTextEdit, onElementUpdate: onElementUpdate || (() => {}), onElementSelect,
-    selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
-  } as const;
+    selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors } as const;
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...wrapperStyle }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
+      {overlayStyle ? (
+        <div className="absolute inset-0 pointer-events-none z-[1]" style={overlayStyle} />
+      ) : null}
       <div className={`max-w-7xl mx-auto ${padX} ${padT} ${padB}`}>
-        <div className="mb-8"><ElementsSection section={{ ...section, styles: lightStyles, elements: [titleElPainted] }} {...passThrough} /></div>
+        <div className="mb-8"><ElementsSection section={{ ...section, styles: lightStyles, elements: [titleEl] }} {...passThrough} /></div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {items.map((item, i) => {
             const itemTitle = mergeFunkyElement(section, `${section.id}-cw-postgrid-item-${i}-title`, {
               id: `${section.id}-cw-postgrid-item-${i}-title`, type: 'heading',
               content: { text: item.title || item.name || 'Item', htmlTag: 'h3' },
-              style: { color: titleColor, fontSize: '1.15rem', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-            }, { preferFallbackText: live });
+              style: { fontSize: '1.15rem', fontWeight: '800', fontFamily: FUNKY.fonts.display } }, { preferFallbackText: live });
             const itemDesc = mergeFunkyElement(section, `${section.id}-cw-postgrid-item-${i}-desc`, {
               id: `${section.id}-cw-postgrid-item-${i}-desc`, type: 'text',
               content: { text: item.description || item.subtitle || item.tag || '' },
-              style: { color: textColor, fontFamily: FUNKY.fonts.body },
-            }, { preferFallbackText: live });
-            const itemTitlePainted: WebsiteElement = {
-              ...itemTitle,
-              style: { ...withFunkyTextStyle(itemTitle.style as any, titleColor, isLight) },
-            };
-            const itemDescPainted: WebsiteElement = {
-              ...itemDesc,
-              style: { ...withFunkyTextStyle(itemDesc.style as any, textColor, isLight) },
-            };
+              style: { fontFamily: FUNKY.fonts.body } }, { preferFallbackText: live });
             const href = String(item.link || item.href || '').trim();
             const inner = (
               <>
                 {item.image ? <img src={item.image} alt="" className="w-full h-40 object-cover rounded-xl mb-3" style={{ border: `2px solid ${f.ink}` }} /> : null}
-                <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemTitlePainted] }} {...passThrough} />
-                <div className="mt-2"><ElementsSection section={{ ...section, styles: lightStyles, elements: [itemDescPainted] }} {...passThrough} /></div>
+                <ElementsSection section={{ ...section, styles: lightStyles, elements: [itemTitle] }} {...passThrough} />
+                <div className="mt-2"><ElementsSection section={{ ...section, styles: lightStyles, elements: [itemDesc] }} {...passThrough} /></div>
               </>
             );
             return (

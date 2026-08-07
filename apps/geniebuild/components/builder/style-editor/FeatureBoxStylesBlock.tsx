@@ -405,7 +405,7 @@ export const FeatureBoxStylesBlock: React.FC<FeatureBoxStylesBlockProps> = ({ st
               onChange={(v: string) => onUpdate('titleFontStyle', v)}
             />
             <NumericUnitInput label="Letter Spacing" value={styles.titleLetterSpacing || ''} onChange={(v) => onUpdate('titleLetterSpacing', v)} placeholder="0.05em" units={['em', 'px', 'rem']} step={0.01} min={-0.5} max={1} />
-            <ColorInput label="Color" value={styles.titleColor || ''} onChange={(v) => onUpdate('titleColor', v)} onReset={() => onUpdate('titleColor', '')} />
+            <ColorInput label={styles.titleColor ? 'Color' : 'Color (Inherited)'} value={styles.titleColor || ''} onChange={(v) => onUpdate('titleColor', v)} onReset={() => onUpdate('titleColor', '')} />
           </div>
           <div className="pt-4 border-t border-white/5">
             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Description</h4>
@@ -438,7 +438,7 @@ export const FeatureBoxStylesBlock: React.FC<FeatureBoxStylesBlockProps> = ({ st
               onChange={(v: string) => onUpdate('descriptionFontStyle', v)}
             />
             <NumericUnitInput label="Letter Spacing" value={styles.descriptionLetterSpacing || ''} onChange={(v) => onUpdate('descriptionLetterSpacing', v)} placeholder="0" units={['em', 'px', 'rem']} step={0.01} min={-0.5} max={1} />
-            <ColorInput label="Color" value={styles.descriptionColor || ''} onChange={(v) => onUpdate('descriptionColor', v)} onReset={() => onUpdate('descriptionColor', '')} />
+            <ColorInput label={styles.descriptionColor ? 'Color' : 'Color (Inherited)'} value={styles.descriptionColor || ''} onChange={(v) => onUpdate('descriptionColor', v)} onReset={() => onUpdate('descriptionColor', '')} />
           </div>
         </div>
       </AccordionGroup>
@@ -447,8 +447,8 @@ export const FeatureBoxStylesBlock: React.FC<FeatureBoxStylesBlockProps> = ({ st
         <div className="space-y-4">
           <TextInput label="Icon Size" value={styles.iconSize || ''} onChange={(v) => onUpdate('iconSize', v)} placeholder="1.25rem" />
           <TextInput label="Container Size" value={styles.iconContainerSize || ''} onChange={(v) => onUpdate('iconContainerSize', v)} placeholder="3rem" />
-          <ColorInput label="Icon Color" value={styles.iconColor || ''} onChange={(v) => onUpdate('iconColor', v)} onReset={() => onUpdate('iconColor', '')} />
-          <ColorInput label="Icon Background" value={styles.iconBackgroundColor || ''} onChange={(v) => onUpdate('iconBackgroundColor', v)} onReset={() => onUpdate('iconBackgroundColor', '')} />
+            <ColorInput label={styles.iconColor ? 'Icon Color' : 'Icon Color (Inherited)'} value={styles.iconColor || ''} onChange={(v) => onUpdate('iconColor', v)} onReset={() => onUpdate('iconColor', '')} />
+          <ColorInput label={styles.iconBackgroundColor ? 'Icon Background' : 'Icon Background (Inherited)'} value={styles.iconBackgroundColor || ''} onChange={(v) => onUpdate('iconBackgroundColor', v)} onReset={() => onUpdate('iconBackgroundColor', '')} />
 
           <div className="pt-2 border-t border-white/5">
             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Icon Border</h4>

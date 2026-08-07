@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { mergeDynamicElement } from '../mergeDynamicElement';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -55,7 +57,9 @@ export const HeaderPlumbing: React.FC<Props> = ({
       return norm === dark || norm === light;
     });
   })();
-  const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const defaultSurface = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface });
+  const bg = bgStyle.backgroundColor || defaultSurface;
 
   const sticky: boolean = c.sticky !== false;
   const [scrolled, setScrolled] = useState(false);
@@ -112,37 +116,26 @@ export const HeaderPlumbing: React.FC<Props> = ({
   const menuFromSection =
     (Array.isArray(c.menuItems) && c.menuItems.length ? c.menuItems : null) ||
     (Array.isArray(c.navItems) && c.navItems.length ? c.navItems : null);
-  const baseNavEl = section.elements?.find(e => e.id === `${section.id}-hp-nav`);
+  const navId = `${section.id}-hp-nav`;
+  const baseNavEl = section.elements?.find(e => e.id === navId);
   const navItemsFromEl = (baseNavEl?.content as any)?.items;
   const resolvedNavItems =
     menuFromSection ||
     (Array.isArray(navItemsFromEl) && navItemsFromEl.length ? navItemsFromEl : DEFAULT_NAV_ITEMS);
-  const navEl: WebsiteElement = baseNavEl
-    ? {
-        ...baseNavEl,
-        content: {
-          ...(baseNavEl.content as any),
-          items: resolvedNavItems,
-          navSources,
-        },
-      }
-    : {
-        id: `${section.id}-hp-nav`,
-        type: 'nav-menu',
-        content: { items: resolvedNavItems, navSources } as any,
-        style: {
-          orientation: 'horizontal',
-          justifyContent: 'center',
-          indicator: 'underline',
-          mobileBreakpoint: 'lg',
-          itemGap: '1.75rem',
-          itemPadding: '0.5rem 0.25rem',
-          color: titleColor,
-          hoverColor: accent,
-          fontSize: '0.9375rem',
-          fontWeight: '600',
-        } as any,
-      };
+  const navEl: WebsiteElement = resolveSectionElement(section, {
+    id: navId,
+    type: 'nav-menu',
+    content: { items: resolvedNavItems, navSources } as any,
+    style: { orientation: 'horizontal',
+      justifyContent: 'center',
+      indicator: 'underline',
+      mobileBreakpoint: 'lg',
+      itemGap: '1.75rem',
+      itemPadding: '0.5rem 0.25rem',
+      fontSize: '0.9375rem',
+      fontWeight: '600',
+    } as any,
+  });
   const phoneEl = mergeDynamicElement(
     section.elements?.find((e) => e.id === `${section.id}-hp-phone`),
     `${section.id}-hp-phone`,
@@ -153,7 +146,7 @@ export const HeaderPlumbing: React.FC<Props> = ({
       openInNewTab: false,
       textSize: 'small',
     },
-    { color: titleColor, fontWeight: '700', fontSize: '0.9375rem' }
+    { fontWeight: '700', fontSize: '0.9375rem' }
   );
   const btnEl = mergeDynamicElement(
     section.elements?.find((e) => e.id === `${section.id}-hp-cta`),
@@ -167,8 +160,6 @@ export const HeaderPlumbing: React.FC<Props> = ({
       openInNewTab: false,
     },
     {
-      backgroundColor: btnBg,
-      color: btnText,
       padding: '0.625rem 1.25rem',
       borderRadius: '0.5rem',
       fontWeight: '700',
@@ -193,7 +184,7 @@ export const HeaderPlumbing: React.FC<Props> = ({
   return (
     <header
       className={`w-full transition-all duration-200 relative z-[100] ${sticky ? 'sticky top-0' : ''} ${scrolled ? 'shadow-sm' : ''}`}
-      style={{ backgroundColor: bg, borderBottom: scrolled ? 'none' : `1px solid ${cardBorder}` }}
+      style={{ ...bgStyle, backgroundColor: bgStyle.backgroundColor || bg, borderBottom: scrolled ? 'none' : `1px solid ${cardBorder}` }}
     >
       <div className={`${innerClass} ${verticalPad} flex items-center gap-4`} style={innerStyle}>
         <div className="flex-none relative group/logo">

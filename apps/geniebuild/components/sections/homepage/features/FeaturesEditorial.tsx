@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -96,11 +97,11 @@ export const FeaturesEditorial: React.FC<Props> = ({
 
   // Professional/restrained: badge is neutral muted grey (not accent), so the
   // eyebrow reads as a quiet label rather than another spot of colour.
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fp-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Why choose us', iconPosition: 'left' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'center' as any, backgroundColor: 'transparent', color: mutedColor },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'center' as any},
+  });
 
   // Professional/restrained: heading stays fully neutral (no accent-coloured
   // last word). Colour is reserved for buttons + a couple of key spots only.
@@ -108,22 +109,22 @@ export const FeaturesEditorial: React.FC<Props> = ({
     const id = `${section.id}-fp-title`;
     const existing = section.elements?.find(e => e.id === id);
     const src = (existing?.content as any)?.text || content.title || "Everything you'd want from a local team.";
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'center' as any },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'center' as any },
+    });
     if (existing) {
       return { ...existing, type: 'heading', content: { ...(existing.content || {}), htmlTag: (existing.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), ...(existing.style as any) } } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fp-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fp-desc`, type: 'text',
     content: { text: content.subtitle || 'No call centres, no surprise invoices and no waiting around all day. Here is exactly what you get when you book with us.', textSize: 'large' },
-    style: { color: textColor, textAlign: 'center' as any, maxWidth: '640px', lineHeight: '1.75', margin: '0 auto' },
-  };
+    style: { textAlign: 'center' as any, maxWidth: '640px', lineHeight: '1.75', margin: '0 auto' },
+  });
 
   const themeColors = {
     ...tc, titleColor, textColor, accentColor: accent, iconColor: accent,
@@ -159,9 +160,8 @@ export const FeaturesEditorial: React.FC<Props> = ({
     const defaultStyle: any = {
       iconContainerSize: '2.75rem', iconBorderRadius: '0.75rem',
       titleFontSize: '1.2rem', titleFontWeight: '700', descriptionFontSize: '0.9rem',
-      borderWidth: '0', backgroundColor: 'transparent', padding: '0',
-      textAlign: 'left' as any, titleAlign: 'left' as any, descriptionAlign: 'left' as any,
-    };
+      borderWidth: '0',  padding: '0',
+      textAlign: 'left' as any, titleAlign: 'left' as any, descriptionAlign: 'left' as any};
     if (existing) {
       return { ...existing, content: { ...defaultContent, ...(existing.content || {}), ...(hideAllIcons ? { icon: 'none' } : {}) }, style: { ...defaultStyle, ...(existing.style as any) } };
     }

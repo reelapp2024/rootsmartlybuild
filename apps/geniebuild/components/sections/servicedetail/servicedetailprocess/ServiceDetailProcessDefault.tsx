@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -55,6 +57,7 @@ export const ServiceDetailProcessDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   // Padding
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
@@ -139,17 +142,13 @@ export const ServiceDetailProcessDefault: React.FC<Props> = ({
   };
 
   // Badge — uses theme accent color so it picks up palette changes.
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sdp-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sdp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Our Process', icon: 'fa-list-ol', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
-      textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
-    },
-  };
+      textAlign: 'center' as any},
+  });
 
   // Highlighted heading — last word in accent
   const titleEl: WebsiteElement = (() => {
@@ -164,11 +163,11 @@ export const ServiceDetailProcessDefault: React.FC<Props> = ({
       highlightedText = words[words.length - 1];
       textBefore = words.slice(0, -1).join(' ');
     }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -183,11 +182,11 @@ export const ServiceDetailProcessDefault: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sdp-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sdp-desc`, type: 'text',
     content: { text: content.subtitle || 'Four simple steps from your call to a fully fixed plumbing system — fast, clean and professional.', textSize: 'large' },
     style: { textAlign: 'center' as any, maxWidth: '560px', margin: '0 auto', lineHeight: '1.65' },
-  };
+  });
 
   // Step number — editable text element. The circular wrapper around it lives
   // in the JSX below (visual chrome); the text itself is sidebar-editable so
@@ -199,14 +198,12 @@ export const ServiceDetailProcessDefault: React.FC<Props> = ({
     return {
       id, type: 'text',
       content: { text: String(i + 1), textSize: 'small' } as any,
-      style: {
-        fontSize: '0.75rem',
+      style: { fontSize: '0.75rem',
         fontWeight: '900',
-        color: btnText,
+        
         textAlign: 'center' as any,
         lineHeight: '1',
-        margin: 0,
-      } as any,
+        margin: 0} as any,
     };
   };
 
@@ -227,21 +224,18 @@ export const ServiceDetailProcessDefault: React.FC<Props> = ({
         subText: rawSteps[i].description,
         iconPosition: 'top',
       },
-      style: {
-        iconContainerSize: '4rem',
+      style: { iconContainerSize: '4rem',
         iconBorderRadius:  '1rem',
         titleFontSize:     '1.1rem',
         titleFontWeight:   '700',
         descriptionFontSize: '0.9rem',
         padding: '1.25rem',
-        borderWidth: '0',
-        backgroundColor: 'transparent',
-      } as any,
+        borderWidth: '0'} as any,
     };
   };
 
   return (
-    <div className={`w-full ${textAlignClass}`} style={{ backgroundColor: bg }}>
+    <div className={`w-full ${textAlignClass}`} style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
 
         {/* Header */}
@@ -358,9 +352,6 @@ export const ServiceDetailProcessDefault: React.FC<Props> = ({
                     viewport={{ once: true }} transition={{ duration: 0.5 }}
                     className="min-h-[180px] rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-3 hover:scale-[1.02]"
                     style={{
-                      borderColor: `${accent}55`,
-                      backgroundColor: `${accent}05`,
-                      color: accent,
                     }}
                     title="Add a new step"
                   >

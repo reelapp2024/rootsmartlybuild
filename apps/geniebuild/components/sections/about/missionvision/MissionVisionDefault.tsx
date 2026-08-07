@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { elementFromExistingOrDna } from '../../../../elements';
 
 interface MissionVisionProps {
   section: Section;
@@ -54,6 +56,7 @@ export const MissionVisionDefault: React.FC<MissionVisionProps> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   // Padding
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
@@ -129,11 +132,11 @@ export const MissionVisionDefault: React.FC<MissionVisionProps> = ({
       highlightedText = words[words.length - 1];
       textBefore = words.slice(0, -1).join(' ');
     }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: 'clamp(1.5rem, 3vw, 2.25rem)', lineHeight: '1.2', letterSpacing: '-0.02em', textAlign: 'left' as any },
-    };
+    });
     return {
       ...base,
       content: {
@@ -151,11 +154,11 @@ export const MissionVisionDefault: React.FC<MissionVisionProps> = ({
   const lineEl = (key: string, text: string): WebsiteElement => {
     const id = `${section.id}-${key}`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'text',
       content: { text, textSize: 'large' },
       style: { lineHeight: '1.6', fontWeight: '600', fontSize: '1.125rem', textAlign: 'left' as any },
-    };
+    });
     return {
       ...base,
       content: {
@@ -173,19 +176,17 @@ export const MissionVisionDefault: React.FC<MissionVisionProps> = ({
     return {
       id, type: 'feature-box',
       content: { icon: 'fa-check', text, subText: '', iconPosition: 'left' },
-      style: {
-        iconContainerSize: '1.75rem',
+      style: { iconContainerSize: '1.75rem',
         iconBorderRadius:  '9999px',
         titleFontSize:     '0.95rem',
         titleFontWeight:   '600',
         borderWidth:       '0',
         borderRadius:      '0',
         padding:           '0.35rem 0',
-        backgroundColor:   'transparent',
+        
         textAlign:         'left' as any,
         titleAlign:        'left' as any,
-        gap:               '0.75rem',
-      } as any,
+        gap:               '0.75rem'} as any,
     };
   };
 
@@ -222,7 +223,7 @@ export const MissionVisionDefault: React.FC<MissionVisionProps> = ({
   );
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
           {renderPillar('mission', 'Our Mission', 'fa-bullseye', missionLine, missionSubs, 0)}

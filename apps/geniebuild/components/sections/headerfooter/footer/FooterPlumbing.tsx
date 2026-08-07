@@ -2,6 +2,8 @@ import React from 'react';
 import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { mergeDynamicElement } from '../mergeDynamicElement';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -56,6 +58,7 @@ export const FooterPlumbing: React.FC<Props> = ({
 
   const accent = tc?.accentColor || '#E11D48';
   const bg = s.backgroundColor || tc?.backgroundColor || '#0A0F14';
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
   const titleColor = tc?.titleColor || '#F8FAFC';
   const textColor = tc?.textColor || '#94A3B8';
   const dividerCol = tc?.cardBorderColor || tc?.borderColor || 'rgba(255,255,255,0.08)';
@@ -139,7 +142,7 @@ export const FooterPlumbing: React.FC<Props> = ({
     `${section.id}-fp-tagline`,
     'text',
     { text: c.tagline || '', textSize: 'small' },
-    { color: textColor, fontSize: '0.875rem', lineHeight: '1.6', maxWidth: '320px', textAlign: 'left' }
+    {  fontSize: '0.875rem', lineHeight: '1.6', maxWidth: '320px', textAlign: 'left' }
   );
   const SOCIAL_ICON_BY_PLATFORM: Record<string, string> = {
     facebook: 'fa-brands fa-facebook',
@@ -183,14 +186,13 @@ export const FooterPlumbing: React.FC<Props> = ({
     });
   const socialStripStyle = {
     gap: '10px',
-    iconColor: accent,
-    iconBackgroundColor: `${accent}1F`,
-    titleColor: 'transparent',
+    
+    
+    
     iconContainerSize: '36px',
     iconSize: '14px',
     titleFontSize: '0',
-    justifyContent: 'flex-start',
-  } as any;
+    justifyContent: 'flex-start'} as any;
   const socialEl = mergeDynamicElement(
     section.elements?.find((e) => e.id === `${section.id}-fp-social`),
     `${section.id}-fp-social`,
@@ -200,11 +202,11 @@ export const FooterPlumbing: React.FC<Props> = ({
   );
 
   const makeColHeading = (id: string, defaultText: string): WebsiteElement =>
-    section.elements?.find(e => e.id === id) || {
+    resolveSectionElement(section, {
       id, type: 'heading',
       content: { text: defaultText, htmlTag: 'h3' as any } as any,
       style: { fontSize: '0.75rem', fontWeight: '800', letterSpacing: '0.14em', textTransform: 'uppercase' as any, lineHeight: '1', textAlign: 'left' as any } as any,
-    };
+    });
 
   const quickHeadingEl = makeColHeading(`${section.id}-fp-quick-h`, c.quickTitle || 'Quick Links');
   const servicesHeadingEl = makeColHeading(`${section.id}-fp-services-h`, c.servicesTitle || 'Services');
@@ -214,9 +216,7 @@ export const FooterPlumbing: React.FC<Props> = ({
     listType: 'none' as const,
     itemGap: '0.625rem',
     indent: '0px',
-    color: textColor,
     fontSize: '0.875rem',
-    hoverColor: accent,
     textAlign: 'left' as const,
   };
 
@@ -273,11 +273,8 @@ export const FooterPlumbing: React.FC<Props> = ({
       listType: 'none',
       itemGap: '0.625rem',
       indent: '0px',
-      color: textColor,
       fontSize: '0.875rem',
-      hoverColor: accent,
-      textAlign: 'left',
-    }
+      textAlign: 'left' }
   );
 
   const phoneEl = mergeDynamicElement(
@@ -290,28 +287,27 @@ export const FooterPlumbing: React.FC<Props> = ({
       openInNewTab: false,
       textSize: 'base',
     },
-    { color: titleColor, fontSize: '1rem', fontWeight: '700', textAlign: 'left' }
+    {  fontSize: '1rem', fontWeight: '700', textAlign: 'left' }
   );
 
   const contactRowStyle = {
     iconContainerSize: '2.25rem',
     iconBorderRadius: '0.625rem',
-    iconColor: accent,
-    iconBackgroundColor: `${accent}1F`,
+    
+    
     iconSize: '0.875rem',
-    backgroundColor: 'transparent',
+    
     borderWidth: '0',
     padding: '0',
     titleFontSize: '0.95rem',
     titleFontWeight: '700',
-    descriptionColor: textColor,
+    
     descriptionFontSize: '0.8125rem',
     descriptionFontWeight: '500',
     textAlign: 'left',
     titleAlign: 'left',
     descriptionAlign: 'left',
-    gap: '0.75rem',
-  };
+    gap: '0.75rem'};
 
   const makeContactRow = (
     elId: string,
@@ -383,7 +379,7 @@ export const FooterPlumbing: React.FC<Props> = ({
     `${section.id}-fp-cta-sub`,
     'text',
     { text: c.ctaSubtitle || '', textSize: 'base' },
-    { color: textColor, fontSize: '0.9375rem', lineHeight: '1.55', textAlign: 'left' }
+    {  fontSize: '0.9375rem', lineHeight: '1.55', textAlign: 'left' }
   );
   const ctaBtnEl = mergeDynamicElement(
     section.elements?.find((e) => e.id === `${section.id}-fp-cta-btn`),
@@ -397,8 +393,6 @@ export const FooterPlumbing: React.FC<Props> = ({
       openInNewTab: false,
     },
     {
-      backgroundColor: btnBg,
-      color: btnText,
       padding: '0.875rem 1.75rem',
       borderRadius: '0.5rem',
       fontWeight: '700',
@@ -414,18 +408,18 @@ export const FooterPlumbing: React.FC<Props> = ({
       text: c.copyrightText || `© ${new Date().getFullYear()} ${c.logoText || 'Company'}. All rights reserved.`,
       textSize: 'small',
     },
-    { color: textColor, fontSize: '0.8125rem', textAlign: 'left' }
+    {  fontSize: '0.8125rem', textAlign: 'left' }
   );
-  const legalListEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fp-legal`) || {
+  const legalListEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fp-legal`, type: 'list',
     content: { items: DEFAULT_LEGAL_LINKS.map(l => ({ title: l.label, link: l.link, linkNewTab: false })) } as any,
-    style: { listType: 'none', orientation: 'horizontal', columns: 1, itemGap: '1.5rem', indent: '0px', color: textColor, fontSize: '0.8125rem', hoverColor: accent, textAlign: 'left' as any } as any,
-  };
+    style: { listType: 'none', orientation: 'horizontal', columns: 1, itemGap: '1.5rem', indent: '0px', fontSize: '0.8125rem', textAlign: 'left' as any } as any,
+  });
 
   const passthrough = { onTextEdit, onElementUpdate: onElementUpdate || (() => {}), onElementSelect, selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors };
 
   return (
-    <footer className="w-full relative" style={{ backgroundColor: bg, color: textColor, ['--gb-footer-accent' as any]: accent }}>
+    <footer className="w-full relative" style={{ ...bgStyle, backgroundColor: bgStyle.backgroundColor || bg, ['--gb-footer-accent' as any]: accent }}>
       <div className="absolute top-0 left-0 right-0 h-32 pointer-events-none opacity-50" aria-hidden style={{ background: `radial-gradient(ellipse at 50% 0%, ${accent}18 0%, transparent 60%)` }} />
       <div className={`${innerClass} relative`} style={innerStyle}>
         {showCtaBanner && (

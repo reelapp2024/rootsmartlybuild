@@ -129,7 +129,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             max={1}
           />
           <ColorInput
-            label="Text Color"
+            label={styles.quoteColor ? "Text Color" : "Text Color (Inherited)"}
             value={styles.quoteColor || ''}
             onChange={(v) => onUpdate('quoteColor', v)}
             onReset={() => onUpdate('quoteColor', '')}
@@ -175,7 +175,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             max={1}
           />
           <ColorInput
-            label="Text Color"
+            label={styles.titleColor ? "Text Color" : "Text Color (Inherited)"}
             value={styles.titleColor || ''}
             onChange={(v) => onUpdate('titleColor', v)}
             onReset={() => onUpdate('titleColor', '')}
@@ -211,7 +211,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             onChange={(v: string) => onUpdate('descriptionTextTransform', v)}
           />
           <ColorInput
-            label="Text Color"
+            label={styles.descriptionColor ? "Text Color" : "Text Color (Inherited)"}
             value={styles.descriptionColor || ''}
             onChange={(v) => onUpdate('descriptionColor', v)}
             onReset={() => onUpdate('descriptionColor', '')}
@@ -238,7 +238,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             onChange={(v) => onUpdate('serviceFontWeight', v)}
           />
           <ColorInput
-            label="Tag Color (text + border)"
+            label={styles.accentColor ? "Tag Color (text + border)" : "Tag Color (text + border) (Inherited)"}
             value={styles.accentColor || ''}
             onChange={(v) => onUpdate('accentColor', v)}
             onReset={() => onUpdate('accentColor', '')}
@@ -259,7 +259,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             placeholder="0.95rem"
           />
           <ColorInput
-            label="Star Color"
+            label={styles.starColor ? "Star Color" : "Star Color (Inherited)"}
             value={styles.starColor || ''}
             onChange={(v) => onUpdate('starColor', v)}
             onReset={() => onUpdate('starColor', '')}
@@ -320,7 +320,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             The small checkmark next to the author's name (toggle on/off in the Content tab).
           </p>
           <ColorInput
-            label="Tick Background"
+            label={styles.verifiedColor ? "Tick Background" : "Tick Background (Inherited)"}
             value={styles.verifiedColor || ''}
             onChange={(v) => onUpdate('verifiedColor', v)}
             onReset={() => onUpdate('verifiedColor', '')}
@@ -341,7 +341,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             placeholder="0.7rem"
           />
           <ColorInput
-            label="Text Color"
+            label={styles.dateColor ? "Text Color" : "Text Color (Inherited)"}
             value={styles.dateColor || ''}
             onChange={(v) => onUpdate('dateColor', v)}
             onReset={() => onUpdate('dateColor', '')}
@@ -356,7 +356,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             The "via Google / Yelp / …" badge in the footer. Choose the platform in the Content tab.
           </p>
           <ColorInput
-            label="Override Brand Color"
+            label={styles.sourceColor ? "Override Brand Color" : "Override Brand Color (Inherited)"}
             value={styles.sourceColor || ''}
             onChange={(v) => onUpdate('sourceColor', v)}
             onReset={() => onUpdate('sourceColor', '')}
@@ -374,7 +374,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             The green "Verified Customer" pill (toggle on/off in the Content tab).
           </p>
           <ColorInput
-            label="Pill Color"
+            label={styles.verifiedCustomerColor ? "Pill Color" : "Pill Color (Inherited)"}
             value={styles.verifiedCustomerColor || ''}
             onChange={(v) => onUpdate('verifiedCustomerColor', v)}
             onReset={() => onUpdate('verifiedCustomerColor', '')}
@@ -395,7 +395,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             placeholder="0.7rem"
           />
           <ColorInput
-            label="Text Color"
+            label={styles.helpfulColor ? "Text Color" : "Text Color (Inherited)"}
             value={styles.helpfulColor || ''}
             onChange={(v) => onUpdate('helpfulColor', v)}
             onReset={() => onUpdate('helpfulColor', '')}
@@ -410,13 +410,13 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             The per-criterion rating row (Quality / Value / Speed). Add criteria in the Content tab.
           </p>
           <ColorInput
-            label="Chip Background"
+            label={styles.criteriaBgColor ? "Chip Background" : "Chip Background (Inherited)"}
             value={styles.criteriaBgColor || ''}
             onChange={(v) => onUpdate('criteriaBgColor', v)}
             onReset={() => onUpdate('criteriaBgColor', '')}
           />
           <ColorInput
-            label="Label Color"
+            label={styles.criteriaLabelColor ? "Label Color" : "Label Color (Inherited)"}
             value={styles.criteriaLabelColor || ''}
             onChange={(v) => onUpdate('criteriaLabelColor', v)}
             onReset={() => onUpdate('criteriaLabelColor', '')}
@@ -431,25 +431,25 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             The nested response box below the quote (enable in the Content tab).
           </p>
           <ColorInput
-            label="Reply Background"
+            label={styles.replyBgColor ? "Reply Background" : "Reply Background (Inherited)"}
             value={styles.replyBgColor || ''}
             onChange={(v) => onUpdate('replyBgColor', v)}
             onReset={() => onUpdate('replyBgColor', '')}
           />
           <ColorInput
-            label="Reply Stripe"
+            label={styles.replyStripeColor ? "Reply Stripe" : "Reply Stripe (Inherited)"}
             value={styles.replyStripeColor || ''}
             onChange={(v) => onUpdate('replyStripeColor', v)}
             onReset={() => onUpdate('replyStripeColor', '')}
           />
           <ColorInput
-            label="Reply Author Color"
+            label={styles.replyAuthorColor ? "Reply Author Color" : "Reply Author Color (Inherited)"}
             value={styles.replyAuthorColor || ''}
             onChange={(v) => onUpdate('replyAuthorColor', v)}
             onReset={() => onUpdate('replyAuthorColor', '')}
           />
           <ColorInput
-            label="Reply Text Color"
+            label={styles.replyTextColor ? "Reply Text Color" : "Reply Text Color (Inherited)"}
             value={styles.replyTextColor || ''}
             onChange={(v) => onUpdate('replyTextColor', v)}
             onReset={() => onUpdate('replyTextColor', '')}
@@ -470,7 +470,7 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
             placeholder="4px"
           />
           <ColorInput
-            label="Stripe Color"
+            label={styles.accentStripeColor ? "Stripe Color" : "Stripe Color (Inherited)"}
             value={styles.accentStripeColor || ''}
             onChange={(v) => onUpdate('accentStripeColor', v)}
             onReset={() => onUpdate('accentStripeColor', '')}
@@ -485,13 +485,13 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
       <AccordionGroup title="Card" defaultOpen={false}>
         <div className="space-y-4">
           <ColorInput
-            label="Background Color"
+            label={styles.backgroundColor ? "Background Color" : "Background Color (Inherited)"}
             value={styles.backgroundColor || ''}
             onChange={(v) => onUpdate('backgroundColor', v)}
             onReset={() => onUpdate('backgroundColor', '')}
           />
           <ColorInput
-            label="Border Color"
+            label={styles.borderColor ? "Border Color" : "Border Color (Inherited)"}
             value={styles.borderColor || ''}
             onChange={(v) => onUpdate('borderColor', v)}
             onReset={() => onUpdate('borderColor', '')}

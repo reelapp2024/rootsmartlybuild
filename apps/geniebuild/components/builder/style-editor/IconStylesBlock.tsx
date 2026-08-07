@@ -127,7 +127,7 @@ export const IconStylesBlock: React.FC<IconStylesBlockProps> = ({
       <AccordionGroup title="Icon" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Icon Color"
+            label={styles.iconColor ? "Icon Color" : "Icon Color (Inherited)"}
             value={styles.iconColor || styles.color || accent}
             onChange={(v) => onUpdate('iconColor', v)}
             onReset={() => onUpdate('iconColor', '')}
@@ -141,7 +141,7 @@ export const IconStylesBlock: React.FC<IconStylesBlockProps> = ({
           {currentShape !== 'none' && (
             <>
               <ColorInput
-                label="Container Background"
+                label={styles.iconBackgroundColor ? "Container Background" : "Container Background (Inherited)"}
                 value={styles.iconBackgroundColor || ''}
                 onChange={(v) => onUpdate('iconBackgroundColor', v)}
                 onReset={() => onUpdate('iconBackgroundColor', '')}
@@ -190,7 +190,7 @@ export const IconStylesBlock: React.FC<IconStylesBlockProps> = ({
                   max={20}
                 />
                 <ColorInput
-                  label="Border Color"
+                  label={styles.iconBorderColor ? "Border Color" : "Border Color (Inherited)"}
                   value={styles.iconBorderColor || ''}
                   onChange={(v) => onUpdate('iconBorderColor', v)}
                   onReset={() => onUpdate('iconBorderColor', '')}

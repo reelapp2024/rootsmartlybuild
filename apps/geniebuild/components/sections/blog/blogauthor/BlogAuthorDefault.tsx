@@ -4,6 +4,7 @@ import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
 import { toAbsoluteMediaUrl, extractMediaUrl } from '../../../../config';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
 import {
   authorIconClassName,
   coerceAuthorLinks,
@@ -11,6 +12,7 @@ import {
   iconForAuthorLabel,
   type BlogAuthorLink,
 } from '../../../../lib/authorApi';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -63,6 +65,7 @@ export const BlogAuthorDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#F8FAFC' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop ?? 'pt-8 sm:pt-10';
@@ -171,34 +174,34 @@ export const BlogAuthorDefault: React.FC<Props> = ({
     themeColors,
   } as const;
 
-  const nameEl: WebsiteElement = section.elements?.find((e) => e.id === `${section.id}-au-name`) || {
+  const nameEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-au-name`,
     type: 'heading',
     content: { text: name, htmlTag: 'h3' },
     style: { fontWeight: '800', fontSize: '1.25rem', textAlign: 'left' as any },
-  };
+  });
   const nameElResolved: WebsiteElement = {
     ...nameEl,
     content: { ...(nameEl.content || {}), text: name },
   };
 
-  const roleEl: WebsiteElement = section.elements?.find((e) => e.id === `${section.id}-au-role`) || {
+  const roleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-au-role`,
     type: 'text',
     content: { text: role, textSize: 'base' },
-    style: { color: accent, fontWeight: '600', fontSize: '0.85rem', textAlign: 'left' as any },
-  };
+    style: { fontWeight: '600', fontSize: '0.85rem', textAlign: 'left' as any },
+  });
   const roleElResolved: WebsiteElement = {
     ...roleEl,
     content: { ...(roleEl.content || {}), text: role },
   };
 
-  const bioEl: WebsiteElement = section.elements?.find((e) => e.id === `${section.id}-au-bio`) || {
+  const bioEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-au-bio`,
     type: 'text',
     content: { text: bio, textSize: 'base' },
     style: { lineHeight: '1.6', textAlign: 'left' as any },
-  };
+  });
   const bioElResolved: WebsiteElement = {
     ...bioEl,
     content: { ...(bioEl.content || {}), text: bio },
@@ -209,7 +212,7 @@ export const BlogAuthorDefault: React.FC<Props> = ({
   }
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -218,7 +221,6 @@ export const BlogAuthorDefault: React.FC<Props> = ({
           transition={{ duration: 0.5 }}
           className="rounded-2xl p-6 sm:p-7 flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left"
           style={{
-            backgroundColor: cardBg,
             border: `1px solid ${cardBorder}`,
             boxShadow: `0 10px 30px -20px ${accent}30`,
           }}

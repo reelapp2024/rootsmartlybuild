@@ -100,8 +100,8 @@ export const ButtonStylesBlock: React.FC<ButtonStylesBlockProps> = ({ styles, on
           <p className="text-[10px] text-white/40 leading-relaxed -mt-1">
             Designs use the theme accent automatically. Override colors below anytime.
           </p>
-          <ColorInput label="Background Color" value={styles.backgroundColor || ''} onChange={(v) => onUpdate('backgroundColor', v)} onReset={() => onUpdate('backgroundColor', '')} />
-          <ColorInput label="Text Color" value={styles.color || ''} onChange={(v) => onUpdate('color', v)} onReset={() => onUpdate('color', '')} />
+          <ColorInput label={styles.backgroundColor ? 'Background Color' : 'Background Color (Inherited)'} value={styles.backgroundColor || ''} onChange={(v) => onUpdate('backgroundColor', v)} onReset={() => onUpdate('backgroundColor', '')} />
+          <ColorInput label={styles.color ? 'Text Color' : 'Text Color (Inherited)'} value={styles.color || ''} onChange={(v) => onUpdate('color', v)} onReset={() => onUpdate('color', '')} />
         </div>
       </AccordionGroup>
 

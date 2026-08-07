@@ -52,13 +52,13 @@ export const ProgressBarStylesBlock: React.FC<ProgressBarStylesBlockProps> = ({
       <AccordionGroup title="Bar" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Fill Color"
+            label={styles.fillColor ? "Fill Color" : "Fill Color (Inherited)"}
             value={styles.fillColor || accent}
             onChange={(v) => onUpdate('fillColor', v)}
             onReset={() => onUpdate('fillColor', '')}
           />
           <ColorInput
-            label="Track Color"
+            label={styles.trackColor ? "Track Color" : "Track Color (Inherited)"}
             value={styles.trackColor || ''}
             onChange={(v) => onUpdate('trackColor', v)}
             onReset={() => onUpdate('trackColor', '')}
@@ -115,7 +115,7 @@ export const ProgressBarStylesBlock: React.FC<ProgressBarStylesBlockProps> = ({
           />
           {labelPos !== 'inside' && (
             <ColorInput
-              label="Label Color"
+              label={styles.labelColor ? "Label Color" : "Label Color (Inherited)"}
               value={styles.labelColor || textCol}
               onChange={(v) => onUpdate('labelColor', v)}
               onReset={() => onUpdate('labelColor', '')}
@@ -123,7 +123,7 @@ export const ProgressBarStylesBlock: React.FC<ProgressBarStylesBlockProps> = ({
           )}
           {labelPos === 'inside' && (
             <ColorInput
-              label="Inside Label Color"
+              label={styles.insideLabelColor ? "Inside Label Color" : "Inside Label Color (Inherited)"}
               value={styles.insideLabelColor || '#FFFFFF'}
               onChange={(v) => onUpdate('insideLabelColor', v)}
               onReset={() => onUpdate('insideLabelColor', '')}

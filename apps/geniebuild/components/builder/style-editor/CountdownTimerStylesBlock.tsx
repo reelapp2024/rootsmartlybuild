@@ -107,7 +107,7 @@ export const CountdownTimerStylesBlock: React.FC<CountdownTimerStylesBlockProps>
       <AccordionGroup title="Numbers" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Number Color"
+            label={styles.numberColor ? "Number Color" : "Number Color (Inherited)"}
             value={styles.numberColor || titleCol}
             onChange={(v) => onUpdate('numberColor', v)}
             onReset={() => onUpdate('numberColor', '')}
@@ -125,7 +125,7 @@ export const CountdownTimerStylesBlock: React.FC<CountdownTimerStylesBlockProps>
       <AccordionGroup title="Labels" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Label Color"
+            label={styles.labelColor ? "Label Color" : "Label Color (Inherited)"}
             value={styles.labelColor || textCol}
             onChange={(v) => onUpdate('labelColor', v)}
             onReset={() => onUpdate('labelColor', '')}
@@ -144,13 +144,13 @@ export const CountdownTimerStylesBlock: React.FC<CountdownTimerStylesBlockProps>
         <AccordionGroup title="Boxes" defaultOpen={false}>
           <div className="space-y-3">
             <ColorInput
-              label="Box Background"
+              label={styles.boxBackgroundColor ? "Box Background" : "Box Background (Inherited)"}
               value={styles.boxBackgroundColor || ''}
               onChange={(v) => onUpdate('boxBackgroundColor', v)}
               onReset={() => onUpdate('boxBackgroundColor', '')}
             />
             <ColorInput
-              label="Box Border / Accent"
+              label={styles.boxBorderColor ? "Box Border / Accent" : "Box Border / Accent (Inherited)"}
               value={styles.boxBorderColor || styles.accentColor || accent}
               onChange={(v) => onUpdate('boxBorderColor', v)}
               onReset={() => onUpdate('boxBorderColor', '')}
@@ -173,7 +173,7 @@ export const CountdownTimerStylesBlock: React.FC<CountdownTimerStylesBlockProps>
       <AccordionGroup title="Heading (above timer)" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Heading Color"
+            label={styles.subheadingColor ? "Heading Color" : "Heading Color (Inherited)"}
             value={styles.subheadingColor || textCol}
             onChange={(v) => onUpdate('subheadingColor', v)}
             onReset={() => onUpdate('subheadingColor', '')}
@@ -203,7 +203,7 @@ export const CountdownTimerStylesBlock: React.FC<CountdownTimerStylesBlockProps>
       {/* ── 6. ACCENT (overall) ─────────────────────────────────────── */}
       <AccordionGroup title="Accent" defaultOpen={false}>
         <ColorInput
-          label="Accent Color (used for borders + expired message)"
+          label={styles.accentColor ? "Accent Color (used for borders + expired message)" : "Accent Color (used for borders + expired message) (Inherited)"}
           value={styles.accentColor || accent}
           onChange={(v) => onUpdate('accentColor', v)}
           onReset={() => onUpdate('accentColor', '')}

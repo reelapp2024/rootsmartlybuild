@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -92,65 +93,57 @@ export const FeaturesPlumbing: React.FC<Props> = ({
     const id = `${section.id}-fp-${feat.id}`;
     const existing = section.elements?.find(e => e.id === id);
 
-    const defaultContent: any = {
-      icon:    hideAllIcons ? 'none' : feat.icon,
-      text:    feat.title,
-      subText: feat.desc,
-      iconPosition: 'top',
-    };
-    const defaultStyle: any = {
-      iconContainerSize:   '3rem',
-      iconBorderRadius:    '0.75rem',
-      titleFontSize:       '1.05rem',
-      titleFontWeight:     '700',
-      descriptionFontSize: '0.875rem',
-      borderWidth:         '1px',
-      borderStyle:         'solid',
-      borderRadius:        '1rem',
-      padding:             '1.5rem',
+    const dna: WebsiteElement = {
+      id,
+      type: 'feature-box',
+      content: {
+        icon: hideAllIcons ? 'none' : feat.icon,
+        text: feat.title,
+        subText: feat.desc,
+        iconPosition: 'top',
+      },
+      style: { iconContainerSize: '3rem',
+        iconBorderRadius: '0.75rem',
+        titleFontSize: '1.05rem',
+        titleFontWeight: '700',
+        descriptionFontSize: '0.875rem',
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        borderRadius: '1rem',
+        padding: '1.5rem',
+      } as any,
     };
 
-    if (existing) {
-      const existingContent = (existing.content || {}) as any;
-      const existingStyle = (existing.style || {}) as any;
+    const resolved = elementFromExistingOrDna(existing, dna);
+    if (hideAllIcons) {
       return {
-        ...existing,
-        content: {
-          ...defaultContent,
-          ...existingContent,
-          ...(hideAllIcons ? { icon: 'none' } : {}),
-        },
-        style: {
-          ...defaultStyle,
-          ...existingStyle,
-        } as any,
+        ...resolved,
+        content: { ...(resolved.content as any), icon: 'none' },
       };
     }
-    return { id, type: 'feature-box', content: defaultContent, style: defaultStyle as any };
+    return resolved;
   };
 
-  const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fp-title`) || {
+  const titleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fp-title`, type: 'heading',
     content: {
       text: content.title || 'Why Homeowners Trust Us',
       htmlTag: 'h2',
     },
-    // Neutral heading: no split highlight, and highlightColor pinned to titleColor
-    // so the renderer's accent default can never colour a word.
-    style: { color: titleColor, highlightColor: titleColor, textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15' },
-  };
+    // Neutral heading: no split highlight. Theme owns color (DNA has no color keys).
+    style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15' },
+  });
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fp-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fp-desc`, type: 'text',
     content: { text: content.subtitle || 'We combine speed, expertise and transparency to deliver plumbing services you can rely on.', textSize: 'large' },
-    style: { color: textColor, textAlign: 'center' as any, maxWidth: '560px', margin: '0 auto' },
-  };
+    style: { textAlign: 'center' as any, maxWidth: '560px', margin: '0 auto' },
+  });
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fp-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Our Features', icon: 'fa-wrench', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem',
+    style: { fontSize: '0.72rem',
       fontWeight: '700',
       letterSpacing: '0.12em',
       textTransform: 'uppercase' as any,
@@ -158,10 +151,10 @@ export const FeaturesPlumbing: React.FC<Props> = ({
       borderRadius: '9999px',
       textAlign: 'center' as any,
       // Denser tinted accent bg (~25% alpha) so badge has more presence on white
-      backgroundColor: `${accent}40`,
-      color: accent,
+      
+      
     },
-  };
+  });
 
   // Feature-box tokens from active theme — forwarded to ElementsSection via top-level aliases
   const themeColors = {
@@ -292,9 +285,6 @@ export const FeaturesPlumbing: React.FC<Props> = ({
               viewport={{ once: true }} transition={{ duration: 0.5 }}
               className="min-h-[180px] rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-3 group/add"
               style={{
-                borderColor: `${accent}33`,
-                backgroundColor: `${accent}05`,
-                color: accent,
               }}
               aria-label="Add feature"
             >

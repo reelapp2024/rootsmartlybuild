@@ -100,13 +100,13 @@ export const TrustStripStylesBlock: React.FC<TrustStripStylesBlockProps> = ({
       {/* ── 2. ICON ───────────────────────────────────────────────────── */}
       <AccordionGroup title="Icon" defaultOpen={true}>
         <ColorInput
-          label="Icon Color"
+          label={styles.iconColor ? "Icon Color" : "Icon Color (Inherited)"}
           value={styles.iconColor || accent}
           onChange={(v) => onUpdate('iconColor', v)}
           onReset={() => onUpdate('iconColor', '')}
         />
         <ColorInput
-          label="Icon Background"
+          label={styles.iconBackgroundColor ? "Icon Background" : "Icon Background (Inherited)"}
           value={styles.iconBackgroundColor || `${accent}25`}
           onChange={(v) => onUpdate('iconBackgroundColor', v)}
           onReset={() => onUpdate('iconBackgroundColor', '')}
@@ -140,7 +140,7 @@ export const TrustStripStylesBlock: React.FC<TrustStripStylesBlockProps> = ({
       {/* ── 3. LABEL ──────────────────────────────────────────────────── */}
       <AccordionGroup title="Label" defaultOpen={true}>
         <ColorInput
-          label="Label Color"
+          label={styles.titleColor ? "Label Color" : "Label Color (Inherited)"}
           value={styles.titleColor || titleColor}
           onChange={(v) => onUpdate('titleColor', v)}
           onReset={() => onUpdate('titleColor', '')}

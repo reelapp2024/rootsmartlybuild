@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -46,7 +47,6 @@ function compactServiceCardBlurb(serviceTitle: string, rawDescription: string): 
   let d = String(rawDescription || '').trim();
   if (!d) return title ? `${title.charAt(0).toUpperCase() + title.slice(1)} — local installs with tidy workmanship.` : '';
   if (d.toLowerCase() === title.toLowerCase()) return `${title.charAt(0).toUpperCase() + title.slice(1)} — skilled installs and dependable support.`;
-  if (d.length > 220) return d.slice(0, 217).trimEnd() + '…';
   return d;
 }
 
@@ -163,14 +163,14 @@ export const ServicesPriceList: React.FC<Props> = ({
   let badgeEl: WebsiteElement = badgeFound || {
     id: `${section.id}-sp2-badge`, type: 'badge',
     content: { text: content.badgeText || 'Services', icon: 'fa-tools', iconPosition: 'left', iconSize: '0.65rem' },
-    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: cardBorder, color: mutedColor },
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any},
   };
 
   const titleFound = section.elements?.find((e) => e.id === `${section.id}-sp2-title`);
   let titleEl: WebsiteElement = titleFound || {
     id: `${section.id}-sp2-title`, type: 'heading',
     content: { text: content.title || 'Our Plumbing Services', htmlTag: 'h2' },
-    style: { textAlign: 'left' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', color: titleColor },
+    style: { textAlign: 'left' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15' },
   };
 
   const descFound = section.elements?.find((e) => e.id === `${section.id}-sp2-desc`);
@@ -233,8 +233,7 @@ export const ServicesPriceList: React.FC<Props> = ({
           ...(existing.content || {}),
           htmlTag: (existing.content as any)?.htmlTag || 'h3',
         },
-        style: {
-          fontWeight: '700',
+        style: { fontWeight: '700',
           fontSize: '1.25rem',
           lineHeight: '1.25',
           textAlign: 'left' as any,
@@ -252,36 +251,44 @@ export const ServicesPriceList: React.FC<Props> = ({
   const getDescEl = (i: number, def: { title: string; desc: string }): WebsiteElement => {
     const id = `${section.id}-sp2-svc${i}-desc`;
     const existing = section.elements?.find((e) => e.id === id);
-    const resolved = readOnly || itemsAreMaterialized ? compactServiceCardBlurb(def.title, def.desc) : def.desc;
+    // Keep full copy in content; ElementsSection applies textLimitMode display trim.
+    const fullText = compactServiceCardBlurb(def.title, def.desc);
     if (existing) {
       return {
         ...existing,
         type: 'text',
         content: {
           ...(existing.content || {}),
+          text: (existing.content as any)?.text || fullText,
           textSize: (existing.content as any)?.textSize || 'base',
+          textLimitMode: (existing.content as any)?.textLimitMode || 'words',
+          wordLimit: (existing.content as any)?.wordLimit || 40,
         },
         style: {
           textAlign: 'left' as any,
           lineHeight: '1.6',
-          color: textColor,
           ...(existing.style || {}),
         },
       };
     }
     return {
       id, type: 'text',
-      content: { text: resolved, textSize: 'base' },
-      style: { textAlign: 'left' as any, lineHeight: '1.6', color: textColor },
+      content: {
+        text: fullText,
+        textSize: 'base',
+        textLimitMode: 'words',
+        wordLimit: 40,
+      },
+      style: { textAlign: 'left' as any, lineHeight: '1.6' },
     };
   };
 
   const ctaText: string = (content as any).ctaText || '';
-  const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sp2-cta`) || {
+  const ctaBtnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sp2-cta`, type: 'cta-button',
     content: { text: ctaText || 'View All Services', link: (content as any).ctaHref || '#', buttonVariant: 'primary' },
-    style: { backgroundColor: btnBg, color: btnText, padding: '0.875rem 1.75rem', borderRadius: '0.5rem', fontWeight: '700', fontSize: '1rem' },
-  };
+    style: { padding: '0.875rem 1.75rem', borderRadius: '0.5rem', fontWeight: '700', fontSize: '1rem' },
+  });
 
   const pass = {
     onTextEdit, onElementUpdate: onElementUpdate || (() => {}), onElementSelect,
@@ -294,7 +301,7 @@ export const ServicesPriceList: React.FC<Props> = ({
       {svcModal.open && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby={`${section.id}-svc-modal-title`}>
           <button type="button" className="absolute inset-0 bg-black/50 border-0 cursor-default" aria-label="Close dialog backdrop" onClick={() => setSvcModal((m) => ({ ...m, open: false }))} />
-          <div className="relative z-[201] w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl p-6 sm:p-8 text-left" style={{ backgroundColor: cardBg, color: textColor }}>
+          <div className="relative z-[201] w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl p-6 sm:p-8 text-left" style={{ backgroundColor: cardBg }}>
             <h3 id={`${section.id}-svc-modal-title`} className="text-xl font-extrabold mb-3" style={{ color: titleColor }}>{svcModal.title}</h3>
             {/<\s*p[\s>]|<\s*br\s*\/?>/i.test(svcModal.body) ? (
               <div className="text-sm leading-relaxed prose prose-sm max-w-none" style={{ color: textColor }} dangerouslySetInnerHTML={{ __html: svcModal.body }} />

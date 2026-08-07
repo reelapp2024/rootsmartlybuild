@@ -94,7 +94,7 @@ export const UserAvatarsStylesBlock: React.FC<UserAvatarsStylesBlockProps> = ({
             The thin ring around each avatar — usually matches the section background to "punch out" the overlap.
           </p>
           <ColorInput
-            label="Ring Color"
+            label={styles.ringColor ? "Ring Color" : "Ring Color (Inherited)"}
             value={styles.ringColor || cardBg}
             onChange={(v) => onUpdate('ringColor', v)}
             onReset={() => onUpdate('ringColor', '')}
@@ -119,13 +119,13 @@ export const UserAvatarsStylesBlock: React.FC<UserAvatarsStylesBlockProps> = ({
             "Join" / "others" wording &amp; the count number are in the Content tab. Toggle off there to hide the label entirely.
           </p>
           <ColorInput
-            label="Label Color"
+            label={styles.labelColor ? "Label Color" : "Label Color (Inherited)"}
             value={styles.labelColor || textCol}
             onChange={(v) => onUpdate('labelColor', v)}
             onReset={() => onUpdate('labelColor', '')}
           />
           <ColorInput
-            label="Number Color (e.g. 5,000+)"
+            label={styles.numberColor ? "Number Color (e.g. 5,000+)" : "Number Color (e.g. 5,000+) (Inherited)"}
             value={styles.numberColor || accent}
             onChange={(v) => onUpdate('numberColor', v)}
             onReset={() => onUpdate('numberColor', '')}

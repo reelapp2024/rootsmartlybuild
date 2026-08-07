@@ -10,6 +10,10 @@ import {
 } from '../../../utils/resolveElementTypography';
 import { useDefaultSizes } from '../state/DefaultSizesContext';
 import { useGlobalElementStyles } from '../state/GlobalElementStylesContext';
+import {
+  composeHeadingText,
+  resolveHeadingSidebarParts,
+} from '../../sections/homepage/utils/headingHighlight';
 
 type HeadingContentFormProps = TypographyContentFormProps;
 
@@ -31,15 +35,18 @@ export const HeadingContentForm: React.FC<HeadingContentFormProps> = ({
   const defaultSizesFromContext = useDefaultSizes();
   const globalElementStyles = useGlobalElementStyles();
   const c = (element.content || {}) as any;
-  const isHeroTitle = element.id.startsWith(`${section.id}-hero-title`);
-  const headingTag = (isHeroTitle
+  // Same derivation as ElementsSection heading render — never show empty fields /
+  // static placeholders while the canvas is painting from `content.text`.
+  const parts = resolveHeadingSidebarParts(c);
+  const isLegacyHeroTitle = element.id.startsWith(`${section.id}-hero-title`);
+  const headingTag = (isLegacyHeroTitle
     ? (section.styles.titleHeadingTag || 'h1')
     : (element.content?.htmlTag || 'h2')) as HeadingTag;
 
   const resolvedSizeStr = resolveHeadingFontSize({
     elementStyle: element.style as Record<string, unknown>,
     sectionStyles: section.styles as Record<string, unknown>,
-    isHeroTitle,
+    isHeroTitle: isLegacyHeroTitle,
     headingTag,
     globalHeadings: globalElementStyles?.headings,
     defaultSizes: defaultSizesFromContext,
@@ -47,25 +54,41 @@ export const HeadingContentForm: React.FC<HeadingContentFormProps> = ({
 
   const currentNum = parseFontSizeToRem(resolvedSizeStr);
 
+  const patchHeadingParts = (patch: {
+    textBefore?: string;
+    highlightedText?: string;
+    textAfter?: string;
+  }) => {
+    const nextBefore = patch.textBefore !== undefined ? patch.textBefore : parts.textBefore;
+    const nextHighlight = patch.highlightedText !== undefined ? patch.highlightedText : parts.highlightedText;
+    const nextAfter = patch.textAfter !== undefined ? patch.textAfter : parts.textAfter;
+    onContentUpdate({
+      textBefore: nextBefore,
+      highlightedText: nextHighlight,
+      textAfter: nextAfter,
+      text: composeHeadingText(nextBefore, nextHighlight, nextAfter),
+    });
+  };
+
   return (
     <>
       <div className="space-y-3">
         <TextInput
           label="Heading Start"
-          value={element.content?.textBefore || ''}
-          onChange={(v) => onContentUpdate({ textBefore: v })}
+          value={parts.textBefore}
+          onChange={(v) => patchHeadingParts({ textBefore: v })}
           placeholder="Expert"
         />
         <TextInput
           label="Highlighted Word"
-          value={element.content?.highlightedText || ''}
-          onChange={(v) => onContentUpdate({ highlightedText: v })}
+          value={parts.highlightedText}
+          onChange={(v) => patchHeadingParts({ highlightedText: v })}
           placeholder="plumbing"
         />
         <TextInput
           label="Heading End"
-          value={element.content?.textAfter || ''}
-          onChange={(v) => onContentUpdate({ textAfter: v })}
+          value={parts.textAfter}
+          onChange={(v) => patchHeadingParts({ textAfter: v })}
           placeholder="solution for me"
         />
       </div>
@@ -106,7 +129,7 @@ export const HeadingContentForm: React.FC<HeadingContentFormProps> = ({
           const clearStaleHighlight =
             !!secondaryColor && !!titleColor && secondaryColor === titleColor;
 
-          if (isHeroTitle) {
+          if (isLegacyHeroTitle) {
             onSectionStyleUpdate('titleHeadingTag', targetTag);
             onSectionStyleUpdate('titleSize', '');
             if (clearStaleHighlight) {
@@ -130,7 +153,7 @@ export const HeadingContentForm: React.FC<HeadingContentFormProps> = ({
         unit="rem"
         onChange={(v) => {
           const newSize = `${v}rem`;
-          if (isHeroTitle) {
+          if (isLegacyHeroTitle) {
             onSectionStyleUpdate('titleSize', newSize);
           } else {
             onStyleUpdate({ fontSize: newSize });
@@ -302,11 +325,87 @@ export const TextContentForm: React.FC<TextContentFormProps> = ({
           { label: 'XL', value: 'xl' },
         ]}
         onChange={(v) => {
-          onContentUpdate({ textSize: v as 'base' | 'small' | 'large' | 'xl' });
-          // Prevent stale custom fontSize from overriding selected preset size.
-          onStyleUpdate({ fontSize: '' });
+          // Atomic: set preset + clear custom fontSize so DNA/stale overrides cannot win.
+          onContentUpdate({ textSize: v as 'base' | 'small' | 'large' | 'xl', __clearFontSize: true } as any);
         }}
       />
+
+      {/* Visible length — full text stays stored; display is clamped / sentence-trimmed. */}
+      {(() => {
+        const mode = (c.textLimitMode as string) || (
+          Number(c.maxLines) > 0 ? 'lines' : Number(c.wordLimit) > 0 ? 'words' : 'none'
+        );
+        const maxLines = Math.min(12, Math.max(1, Number(c.maxLines) || 3));
+        const wordLimit = Math.min(100, Math.max(20, Number(c.wordLimit) || 40));
+        return (
+          <div className="space-y-3 mt-3">
+            <SelectInput
+              label="Show Text"
+              value={mode}
+              options={[
+                { label: 'Full text', value: 'none' },
+                { label: 'Limit by lines', value: 'lines' },
+                { label: 'Limit by words (to sentence)', value: 'words' },
+              ]}
+              onChange={(v) => {
+                if (v === 'none') {
+                  onContentUpdate({ textLimitMode: 'none', maxLines: 0, wordLimit: 0 } as any);
+                  return;
+                }
+                if (v === 'lines') {
+                  onContentUpdate({
+                    textLimitMode: 'lines',
+                    maxLines: Number(c.maxLines) > 0 ? Number(c.maxLines) : 3,
+                    wordLimit: 0,
+                  } as any);
+                  return;
+                }
+                onContentUpdate({
+                  textLimitMode: 'words',
+                  wordLimit: Number(c.wordLimit) >= 20 ? Number(c.wordLimit) : 40,
+                  maxLines: 0,
+                } as any);
+              }}
+            />
+            {mode === 'lines' && (
+              <SelectInput
+                label="Max Lines"
+                value={String(maxLines)}
+                options={[1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({
+                  label: `${n} line${n === 1 ? '' : 's'}`,
+                  value: String(n),
+                }))}
+                onChange={(v) =>
+                  onContentUpdate({ textLimitMode: 'lines', maxLines: parseInt(v, 10) || 3, wordLimit: 0 } as any)
+                }
+              />
+            )}
+            {mode === 'words' && (
+              <SelectInput
+                label="Word Limit"
+                value={String(wordLimit)}
+                options={[20, 30, 40, 50, 60, 70, 80, 90, 100].map((n) => ({
+                  label: `${n} words (extend to “.”)`,
+                  value: String(n),
+                }))}
+                onChange={(v) =>
+                  onContentUpdate({
+                    textLimitMode: 'words',
+                    wordLimit: parseInt(v, 10) || 40,
+                    maxLines: 0,
+                  } as any)
+                }
+              />
+            )}
+            {mode === 'words' && (
+              <p className="text-[9px] text-white/35 leading-relaxed px-1">
+                Shows at least this many words, then continues to the nearest full stop so cards don’t cut mid-sentence.
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
       <div className="flex items-center justify-between mt-3">
         <label className="text-[10px] font-bold text-white/40 capitalize ml-1">Enable Marquee</label>
         <input

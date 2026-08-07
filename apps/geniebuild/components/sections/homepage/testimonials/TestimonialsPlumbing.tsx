@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -134,17 +135,13 @@ export const TestimonialsPlumbing: React.FC<Props> = ({
   };
 
   // Section header elements
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-tp-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-tp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Customer Reviews', icon: 'fa-star', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
-      textAlign: 'center' as any,
-      backgroundColor: cardBorder,
-      color: mutedColor,
-    },
-  };
+      textAlign: 'center' as any},
+  });
   const badgeElResolved: WebsiteElement = {
     ...badgeEl,
     content: { ...(badgeEl.content || {}), text: apiBadgeText },
@@ -154,11 +151,11 @@ export const TestimonialsPlumbing: React.FC<Props> = ({
     const id = `${section.id}-tp-title`;
     const existing = section.elements?.find(e => e.id === id);
     const sourceText: string = apiTitleText.toString().replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
+    });
     if (existing) {
       return {
         ...existing,
@@ -173,11 +170,11 @@ export const TestimonialsPlumbing: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-tp-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-tp-desc`, type: 'text',
     content: { text: apiDescriptionText, textSize: 'large' },
     style: { textAlign: 'center' as any, maxWidth: '520px', margin: '0 auto', lineHeight: '1.65' },
-  };
+  });
   const descElResolved: WebsiteElement = {
     ...descEl,
     content: { ...(descEl.content || {}), text: apiDescriptionText },
@@ -282,9 +279,6 @@ export const TestimonialsPlumbing: React.FC<Props> = ({
               viewport={{ once: true }} transition={{ duration: 0.5 }}
               className="min-h-[200px] rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-3 group/add"
               style={{
-                borderColor: `${accent}33`,
-                backgroundColor: `${accent}05`,
-                color: accent,
               }}
               aria-label="Add testimonial"
             >

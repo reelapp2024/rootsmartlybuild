@@ -4,11 +4,13 @@ import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
 import { getProjectIdFromUrl } from '../../../../lib/aboutUsApi';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
 import {
   fetchProjectDynamicForm,
   mapDynamicFormToSectionFields,
   submitDynamicFormData,
 } from '../../../../lib/dynamicFormApi';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -67,6 +69,7 @@ export const ContactFormDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-10 sm:pt-12 lg:pt-16';
@@ -97,15 +100,14 @@ export const ContactFormDefault: React.FC<Props> = ({
     themeColors,
   } as const;
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cf-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-cf-badge`, type: 'badge',
     content: { text: content.badgeText || 'Send a Message', icon: 'fa-paper-plane', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
       textAlign: 'center' as any,
     },
-  };
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-cf-title`;
@@ -116,11 +118,11 @@ export const ContactFormDefault: React.FC<Props> = ({
     let textBefore = '';
     let highlightedText = sourceText;
     if (words.length > 1) { highlightedText = words[words.length - 1]; textBefore = words.slice(0, -1).join(' '); }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.6rem, 3.5vw, 2.5rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -135,11 +137,11 @@ export const ContactFormDefault: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cf-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-cf-desc`, type: 'text',
     content: { text: String(c.contactIntroBody || content.subtitle || 'Tell us a little about what you need and the best way to reach you. We\'ll get back to you as soon as possible.'), textSize: 'base' },
     style: { textAlign: 'center' as any, maxWidth: '520px', margin: '0 auto', lineHeight: '1.65' },
-  };
+  });
 
   const projectId = String(projectIdProp || getProjectIdFromUrl() || '').trim();
   const storedFormId = String(c.formId || '').trim();
@@ -245,10 +247,9 @@ export const ContactFormDefault: React.FC<Props> = ({
     borderRadius: '0.625rem',
     padding: '0.75rem 1rem',
     fontSize: '0.95rem',
-    color: titleColor,
+    
     width: '100%',
-    outline: 'none',
-  };
+    outline: 'none'};
 
   const renderField = (f: FormFieldView, i: number) => {
     const common = {
@@ -295,7 +296,7 @@ export const ContactFormDefault: React.FC<Props> = ({
   };
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
 
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
@@ -347,8 +348,6 @@ export const ContactFormDefault: React.FC<Props> = ({
                   disabled={submitting || !formId}
                   className="w-full font-bold rounded-lg transition opacity-100 disabled:opacity-60"
                   style={{
-                    backgroundColor: btnBg,
-                    color: btnText,
                     padding: '0.875rem 2rem',
                     fontSize: '0.95rem',
                   }}
@@ -363,15 +362,11 @@ export const ContactFormDefault: React.FC<Props> = ({
                       id: `${section.id}-cf-btn`,
                       type: 'cta-button',
                       content: { text: btnLabel, link: '#' },
-                      style: {
-                        backgroundColor: btnBg,
-                        color: btnText,
-                        padding: '0.875rem 2rem',
+                      style: { padding: '0.875rem 2rem',
                         borderRadius: '0.5rem',
                         fontWeight: '700',
                         fontSize: '0.95rem',
-                        width: '100%',
-                      } as any,
+                        width: '100%'} as any,
                     }],
                   }}
                   {...passThrough}

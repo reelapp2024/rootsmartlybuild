@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl, toDisplayImageUrl, SECTION_IMAGE_PLACEHOLDER } from '../utils/sectionImageResolve';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -103,11 +104,11 @@ export const AboutBento: React.FC<Props> = ({
   })();
 
   // ── editable elements (about- ids → carry across variants) ──
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-badge`, type: 'badge',
     content: { text: apiBadge, iconPosition: 'left' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.2em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any, backgroundColor: 'transparent', color: accent },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.2em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any},
+  });
   const badgeElResolved: WebsiteElement = { ...badgeEl, content: { ...(badgeEl.content || {}), text: apiBadge } };
 
   const titleEl: WebsiteElement = (() => {
@@ -115,11 +116,11 @@ export const AboutBento: React.FC<Props> = ({
     const existing = section.elements?.find(e => e.id === id);
     const src = (existing?.content as any)?.text || apiTitle;
     // Professional/restrained: heading is fully neutral (no accent-coloured last word).
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 2.875rem)', lineHeight: '1.1', letterSpacing: '-0.035em', textAlign: 'left' as any },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 2.875rem)', lineHeight: '1.1', letterSpacing: '-0.035em', textAlign: 'left' as any },
+    });
     if (existing) {
       return {
         ...existing,
@@ -134,18 +135,18 @@ export const AboutBento: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: (base.content as any)?.htmlTag || 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-desc`, type: 'text',
     content: { text: apiDesc, textSize: 'large' },
-    style: { color: textColor, textAlign: 'left' as any, maxWidth: '640px', lineHeight: '1.75' },
-  };
+    style: { textAlign: 'left' as any, maxWidth: '640px', lineHeight: '1.75' },
+  });
   const descElResolved: WebsiteElement = { ...descEl, content: { ...(descEl.content || {}), text: apiDesc } };
 
-  const ctaEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-cta`) || {
+  const ctaEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-cta`, type: 'cta-button',
     content: { text: apiCta, link: apiCtaHref, buttonVariant: 'primary' },
     style: { buttonVariant: 'primary', padding: '0 1.75rem', height: '3rem', borderRadius: '9999px', fontWeight: '600', fontSize: '0.9rem' } as any,
-  };
+  });
   const ctaElResolved: WebsiteElement = { ...ctaEl, content: { ...(ctaEl.content || {}), text: apiCta, link: apiCtaHref } };
 
   const themeColors = {
@@ -208,7 +209,7 @@ export const AboutBento: React.FC<Props> = ({
               <ul className="mt-8 flex flex-wrap gap-2">
                 {trustPoints.map((point, i) => (
                   <li key={i} className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] transition-colors duration-200"
-                    style={{ border: `1px solid ${cardBorder}`, backgroundColor: cardBg, color: textColor }}>
+                    style={{ border: `1px solid ${cardBorder}`, backgroundColor: cardBg }}>
                     <svg aria-hidden viewBox="0 0 20 20" className="h-3.5 w-3.5 shrink-0" fill="none" stroke={accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10.5 8 14.5 16 5.5" /></svg>
                     {point}
                   </li>

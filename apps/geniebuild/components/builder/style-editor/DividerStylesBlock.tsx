@@ -51,7 +51,7 @@ export const DividerStylesBlock: React.FC<DividerStylesBlockProps> = ({
       <AccordionGroup title="Line" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label="Line Color"
+            label={styles.borderColor ? "Line Color" : "Line Color (Inherited)"}
             value={styles.borderColor || themeBorder}
             onChange={(v) => onUpdate('borderColor', v)}
             onReset={() => onUpdate('borderColor', '')}
@@ -87,7 +87,7 @@ export const DividerStylesBlock: React.FC<DividerStylesBlockProps> = ({
             The icon takes the line color by default — override below.
           </p>
           <ColorInput
-            label="Icon Color"
+            label={styles.color ? "Icon Color" : "Icon Color (Inherited)"}
             value={styles.color || themeAccent}
             onChange={(v) => onUpdate('color', v)}
             onReset={() => onUpdate('color', '')}

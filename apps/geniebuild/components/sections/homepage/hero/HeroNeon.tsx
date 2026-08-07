@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 import {
   preferSavedElement,
 } from '../utils/headingHighlight';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -109,7 +110,7 @@ export const HeroNeon: React.FC<Props> = ({
     {
       id: `${section.id}-h4-badge`, type: 'badge',
       content: { text: badgeText, iconPosition: 'left' },
-      style: { fontSize: '0.72rem', fontWeight: '600', letterSpacing: '0.02em', textTransform: 'none' as any, padding: '4px 6px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: 'transparent', color: mutedColor },
+      style: { fontSize: '0.72rem', fontWeight: '600', letterSpacing: '0.02em', textTransform: 'none' as any, padding: '4px 6px', borderRadius: '9999px', textAlign: 'center' as any},
     }
   );
 
@@ -118,18 +119,15 @@ export const HeroNeon: React.FC<Props> = ({
     const id = `${section.id}-h4-title`;
     const existing = section.elements?.find(e => e.id === id);
     const src = (existing?.content as any)?.text || String(headlineText || '').replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h1' },
-      style: {
-        color: titleColor,
-        fontWeight: '800',
+      style: { fontWeight: '800',
         fontSize: 'clamp(2.75rem, 6vw, 5.1rem)',
         lineHeight: '1.02',
         letterSpacing: '-0.045em',
-        textAlign: 'center' as any,
-      },
-    };
+        textAlign: 'center' as any},
+    });
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: (base.content as any)?.htmlTag || 'h1' } };
   })();
 
@@ -138,7 +136,7 @@ export const HeroNeon: React.FC<Props> = ({
     {
       id: `${section.id}-h4-desc`, type: 'text',
       content: { text: subheadText, textSize: 'large' },
-      style: { color: textColor, textAlign: 'center' as any, maxWidth: '620px', margin: '0 auto', lineHeight: '1.7' },
+      style: { textAlign: 'center' as any, maxWidth: '620px', margin: '0 auto', lineHeight: '1.7' },
     }
   );
 
@@ -184,11 +182,11 @@ export const HeroNeon: React.FC<Props> = ({
   const getStatLabelEl = (i: number, label: string): WebsiteElement => {
     const id = `${section.id}-h4-stat${i}-label`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'text',
       content: { text: label, textSize: 'small' },
-      style: { color: textColor, fontSize: '10px', textTransform: 'uppercase' as any, letterSpacing: '0.14em', textAlign: 'center' as any, lineHeight: '1.4' },
-    };
+      style: { fontSize: '10px', textTransform: 'uppercase' as any, letterSpacing: '0.14em', textAlign: 'center' as any, lineHeight: '1.4' },
+    });
     return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || label } };
   };
 
@@ -197,16 +195,14 @@ export const HeroNeon: React.FC<Props> = ({
   // slider chips. We render it once for editing + a plain duplicate for the
   // seamless scroll loop.
   const trustStripItems = trustItems.map((label) => ({ icon: 'fa-check', label }));
-  const trustStripEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-h4-trust`) || ({
+  const trustStripEl: WebsiteElement = resolveSectionElement(section, ({
     id: `${section.id}-h4-trust`, type: 'trust-strip',
     content: { items: trustStripItems } as any,
-    style: {
-      iconColor: accent, iconBackgroundColor: 'transparent', iconContainerSize: '18px',
-      iconSize: '14px', iconBorderRadius: '9999px', titleColor: `${textColor}B3`,
+    style: { iconContainerSize: '18px',
+      iconSize: '14px', iconBorderRadius: '9999px', 
       titleFontSize: '13px', titleFontWeight: '500', gap: '40px', padding: '0',
-      justifyContent: 'flex-start',
-    } as any,
-  } as WebsiteElement);
+      justifyContent: 'flex-start'} as any,
+  } as WebsiteElement));
   const trustStripElResolved: WebsiteElement = {
     ...trustStripEl,
     content: { ...(trustStripEl.content || {}), items: (trustStripEl.content as any)?.items?.length ? (trustStripEl.content as any).items : trustStripItems },

@@ -9,6 +9,8 @@ import {
   type PublishedBlogItem,
 } from '../../../../lib/blogsApi';
 import { getProjectIdFromUrl } from '../../../../lib/aboutUsApi';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -94,6 +96,7 @@ export const BlogRelatedDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#F8FAFC' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-14 sm:pt-16 lg:pt-20';
@@ -163,15 +166,14 @@ export const BlogRelatedDefault: React.FC<Props> = ({
     selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
   } as const;
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-rb-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-rb-badge`, type: 'badge',
     content: { text: content.badgeText || 'Keep Reading', icon: 'fa-book-open', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
       textAlign: 'center' as any,
     },
-  };
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-rb-title`;
@@ -181,11 +183,11 @@ export const BlogRelatedDefault: React.FC<Props> = ({
     let textBefore = '';
     let highlightedText = sourceText;
     if (words.length > 1) { highlightedText = words[words.length - 1]; textBefore = words.slice(0, -1).join(' '); }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -203,21 +205,21 @@ export const BlogRelatedDefault: React.FC<Props> = ({
   const getCardTitleEl = (i: number, title: string): WebsiteElement => {
     const id = `${section.id}-rb-title${i}`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: title, htmlTag: 'h3' },
       style: { fontWeight: '700', fontSize: '1.0625rem', lineHeight: '1.3', textAlign: 'left' as any },
-    };
+    });
     return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || title } };
   };
   const getCardExcerptEl = (i: number, excerpt: string): WebsiteElement => {
     const id = `${section.id}-rb-desc${i}`;
     const existing = section.elements?.find(e => e.id === id);
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'text',
       content: { text: excerpt, textSize: 'base' },
       style: { lineHeight: '1.6', textAlign: 'left' as any },
-    };
+    });
     return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || excerpt } };
   };
 
@@ -227,7 +229,7 @@ export const BlogRelatedDefault: React.FC<Props> = ({
   }
 
   return (
-    <div className="w-full text-center" style={{ backgroundColor: bg }}>
+    <div className="w-full text-center" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
           transition={{ duration: 0.6 }} className="text-center mb-10">

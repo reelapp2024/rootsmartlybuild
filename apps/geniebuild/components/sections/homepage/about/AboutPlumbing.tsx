@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { resolveSectionImageUrl } from '../utils/sectionImageResolve';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface AboutProps {
   section: Section;
@@ -89,11 +90,10 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
 
   // ── Elements ────────────────────────────────────────────────────
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-badge`, type: 'badge',
     content: { text: content.badgeText || 'About Our Company', icon: 'fa-user-tie', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem',
+    style: { fontSize: '0.72rem',
       fontWeight: '700',
       letterSpacing: '0.12em',
       textTransform: 'uppercase' as any,
@@ -101,10 +101,8 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
       borderRadius: '9999px',
       textAlign: 'left' as any,  // matches About's left-aligned column
       // Explicit tinted accent bg + accent text so badge is visible on white
-      backgroundColor: `${accent}1A`,
-      color: accent,
     },
-  };
+  });
   const badgeElResolved: WebsiteElement = {
     ...badgeEl,
     content: { ...(badgeEl.content || {}), text: apiBadgeText },
@@ -115,11 +113,11 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
     const existing = section.elements?.find(e => e.id === id);
     // Render the heading as plain neutral text (no accent-highlighted last word).
     const sourceText: string = apiTitleText.toString().replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, htmlTag: 'h2' },
-      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em', textAlign: 'left' as any, color: titleColor },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em', textAlign: 'left' as any },
+    });
     if (existing) {
       return {
         ...existing,
@@ -129,7 +127,7 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
           text: sourceText,
           htmlTag: (existing.content as any)?.htmlTag || 'h2',
         },
-        style: { ...(base.style as any), ...(existing.style as any), color: titleColor },
+        style: { ...(base.style as any), ...(existing.style as any) },
       } as WebsiteElement;
     }
     return {
@@ -138,14 +136,14 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
     };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-desc`, type: 'text',
     content: {
       text: apiDescriptionText,
       textSize: 'base',
     },
     style: { lineHeight: '1.75' },
-  };
+  });
   const descElResolved: WebsiteElement = {
     ...descEl,
     content: { ...(descEl.content || {}), text: apiDescriptionText },
@@ -186,8 +184,7 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
       id,
       type: 'feature-box',
       content: desiredContent,
-      style: {
-        iconContainerSize: '2.75rem',
+      style: { iconContainerSize: '2.75rem',
         iconBorderRadius:  '0.625rem',
         titleFontSize:     '0.95rem',
         titleFontWeight:   '700',
@@ -200,7 +197,7 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
     };
   };
 
-  const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-cta`) || {
+  const ctaBtnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-cta`, type: 'cta-button',
     content: {
       text: apiCtaText,
@@ -208,7 +205,7 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
       buttonVariant: 'primary',
     },
     style: { padding: '0.875rem 1.75rem', borderRadius: '0.5rem', fontWeight: '700', fontSize: '0.95rem' },
-  };
+  });
   const ctaBtnElResolved: WebsiteElement = {
     ...ctaBtnEl,
     content: {
@@ -218,7 +215,7 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
     },
   };
 
-  const imageEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-about-image`) || {
+  const imageEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-about-image`, type: 'image',
     content: {
       imageUrl: resolveSectionImageUrl(section, {
@@ -228,7 +225,7 @@ export const AboutPlumbing: React.FC<AboutProps> = ({
       imageAlt: 'Our Team',
     },
     style: { borderRadius: '1rem', aspectRatio: '4/5', objectFit: 'cover' as any, width: '100%', height: '100%' },
-  };
+  });
   const imageElResolved: WebsiteElement = {
     ...imageEl,
     content: {

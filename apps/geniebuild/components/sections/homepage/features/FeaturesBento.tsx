@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -100,21 +101,21 @@ export const FeaturesBento: React.FC<Props> = ({
   });
   const hideAllIcons = !!(content as any).hideIcons;
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fp-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Why choose us', iconPosition: 'left' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any, backgroundColor: 'transparent', color: accent },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any},
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-fp-title`;
     const existing = section.elements?.find(e => e.id === id);
     const src = (existing?.content as any)?.text || content.title || "Everything you'd want from a local team.";
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'left' as any },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.08', letterSpacing: '-0.035em', textAlign: 'left' as any },
+    });
     if (existing) {
       return {
         ...existing,
@@ -129,11 +130,11 @@ export const FeaturesBento: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: (base.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any) } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fp-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fp-desc`, type: 'text',
     content: { text: content.subtitle || 'No call centres, no surprise invoices and no waiting around all day. Here is exactly what you get when you book with us.', textSize: 'large' },
-    style: { color: textColor, textAlign: 'left' as any, maxWidth: '600px', lineHeight: '1.75' },
-  };
+    style: { textAlign: 'left' as any, maxWidth: '600px', lineHeight: '1.75' },
+  });
 
   const themeColors = {
     ...tc, titleColor, textColor, accentColor: accent, iconColor: accent,
@@ -182,9 +183,8 @@ export const FeaturesBento: React.FC<Props> = ({
       iconContainerSize: '2.5rem', iconBorderRadius: '0.75rem',
       titleFontSize: '1.3rem', titleFontWeight: '700',
       descriptionFontSize: '0.9rem',
-      borderWidth: '0', backgroundColor: 'transparent', padding: '0',
-      textAlign: 'left' as any, titleAlign: 'left' as any, descriptionAlign: 'left' as any,
-    };
+      borderWidth: '0',  padding: '0',
+      textAlign: 'left' as any, titleAlign: 'left' as any, descriptionAlign: 'left' as any};
     if (existing) {
       return {
         ...existing,
@@ -245,7 +245,7 @@ export const FeaturesBento: React.FC<Props> = ({
               {feat.tags?.length > 0 && (
                 <ul className="mt-5 flex flex-wrap gap-2">
                   {feat.tags.map((point: string, t: number) => (
-                    <li key={t} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]" style={{ border: `1px solid ${cardBorder}`, color: textColor }}>
+                    <li key={t} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]" style={{ border: `1px solid ${cardBorder}` }}>
                       <svg aria-hidden viewBox="0 0 20 20" className="h-3 w-3 shrink-0" fill="none" stroke={accent} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10.5 8 14.5 16 5.5" /></svg>
                       {point}
                     </li>

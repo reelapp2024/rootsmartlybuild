@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -82,28 +83,24 @@ export const WhyChoosePlumbing: React.FC<Props> = ({
     featureBoxTextColor:  textColor,
   };
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-wc-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-wc-badge`, type: 'badge',
     content: { text: content.badgeText || 'Why Us', icon: 'fa-star', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
-      textAlign: 'center' as any,
-      backgroundColor: cardBorder,
-      color: mutedColor,
-    },
-  };
+      textAlign: 'center' as any},
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-wc-title`;
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
     const sourceText: string = (c.text || content.title || 'Why Choose Us').toString().replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
+    });
     if (existing) {
       return {
         ...existing,
@@ -118,11 +115,11 @@ export const WhyChoosePlumbing: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-wc-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-wc-desc`, type: 'text',
     content: { text: content.subtitle || "We set the benchmark for plumbing excellence — here's why homeowners choose us every time.", textSize: 'large' },
     style: { textAlign: 'center' as any, maxWidth: '580px', margin: '0 auto', lineHeight: '1.65' },
-  };
+  });
 
   // Why-Choose card — distinct from Features (centered) and Services (image-box):
   //   • Horizontal layout: icon on the LEFT, content on the right.
@@ -145,8 +142,7 @@ export const WhyChoosePlumbing: React.FC<Props> = ({
         subText: rawReasons[i].description,
         iconPosition: 'left',
       },
-      style: {
-        iconContainerSize: '2.75rem',
+      style: { iconContainerSize: '2.75rem',
         iconBorderRadius:  '0.625rem',
         titleFontSize:     '1.05rem',
         titleFontWeight:   '700',
@@ -159,12 +155,11 @@ export const WhyChoosePlumbing: React.FC<Props> = ({
         borderTopRightRadius:    '0.625rem',
         borderBottomRightRadius: '0.625rem',
         padding: '1.25rem 1.5rem',
-        backgroundColor: cardBg,
+        
         textAlign: 'left' as any,
         descriptionAlign: 'left' as any,
         titleAlign: 'left' as any,
-        gap: '1rem',
-      } as any,
+        gap: '1rem'} as any,
     };
   };
 

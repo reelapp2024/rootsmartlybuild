@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
 import { preferSavedElement, resolveEditableHeadingElement } from '../utils/headingHighlight';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -89,7 +90,7 @@ export const GuaranteeEditorial: React.FC<Props> = ({
   const badgeFallback: WebsiteElement = {
     id: `${section.id}-gp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Our promise', icon: 'fa-shield-halved', iconPosition: 'left', iconSize: '0.65rem' },
-    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: cardBorder, color: mutedColor },
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any},
   };
   const badgeElResolved = preferSavedElement(
     section.elements?.find(e => e.id === `${section.id}-gp-badge`),
@@ -101,26 +102,24 @@ export const GuaranteeEditorial: React.FC<Props> = ({
     existing: section.elements?.find(e => e.id === `${section.id}-gp-title`),
     sourceText: apiTitleText.toString().replace(/<[^>]+>/g, '').trim(),
     htmlTag: 'h2',
-    style: { textAlign: 'left' as any, color: titleColor, fontWeight: '800', fontSize: 'clamp(1.9rem, 3.5vw, 2.6rem)', lineHeight: '1.12', letterSpacing: '-0.03em' } as any,
+    style: { textAlign: 'left' as any,  fontWeight: '800', fontSize: 'clamp(1.9rem, 3.5vw, 2.6rem)', lineHeight: '1.12', letterSpacing: '-0.03em' } as any,
   }) as WebsiteElement;
 
   const descFallback: WebsiteElement = {
     id: `${section.id}-gp-desc`, type: 'text',
     content: { text: apiDescriptionText, textSize: 'large' },
-    style: { textAlign: 'left' as any, color: textColor, maxWidth: '520px', lineHeight: '1.7' },
+    style: { textAlign: 'left' as any,  maxWidth: '520px', lineHeight: '1.7' },
   };
   const descElResolved = preferSavedElement(section.elements?.find(e => e.id === `${section.id}-gp-desc`), descFallback);
 
-  const statEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-gp-stat`) || {
+  const statEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-gp-stat`, type: 'stat-card',
     content: { value: apiStatValue, text: apiStatLabel, icon: apiStatIcon } as any,
-    style: {
-      padding: '0', borderRadius: '0', backgroundColor: 'transparent', borderWidth: '0',
-      titleColor: btnText, titleFontSize: 'clamp(3.5rem, 8vw, 6rem)', titleFontWeight: '900',
-      descriptionColor: btnText, descriptionFontSize: '0.9rem', descriptionFontWeight: '700',
-      textAlign: 'center' as any, iconColor: btnText, iconSize: '1.75rem',
-    } as any,
-  };
+    style: { padding: '0', borderRadius: '0',  borderWidth: '0',
+       titleFontSize: 'clamp(3.5rem, 8vw, 6rem)', titleFontWeight: '900',
+       descriptionFontSize: '0.9rem', descriptionFontWeight: '700',
+      textAlign: 'center' as any,  iconSize: '1.75rem'} as any,
+  });
   const statElResolved: WebsiteElement = { ...statEl, content: { ...(statEl.content || {}), value: apiStatValue, text: apiStatLabel, icon: apiStatIcon } };
 
   const listItemsResolved = (
@@ -130,18 +129,18 @@ export const GuaranteeEditorial: React.FC<Props> = ({
         ? (content as any).items.map((it: any, i: number) => ({ title: it?.title || it?.line || it?.description || DEFAULT_POINTS[i % DEFAULT_POINTS.length].title }))
         : DEFAULT_POINTS.map(p => ({ title: p.title }))
   );
-  const listEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-gp-list`) || {
+  const listEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-gp-list`, type: 'list',
     content: { items: listItemsResolved } as any,
-    style: { listType: 'check', itemGap: '0.875rem', indent: '0px', color: textColor, markerColor: accent, iconColor: accent, fontSize: '0.95rem', fontWeight: '500' } as any,
-  };
+    style: { listType: 'check', itemGap: '0.875rem', indent: '0px',    fontSize: '0.95rem', fontWeight: '500' } as any,
+  });
   const listElResolved: WebsiteElement = { ...listEl, content: { ...(listEl.content || {}), items: listItemsResolved } };
 
-  const btnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-gp-btn`) || {
+  const btnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-gp-btn`, type: 'cta-button',
     content: { text: apiCtaText, link: apiCtaHref, buttonVariant: 'primary' },
-    style: { buttonVariant: 'primary', backgroundColor: btnBg, color: btnText, padding: '0 2rem', height: '3.1rem', borderRadius: '0.6rem', fontWeight: '700', fontSize: '0.95rem' } as any,
-  };
+    style: { buttonVariant: 'primary',   padding: '0 2rem', height: '3.1rem', borderRadius: '0.6rem', fontWeight: '700', fontSize: '0.95rem' } as any,
+  });
   const btnElResolved: WebsiteElement = { ...btnEl, content: { ...(btnEl.content || {}), text: apiCtaText, link: apiCtaHref } };
 
   const pass = {

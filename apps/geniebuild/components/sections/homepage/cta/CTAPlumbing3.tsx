@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { motion } from 'motion/react';
 import { getCtaPhoneSubText, mapCtaTrustItems } from './ctaTrustStrip';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -58,11 +59,11 @@ export const CTAPlumbing3: React.FC<Props> = ({
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
     const sourceText: string = (c.text || content.title || 'Join 5,000+ Satisfied Customers').toString().replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, htmlTag: 'h2' },
-      style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 4vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em', titleColor },
-    };
+      style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.75rem, 4vw, 2.75rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
+    });
     if (existing) {
       return {
         ...existing,
@@ -71,17 +72,17 @@ export const CTAPlumbing3: React.FC<Props> = ({
           ...(existing.content || {}),
           htmlTag: (existing.content as any)?.htmlTag || 'h2',
         },
-        style: { ...(base.style as any), ...(existing.style as any), titleColor },
+        style: { ...(base.style as any), ...(existing.style as any) },
       } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: sourceText, htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const phoneEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-c3-phone`) || {
+  const phoneEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-c3-phone`, type: 'heading',
     content: { text: (content as any).phoneNumber || '(555) 123-4567', htmlTag: 'div' as any },
-    style: { color: accent, fontWeight: '900', fontSize: 'clamp(1.75rem, 5vw, 3rem)', letterSpacing: '-0.02em', textAlign: 'center' as any },
-  };
+    style: { fontWeight: '900', fontSize: 'clamp(1.75rem, 5vw, 3rem)', letterSpacing: '-0.02em', textAlign: 'center' as any },
+  });
 
   const phoneSubText = getCtaPhoneSubText(content as Record<string, unknown>);
   const existingPhoneSub = section.elements?.find(e => e.id === `${section.id}-c3-phone-sub`);
@@ -100,13 +101,11 @@ export const CTAPlumbing3: React.FC<Props> = ({
   const existingTrust = section.elements?.find(e => e.id === `${section.id}-c3-trust`);
   const trustStripStyle = {
     gap: '24px',
-    iconColor: accent,
-    iconBackgroundColor: `${accent}20`,
-    titleColor,
+    
+    
     iconContainerSize: '28px',
     iconSize: '12px',
-    justifyContent: 'center',
-  } as any;
+    justifyContent: 'center'} as any;
   const trustStripEl: WebsiteElement = existingTrust
     ? {
         ...existingTrust,

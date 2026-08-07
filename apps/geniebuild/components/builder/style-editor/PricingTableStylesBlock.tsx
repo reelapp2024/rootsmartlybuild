@@ -55,19 +55,19 @@ export const PricingTableStylesBlock: React.FC<PricingTableStylesBlockProps> = (
             "Most Popular" badge &amp; highlight is toggled in the Content tab.
           </p>
           <ColorInput
-            label="Background"
+            label={styles.backgroundColor ? "Background" : "Background (Inherited)"}
             value={styles.backgroundColor || ''}
             onChange={(v) => onUpdate('backgroundColor', v)}
             onReset={() => onUpdate('backgroundColor', '')}
           />
           <ColorInput
-            label="Border Color"
+            label={styles.borderColor ? "Border Color" : "Border Color (Inherited)"}
             value={styles.borderColor || ''}
             onChange={(v) => onUpdate('borderColor', v)}
             onReset={() => onUpdate('borderColor', '')}
           />
           <ColorInput
-            label="Accent Color (popular badge + featured border)"
+            label={styles.accentColor ? "Accent Color (popular badge + featured border)" : "Accent Color (popular badge + featured border) (Inherited)"}
             value={styles.accentColor || accent}
             onChange={(v) => onUpdate('accentColor', v)}
             onReset={() => onUpdate('accentColor', '')}
@@ -98,7 +98,7 @@ export const PricingTableStylesBlock: React.FC<PricingTableStylesBlockProps> = (
       {/* ── 2. PLAN TITLE ───────────────────────────────────────────── */}
       <AccordionGroup title="Plan Title" defaultOpen={false}>
         <ColorInput
-          label="Title Color"
+          label={styles.planTitleColor ? "Title Color" : "Title Color (Inherited)"}
           value={styles.planTitleColor || titleCol}
           onChange={(v) => onUpdate('planTitleColor', v)}
           onReset={() => onUpdate('planTitleColor', '')}
@@ -109,13 +109,13 @@ export const PricingTableStylesBlock: React.FC<PricingTableStylesBlockProps> = (
       <AccordionGroup title="Price" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Price Color"
+            label={styles.priceColor ? "Price Color" : "Price Color (Inherited)"}
             value={styles.priceColor || accent}
             onChange={(v) => onUpdate('priceColor', v)}
             onReset={() => onUpdate('priceColor', '')}
           />
           <ColorInput
-            label="Period Color (per month)"
+            label={styles.subheadingColor ? "Period Color (per month)" : "Period Color (per month) (Inherited)"}
             value={styles.subheadingColor || textCol}
             onChange={(v) => onUpdate('subheadingColor', v)}
             onReset={() => onUpdate('subheadingColor', '')}
@@ -127,13 +127,13 @@ export const PricingTableStylesBlock: React.FC<PricingTableStylesBlockProps> = (
       <AccordionGroup title="Features" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Feature Text Color"
+            label={styles.featureColor ? "Feature Text Color" : "Feature Text Color (Inherited)"}
             value={styles.featureColor || textCol}
             onChange={(v) => onUpdate('featureColor', v)}
             onReset={() => onUpdate('featureColor', '')}
           />
           <ColorInput
-            label="Check Icon Color"
+            label={styles.checkColor ? "Check Icon Color" : "Check Icon Color (Inherited)"}
             value={styles.checkColor || accent}
             onChange={(v) => onUpdate('checkColor', v)}
             onReset={() => onUpdate('checkColor', '')}
@@ -170,13 +170,13 @@ export const PricingTableStylesBlock: React.FC<PricingTableStylesBlockProps> = (
       <AccordionGroup title="CTA Button" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Button Background"
+            label={styles.ctaBgColor ? "Button Background" : "Button Background (Inherited)"}
             value={styles.ctaBgColor || accent}
             onChange={(v) => onUpdate('ctaBgColor', v)}
             onReset={() => onUpdate('ctaBgColor', '')}
           />
           <ColorInput
-            label="Button Text Color"
+            label={styles.ctaTextColor ? "Button Text Color" : "Button Text Color (Inherited)"}
             value={styles.ctaTextColor || '#FFFFFF'}
             onChange={(v) => onUpdate('ctaTextColor', v)}
             onReset={() => onUpdate('ctaTextColor', '')}

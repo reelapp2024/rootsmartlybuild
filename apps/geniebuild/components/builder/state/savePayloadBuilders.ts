@@ -2,6 +2,7 @@ import type { WebsiteData, Section } from '../../../types';
 import { SECTION_TEMPLATES, ELEMENT_DEFAULTS } from '../../../constants';
 import { buildThemeSavePayload } from '../../../utils/themeResolver';
 import { getDefaultVariant } from '../../SectionsAndVariantRegistry';
+import { normalizeSectionStyles } from '../../../utils/normalizeSectionStyles';
 
 function isPlainObject(value: any): boolean {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -67,17 +68,29 @@ function compactSectionForPersistence(section: Section): Section {
     styleOverrides.variant = activeVariant;
   }
 
+  // Keep a complete background object when the user set one (prune can leave
+  // incomplete { type } fragments that break reload). Prefer live section styles.
+  const liveBg = (section.styles as any)?.background;
+  if (liveBg && typeof liveBg === 'object' && liveBg.type) {
+    styleOverrides.background = liveBg;
+  }
+  const normalizedStyles = normalizeSectionStyles(styleOverrides);
+
   const template: any = SECTION_TEMPLATES[section.type] || {};
   const compactElements = (section.elements || []).map((el: any) => {
     const sectionElDefault = (template?.elements || []).find((t: any) => t?.type === el?.type)?.style || {};
     const defaultElStyle = { ...(ELEMENT_DEFAULTS as any)[el?.type] || {}, ...sectionElDefault };
     const elStyleOverrides = pruneWithDefaults(el?.style || {}, defaultElStyle) || {};
-    return { ...el, style: elStyleOverrides };
+    // Drop empty-string keys (reset-to-inherit) so they don't round-trip as overrides
+    const cleaned = Object.fromEntries(
+      Object.entries(elStyleOverrides).filter(([, v]) => v !== '' && v !== undefined)
+    );
+    return { ...el, style: cleaned };
   });
 
   return {
     ...section,
-    styles: styleOverrides,
+    styles: normalizedStyles,
     elements: compactElements as any
   } as Section;
 }

@@ -99,19 +99,19 @@ export const ToggleStylesBlock: React.FC<ToggleStylesBlockProps> = ({
             </div>
           </div>
           <ColorInput
-            label="ON Color"
+            label={styles.switchOnColor ? "ON Color" : "ON Color (Inherited)"}
             value={styles.switchOnColor || accent}
             onChange={(v) => onUpdate('switchOnColor', v)}
             onReset={() => onUpdate('switchOnColor', '')}
           />
           <ColorInput
-            label="OFF Color"
+            label={styles.switchOffColor ? "OFF Color" : "OFF Color (Inherited)"}
             value={styles.switchOffColor || ''}
             onChange={(v) => onUpdate('switchOffColor', v)}
             onReset={() => onUpdate('switchOffColor', '')}
           />
           <ColorInput
-            label="Knob Color"
+            label={styles.switchKnobColor ? "Knob Color" : "Knob Color (Inherited)"}
             value={styles.switchKnobColor || '#FFFFFF'}
             onChange={(v) => onUpdate('switchKnobColor', v)}
             onReset={() => onUpdate('switchKnobColor', '')}
@@ -136,7 +136,7 @@ export const ToggleStylesBlock: React.FC<ToggleStylesBlockProps> = ({
       <AccordionGroup title="Typography" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Title Color"
+            label={styles.titleColor ? "Title Color" : "Title Color (Inherited)"}
             value={styles.titleColor || titleCol}
             onChange={(v) => onUpdate('titleColor', v)}
             onReset={() => onUpdate('titleColor', '')}
@@ -148,7 +148,7 @@ export const ToggleStylesBlock: React.FC<ToggleStylesBlockProps> = ({
             placeholder="0.95rem"
           />
           <ColorInput
-            label="Description Color"
+            label={styles.descriptionColor ? "Description Color" : "Description Color (Inherited)"}
             value={styles.descriptionColor || textCol}
             onChange={(v) => onUpdate('descriptionColor', v)}
             onReset={() => onUpdate('descriptionColor', '')}
@@ -175,13 +175,13 @@ export const ToggleStylesBlock: React.FC<ToggleStylesBlockProps> = ({
       <AccordionGroup title="Card" defaultOpen={false}>
         <div className="space-y-3">
           <ColorInput
-            label="Background"
+            label={styles.backgroundColor ? "Background" : "Background (Inherited)"}
             value={styles.backgroundColor || ''}
             onChange={(v) => onUpdate('backgroundColor', v)}
             onReset={() => onUpdate('backgroundColor', '')}
           />
           <ColorInput
-            label="Border Color"
+            label={styles.borderColor ? "Border Color" : "Border Color (Inherited)"}
             value={styles.borderColor || ''}
             onChange={(v) => onUpdate('borderColor', v)}
             onReset={() => onUpdate('borderColor', '')}

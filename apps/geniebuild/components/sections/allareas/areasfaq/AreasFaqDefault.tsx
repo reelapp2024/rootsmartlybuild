@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -57,7 +59,8 @@ export const AreasFaqDefault: React.FC<Props> = ({
     });
   })();
   // FAQ is a LIGHT section.
-  const bg          = isThemeSurface ? '#FFFFFF' : savedBg;        // section bg = white
+  const bg          = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });        // section bg = white
   const cardBg      = '#FFFFFF';
   const cardBorder  = 'rgba(15,23,42,0.08)';
   const titleColor  = lc.titleColor  || '#0F172A';
@@ -92,17 +95,13 @@ export const AreasFaqDefault: React.FC<Props> = ({
   };
 
   // Badge — accent-tinted pill
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-arfq-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-arfq-badge`, type: 'badge',
     content: { text: c.badgeText || 'FAQ', icon: 'fa-circle-question', iconPosition: 'left', iconSize: '0.7rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
-      textAlign: 'center' as any,
-      backgroundColor: `${accent}1A`,
-      color: accent,
-    },
-  };
+      textAlign: 'center' as any},
+  });
   const badgeElResolved: WebsiteElement = {
     ...badgeEl,
     content: { ...(badgeEl.content || {}), text: apiBadgeText },
@@ -120,11 +119,11 @@ export const AreasFaqDefault: React.FC<Props> = ({
       highlightedText = words[words.length - 1];
       textBefore = words.slice(0, -1).join(' ');
     }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { textAlign: 'center' as any, fontWeight: '800', fontSize: 'clamp(1.875rem, 4vw, 2.875rem)', lineHeight: '1.15', letterSpacing: '-0.02em' },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -140,14 +139,14 @@ export const AreasFaqDefault: React.FC<Props> = ({
   })();
 
   // Description — centered, capped width
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-arfq-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-arfq-desc`, type: 'text',
     content: {
       text: apiDescriptionText,
       textSize: 'large',
     },
     style: { textAlign: 'center' as any, maxWidth: '620px', margin: '0 auto', lineHeight: '1.65' },
-  };
+  });
   const descElResolved: WebsiteElement = {
     ...descEl,
     content: { ...(descEl.content || {}), text: apiDescriptionText },
@@ -172,8 +171,8 @@ export const AreasFaqDefault: React.FC<Props> = ({
 
   const savedAccordion = section.elements?.find(e => e.id === `${section.id}-arfq-accordion`);
   const accordionDefaultStyle: Record<string, any> = {
-    backgroundColor: cardBg,
-    borderColor: cardBorder,
+    
+    
     borderWidth: '1px',
     borderStyle: 'solid',
     borderRadius: '0.875rem',
@@ -183,20 +182,18 @@ export const AreasFaqDefault: React.FC<Props> = ({
     iconPosition: 'right',
     iconShape: 'circle',
     iconSize: '0.875rem',
-    iconColor: accent,
-    iconBackgroundColor: `${accent}15`,
-    titleColor,
+    
+    
     questionFontSize: '1.0625rem',
     questionFontWeight: '700',
-    color: textColor,
+    
     answerFontSize: '0.9375rem',
     answerLineHeight: '1.65',
-    activeBackgroundColor: cardBg,
-    activeBorderColor: cardBorder,
+    
+    
     activeTitleColor: '',
     hoverBackgroundColor: '',
-    dividerColor: '',
-  };
+    dividerColor: ''};
   const accordionEl: WebsiteElement = {
     id: `${section.id}-arfq-accordion`, type: 'accordion',
     content: {
@@ -204,14 +201,8 @@ export const AreasFaqDefault: React.FC<Props> = ({
       items,
       exclusive: true,
     } as any,
-    style: {
-      ...accordionDefaultStyle,
-      ...(savedAccordion?.style as any || {}),
-      backgroundColor: cardBg,
-      borderColor: cardBorder,
-      activeBackgroundColor: cardBg,
-      activeBorderColor: cardBorder,
-    } as any,
+    style: { ...accordionDefaultStyle,
+      ...(savedAccordion?.style as any || {})} as any,
   };
 
   const faqCtaTitle = String(c.faqCtaTitle || c.ctaTitle || 'Still have questions?').trim();
@@ -223,37 +214,33 @@ export const AreasFaqDefault: React.FC<Props> = ({
   const faqCtaButtonText = String(c.ctaButtonText || '').trim();
   const faqCtaButtonLink = String(c.ctaButtonLink || '').trim();
 
-  const ctaTitleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-arfq-cta-title`) || {
+  const ctaTitleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-arfq-cta-title`, type: 'heading',
     content: {
       text: faqCtaTitle,
       htmlTag: 'h3' as any,
     },
-    style: {
-      textAlign: 'center' as any,
+    style: { textAlign: 'center' as any,
       fontWeight: '800',
       fontSize: 'clamp(1.25rem, 2.5vw, 1.5rem)',
       lineHeight: '1.2',
       letterSpacing: '-0.01em',
     } as any,
-  };
+  });
 
-  const ctaDescEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-arfq-cta-desc`) || {
+  const ctaDescEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-arfq-cta-desc`, type: 'text',
     content: {
       text: faqCtaDescription,
       textSize: 'base',
     },
-    style: {
-      textAlign: 'center' as any,
+    style: { textAlign: 'center' as any,
       maxWidth: '480px',
       margin: '0 auto',
-      lineHeight: '1.6',
-      color: textColor,
-    } as any,
-  };
+      lineHeight: '1.6'} as any,
+  });
 
-  const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-arfq-cta-btn`) || {
+  const ctaBtnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-arfq-cta-btn`, type: 'cta-button',
     content: {
       text: faqCtaButtonText,
@@ -261,15 +248,11 @@ export const AreasFaqDefault: React.FC<Props> = ({
       icon: 'fa-headset',
       iconPosition: 'left',
     } as any,
-    style: {
-      backgroundColor: btnBg,
-      color: btnText,
-      padding: '0.875rem 1.75rem',
+    style: { padding: '0.875rem 1.75rem',
       borderRadius: '0.5rem',
       fontWeight: '700',
-      fontSize: '0.9375rem',
-    } as any,
-  };
+      fontSize: '0.9375rem'} as any,
+  });
 
   const ctaTitleElResolved: WebsiteElement = {
     ...ctaTitleEl,
@@ -300,7 +283,7 @@ export const AreasFaqDefault: React.FC<Props> = ({
   };
 
   return (
-    <div className="w-full relative overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="w-full relative overflow-hidden" style={{ ...bgStyle }}>
       <div className={`${innerClass} relative`} style={innerStyle}>
         {/* Header — centered */}
         <motion.div
@@ -340,7 +323,6 @@ export const AreasFaqDefault: React.FC<Props> = ({
           <div
             className="rounded-2xl p-6 sm:p-8 flex flex-col items-center gap-4"
             style={{
-              backgroundColor: cardBg,
               border: `1px solid ${cardBorder}`,
             }}
           >

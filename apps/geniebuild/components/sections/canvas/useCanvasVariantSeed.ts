@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Section, WebsiteElement } from '../../../types';
+import { sanitizeSeedElements } from '../../../elements';
 
 /**
  * useCanvasVariantSeed — shared seeding for Canvas-based section variants.
@@ -16,15 +17,9 @@ import type { Section, WebsiteElement } from '../../../types';
  * variant's prefix). A user's own edits to THIS variant are preserved, because
  * once this variant's elements are present the prefix matches and no re-seed runs.
  *
- * Returns the section to render (seeded or the real one).
+ * Seed styles are sanitized so theme color keys are not persisted as fake overrides.
  *
- *   const seeded = useCanvasVariantSeed(section, {
- *     prefix: 'hs-',
- *     buildElements: (s) => [...],
- *     buildStyles: (s) => ({...}),   // optional (e.g. background image)
- *     onSectionUpdate, readOnly,
- *   });
- *   return <CanvasFreeform {...props} section={seeded} />;
+ * Returns the section to render (seeded or the real one).
  */
 
 // A canvas element id looks like `${prefix}${section.id}-...`. We consider the
@@ -53,7 +48,10 @@ export function useCanvasVariantSeed(
 
   const seeded = React.useMemo<Section>(() => {
     if (!needsSeed) return section;
-    const next: Section = { ...section, elements: buildElements(section) };
+    const next: Section = {
+      ...section,
+      elements: sanitizeSeedElements(buildElements(section)),
+    };
     if (buildStyles) next.styles = buildStyles(section);
     return next;
     // eslint-disable-next-line react-hooks/exhaustive-deps

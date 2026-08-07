@@ -5,11 +5,10 @@ import {
   FUNKY,
   funkyFromTheme,
   funkyTextColors,
-  withFunkyTextStyle,
   resolveFunkyIsLight,
-  funkySurfaceColors
-} from '../../funkyTheme';
+  funkySurfaceColors, resolveFunkySectionChrome } from '../../funkyTheme';
 import { motion } from 'motion/react';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -27,8 +26,7 @@ interface Props {
  */
 export const CategoryHeroFunky: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
-  selectedElementId, readOnly = false, themeColors: tc,
-}) => {
+  selectedElementId, readOnly = false, themeColors: tc }) => {
   const { content, styles } = section;
   const s = styles as any;
   const c = content as any;
@@ -38,38 +36,35 @@ export const CategoryHeroFunky: React.FC<Props> = ({
   const surface = funkySurfaceColors(isLight, (styles as any)?.backgroundColor);
   const accent = tc?.iconColor || tc?.accentColor || f.primary;
   const bg = s.backgroundColor || f.accent;
+  const { wrapperStyle, overlayStyle } = resolveFunkySectionChrome(styles, isLight);
 
   const padT = s.paddingTop ?? 'pt-20 sm:pt-24 lg:pt-28';
   const padB = s.paddingBottom ?? 'pb-16 sm:pb-20';
   const padX = s.paddingX ?? 'px-4 sm:px-6';
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cw-cathero-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-cw-cathero-badge`, type: 'badge',
     content: { text: c.badgeText || "Category", icon: 'fa-sparkles', iconPosition: 'left' },
-    style: { fontSize: '0.72rem', fontWeight: '800', letterSpacing: '0.08em', textTransform: 'uppercase' as any, padding: '8px 16px', borderRadius: '9999px' },
-  };
-  const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cw-cathero-title`) || {
+    style: { fontSize: '0.72rem', fontWeight: '800', letterSpacing: '0.08em', textTransform: 'uppercase' as any, padding: '8px 16px', borderRadius: '9999px' } });
+  const titleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-cw-cathero-title`, type: 'heading',
     content: { text: c.title || "Home DIY", htmlTag: 'h1' },
-    style: { color: titleColor, fontSize: s.titleSize || 'clamp(2.2rem, 5.5vw, 3.8rem)', fontWeight: '800', lineHeight: '1.05', letterSpacing: '-0.03em', fontFamily: FUNKY.fonts.display },
-  };
-  const titleElPainted: WebsiteElement = { ...titleEl, style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) } };
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cw-cathero-desc`) || {
+    style: { fontSize: s.titleSize || 'clamp(2.2rem, 5.5vw, 3.8rem)', fontWeight: '800', lineHeight: '1.05', letterSpacing: '-0.03em', fontFamily: FUNKY.fonts.display } });
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-cw-cathero-desc`, type: 'text',
     content: { text: c.subtitle || c.description || "Hands-on projects with pin-ready visuals.", textSize: 'large' },
-    style: { color: textColor, maxWidth: '560px', fontFamily: FUNKY.fonts.body },
-  };
-  const descElPainted: WebsiteElement = { ...descEl, style: { ...withFunkyTextStyle(descEl.style as any, textColor, isLight) } };
-
+    style: { maxWidth: '560px', fontFamily: FUNKY.fonts.body } });
   const themeColors = { ...tc, ...funkyThemeBag, titleColor, textColor, accentColor: accent };
   const passThrough = {
     onTextEdit, onElementUpdate: onElementUpdate || (() => {}), onElementSelect,
-    selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
-  } as const;
+    selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors } as const;
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg, fontFamily: FUNKY.fonts.body }}>
+    <div className="relative w-full overflow-hidden" style={{ ...wrapperStyle, fontFamily: FUNKY.fonts.body }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
+      {overlayStyle ? (
+        <div className="absolute inset-0 pointer-events-none z-[1]" style={overlayStyle} />
+      ) : null}
       <div className="absolute pointer-events-none" style={{ width: 240, height: 240, borderRadius: '40% 60% 55% 45% / 50% 40% 60% 50%', background: f.accent, opacity: 0.45, top: -60, right: -40 }} />
       <div className="absolute pointer-events-none" style={{ width: 180, height: 180, borderRadius: '40% 60% 55% 45% / 50% 40% 60% 50%', background: f.secondary, opacity: 0.3, bottom: 20, left: -50 }} />
       <div className={`relative z-10 max-w-7xl mx-auto ${padX} ${padT} ${padB}`}>
@@ -77,9 +72,9 @@ export const CategoryHeroFunky: React.FC<Props> = ({
           <div className="inline-flex" style={{ transform: 'rotate(-2deg)', border: `2.5px solid ${f.ink}`, borderRadius: 999, boxShadow: FUNKY.shadow, background: f.sunshine, overflow: 'hidden' }}>
             <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [badgeEl] }} {...passThrough} />
           </div>
-          <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [titleElPainted] }} {...passThrough} />
+          <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [titleEl] }} {...passThrough} />
           <div className="mx-auto sm:mx-0">
-            <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [descElPainted] }} {...passThrough} />
+            <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [descEl] }} {...passThrough} />
           </div>
         </motion.div>
       </div>

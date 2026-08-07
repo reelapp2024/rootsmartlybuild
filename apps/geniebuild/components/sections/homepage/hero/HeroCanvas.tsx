@@ -29,34 +29,28 @@ interface Props {
  * (elements resolve them at render); the hex here are only seed fallbacks.
  */
 
-/** Build the default hero element set for a section (only used until the user edits). */
-function buildHeroElements(section: Section, tc: any): WebsiteElement[] {
+/** Build the default hero element set for a section (only used until the user edits).
+ * Structural DNA only — theme colors applied at render (sanitizeSeedElements also strips). */
+function buildHeroElements(section: Section, _tc: any): WebsiteElement[] {
   const id = section.id;
-  const accent = tc?.accentColor || tc?.light?.accentColor || '#E11D48';
-  const titleColor = tc?.titleColor || tc?.light?.titleColor || '#0F172A';
-  const textColor = tc?.textColor || tc?.light?.textColor || '#475569';
-  const mutedColor = tc?.textColorMuted || tc?.muted || tc?.light?.muted || '#6B7280';
-  const btnBg = tc?.buttonBackgroundColor || tc?.light?.buttonBackgroundColor || accent;
-  const btnText = tc?.buttonTextColor || tc?.light?.buttonTextColor || '#FFFFFF';
-  const cardBorder = tc?.cardBorderColor || tc?.light?.cardBorderColor || 'rgba(0,0,0,0.08)';
 
   return [
     {
       id: `hc-${id}-badge`, type: 'badge',
       content: { text: 'Trusted local experts', icon: 'fa-star', iconPosition: 'left', iconSize: '0.65rem' },
-      style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any, backgroundColor: cardBorder, color: mutedColor },
+      style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px', textAlign: 'center' as any },
       settings: {},
     },
     {
       id: `hc-${id}-heading`, type: 'heading',
       content: { text: 'Quality work, done right the first time.', htmlTag: 'h1' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2.25rem, 5vw, 3.75rem)', lineHeight: '1.08', letterSpacing: '-0.03em', textAlign: 'center' as any },
+      style: { fontWeight: '800', fontSize: 'clamp(2.25rem, 5vw, 3.75rem)', lineHeight: '1.08', letterSpacing: '-0.03em', textAlign: 'center' as any },
       settings: {},
     },
     {
       id: `hc-${id}-subtext`, type: 'text',
       content: { text: 'Friendly, fully-licensed and fairly priced. We turn up on time, quote before we start, and stand behind every job.', textSize: 'large' },
-      style: { color: textColor, textAlign: 'center' as any, maxWidth: '620px', margin: '0 auto', lineHeight: '1.7' },
+      style: { textAlign: 'center' as any, maxWidth: '620px', margin: '0 auto', lineHeight: '1.7' },
       settings: {},
     },
     {
@@ -70,7 +64,7 @@ function buildHeroElements(section: Section, tc: any): WebsiteElement[] {
           {
             id: `hc-${id}-btn-primary`, type: 'cta-button',
             content: { text: 'Get a free quote', link: '#', buttonVariant: 'primary' },
-            style: { buttonVariant: 'primary', backgroundColor: btnBg, color: btnText, padding: '0 1.9rem', height: '3.1rem', borderRadius: '0.7rem', fontWeight: '600', fontSize: '0.95rem', width: '100%' } as any,
+            style: { buttonVariant: 'primary', padding: '0 1.9rem', height: '3.1rem', borderRadius: '0.7rem', fontWeight: '600', fontSize: '0.95rem', width: '100%' } as any,
             settings: {},
           },
           {

@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 import {
   preferSavedElement,
 } from '../utils/headingHighlight';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -117,13 +118,9 @@ export const GuaranteePlumbing: React.FC<Props> = ({
   const badgeFallback: WebsiteElement = {
     id: `${section.id}-gp-badge`, type: 'badge',
     content: { text: content.badgeText || 'Our Promise', icon: 'fa-shield-halved', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
-      textAlign: 'center' as any,
-      backgroundColor: cardBorder,
-      color: mutedColor,
-    },
+      textAlign: 'center' as any},
   };
   const badgeElResolved: WebsiteElement = preferSavedElement(
     section.elements?.find(e => e.id === `${section.id}-gp-badge`),
@@ -134,14 +131,11 @@ export const GuaranteePlumbing: React.FC<Props> = ({
   const titleFallback: WebsiteElement = {
     id: `${section.id}-gp-title`, type: 'heading',
     content: { text: apiTitleText.toString().replace(/<[^>]+>/g, '').trim(), htmlTag: 'h2' } as any,
-    style: {
-      textAlign: 'center' as any,
+    style: { textAlign: 'center' as any,
       fontWeight: '800',
       fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)',
       lineHeight: '1.15',
-      letterSpacing: '-0.02em',
-      color: titleColor,
-    },
+      letterSpacing: '-0.02em'},
   };
   const titleEl: WebsiteElement = preferSavedElement(
     section.elements?.find(e => e.id === `${section.id}-gp-title`),
@@ -160,31 +154,29 @@ export const GuaranteePlumbing: React.FC<Props> = ({
   );
 
   // Stat card — the big "10 / YEAR GUARANTEE" callout on the left
-  const statEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-gp-stat`) || {
+  const statEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-gp-stat`, type: 'stat-card',
     content: {
       value: apiStatValue,
       text: apiStatLabel,
       icon: apiStatIcon,
     } as any,
-    style: {
-      padding: '1.5rem',
+    style: { padding: '1.5rem',
       borderRadius: '1rem',
-      backgroundColor: `${accent}10`,
-      borderColor: `${accent}30`,
+      
+      
       borderWidth: '1px',
       borderStyle: 'solid',
-      titleColor: accent,
+      
       titleFontSize: 'clamp(3rem, 7vw, 5rem)',
       titleFontWeight: '900',
-      descriptionColor: titleColor,
+      
       descriptionFontSize: '0.85rem',
       descriptionFontWeight: '700',
       textAlign: 'center' as any,
-      iconColor: accent,
-      iconSize: '1.5rem',
-    } as any,
-  };
+      
+      iconSize: '1.5rem'} as any,
+  });
   const statElResolved: WebsiteElement = {
     ...statEl,
     content: {
@@ -208,35 +200,30 @@ export const GuaranteePlumbing: React.FC<Props> = ({
           }))
         : DEFAULT_POINTS.map(p => ({ title: p.title }))
   );
-  const listEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-gp-list`) || {
+  const listEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-gp-list`, type: 'list',
     content: { items: listItemsResolved } as any,
-    style: {
-      listType: 'check',
+    style: { listType: 'check',
       itemGap: '0.875rem',
       indent: '0px',
-      color: textColor,
-      markerColor: accent,
-      iconColor: accent,
+      
+      
+      
       fontSize: '0.95rem',
-      fontWeight: '500',
-    } as any,
-  };
+      fontWeight: '500'} as any,
+  });
   const listElResolved: WebsiteElement = {
     ...listEl,
     content: { ...(listEl.content || {}), items: listItemsResolved },
   };
 
   // CTA button
-  const btnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-gp-btn`) || {
+  const btnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-gp-btn`, type: 'cta-button',
     content: { text: apiCtaText, link: apiCtaHref },
-    style: {
-      backgroundColor: btnBg, color: btnText,
-      padding: '0.875rem 2rem', borderRadius: '0.5rem',
-      fontWeight: '700', fontSize: '0.95rem',
-    } as any,
-  };
+    style: { padding: '0.875rem 2rem', borderRadius: '0.5rem',
+      fontWeight: '700', fontSize: '0.95rem'} as any,
+  });
   const btnElResolved: WebsiteElement = {
     ...btnEl,
     content: {
@@ -287,7 +274,6 @@ export const GuaranteePlumbing: React.FC<Props> = ({
           viewport={{ once: true }} transition={{ duration: 0.6, delay: 0.2 }}
           className="rounded-2xl p-6 sm:p-8 lg:p-10 grid grid-cols-1 lg:grid-cols-[minmax(220px,280px)_1fr] gap-6 lg:gap-10 items-center"
           style={{
-            backgroundColor: cardBg,
             border: `1px solid ${cardBorder}`,
             boxShadow: `0 12px 32px -16px ${cardBorder}`,
           }}

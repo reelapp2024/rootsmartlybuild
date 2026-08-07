@@ -5,11 +5,10 @@ import {
   FUNKY,
   funkyFromTheme,
   funkyTextColors,
-  withFunkyTextStyle,
   resolveFunkyIsLight,
-  funkySurfaceColors
-} from '../../funkyTheme';
+  funkySurfaceColors, resolveFunkySectionChrome } from '../../funkyTheme';
 import { fetchBlogAuthor } from '../../../../lib/authorApi';
+import { resolveSectionElement } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -29,8 +28,7 @@ interface Props {
  */
 export const AuthorBoxFunky: React.FC<Props> = ({
   section, onTextEdit, buttonClass, onElementSelect, onElementUpdate,
-  selectedElementId, readOnly = false, themeColors: tc, projectId,
-}) => {
+  selectedElementId, readOnly = false, themeColors: tc, projectId }) => {
   const { content, styles } = section;
   const s = styles as any;
   const c = content as any;
@@ -39,6 +37,7 @@ export const AuthorBoxFunky: React.FC<Props> = ({
   const { titleColor, textColor, themeMode: funkyThemeMode, themeColors: funkyThemeBag } = funkyTextColors(tc, isLight);
   const surface = funkySurfaceColors(isLight, (styles as any)?.backgroundColor);
   const bg = surface.bg;
+  const { wrapperStyle, overlayStyle } = resolveFunkySectionChrome(styles, isLight);
   const padT = s.paddingTop ?? 'pt-12 sm:pt-16';
   const padB = s.paddingBottom ?? 'pb-12 sm:pb-16';
   const padX = s.paddingX ?? 'px-4 sm:px-6';
@@ -55,8 +54,7 @@ export const AuthorBoxFunky: React.FC<Props> = ({
     name: seedName,
     jobTitle: seedJob,
     bio: seedBio,
-    image: seedImage,
-  });
+    image: seedImage });
 
   useEffect(() => {
     if (!readOnly) return;
@@ -80,8 +78,7 @@ export const AuthorBoxFunky: React.FC<Props> = ({
           name: data.name || seedName,
           jobTitle: data.jobTitle || seedJob,
           bio: data.bio || seedBio,
-          image: data.image || data.avatar || seedImage,
-        });
+          image: data.image || data.avatar || seedImage });
       } catch {
         /* keep seed */
       }
@@ -91,25 +88,24 @@ export const AuthorBoxFunky: React.FC<Props> = ({
     };
   }, [readOnly, c.authorId, c.blogId, c.slug, projectId, seedName, seedJob, seedBio, seedImage]);
 
-  const titleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-cw-authorbox-title`) || {
+  const titleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-cw-authorbox-title`, type: 'heading',
     content: { text: c.title || 'Written by', htmlTag: 'h2' },
-    style: { color: titleColor, fontSize: 'clamp(1.4rem, 3vw, 2rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display },
-  };
-  const titleElPainted: WebsiteElement = { ...titleEl, style: { ...withFunkyTextStyle(titleEl.style as any, titleColor, isLight) } };
-
+    style: { fontSize: 'clamp(1.4rem, 3vw, 2rem)', fontWeight: '800', fontFamily: FUNKY.fonts.display } });
   const themeColors = { ...tc, ...funkyThemeBag, titleColor, textColor };
   const passThrough = {
     onTextEdit, onElementUpdate: onElementUpdate || (() => {}), onElementSelect,
-    selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
-  } as const;
+    selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors } as const;
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...wrapperStyle }}>
       <link rel="stylesheet" href={FUNKY.fontsHref} />
+      {overlayStyle ? (
+        <div className="absolute inset-0 pointer-events-none z-[1]" style={overlayStyle} />
+      ) : null}
       <div className={`max-w-3xl mx-auto ${padX} ${padT} ${padB}`}>
         <div className="mb-5">
-          <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [titleElPainted] }} {...passThrough} />
+          <ElementsSection section={{ ...section, styles: { ...(section.styles || {}), themeMode: funkyThemeMode as any, titleColor, textColor }, elements: [titleEl] }} {...passThrough} />
         </div>
         <div
           style={{
@@ -120,8 +116,7 @@ export const AuthorBoxFunky: React.FC<Props> = ({
             padding: 20,
             display: 'flex',
             gap: 16,
-            alignItems: 'flex-start',
-          }}
+            alignItems: 'flex-start' }}
         >
           {live.image ? (
             <img
@@ -133,19 +128,19 @@ export const AuthorBoxFunky: React.FC<Props> = ({
           ) : (
             <div
               className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 font-bold"
-              style={{ border: `2px solid ${f.ink}`, background: f.accent, color: f.ink }}
+              style={{ border: `2px solid ${f.ink}`, background: f.accent }}
             >
               {String(live.name || 'A').charAt(0).toUpperCase()}
             </div>
           )}
           <div className="min-w-0">
-            <p style={{ color: titleColor, fontFamily: FUNKY.fonts.display, fontWeight: 800, fontSize: '1.15rem' }}>
+            <p style={{ fontFamily: FUNKY.fonts.display, fontWeight: 800, fontSize: '1.15rem' }}>
               {live.name}
             </p>
-            <p style={{ color: textColor, opacity: 0.75, fontSize: '0.9rem', marginTop: 2 }}>
+            <p style={{ opacity: 0.75, fontSize: '0.9rem', marginTop: 2 }}>
               {live.jobTitle}
             </p>
-            <p style={{ color: textColor, fontFamily: FUNKY.fonts.body, marginTop: 10, lineHeight: 1.6, fontSize: '0.95rem' }}>
+            <p style={{ fontFamily: FUNKY.fonts.body, marginTop: 10, lineHeight: 1.6, fontSize: '0.95rem' }}>
               {live.bio}
             </p>
           </div>

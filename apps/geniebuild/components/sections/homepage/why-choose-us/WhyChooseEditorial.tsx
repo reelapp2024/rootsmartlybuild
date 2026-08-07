@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -114,33 +115,33 @@ export const WhyChooseEditorial: React.FC<Props> = ({
     featureBoxTitleColor: titleColor, featureBoxTextColor: textColor,
   };
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-wc-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-wc-badge`, type: 'badge',
     content: { text: content.badgeText || 'Why us', iconPosition: 'left' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any, backgroundColor: 'transparent', color: mutedColor },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any},
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-wc-title`;
     const existing = section.elements?.find(e => e.id === id);
     const c = (existing?.content || {}) as any;
     const src = (c.text || content.title || 'Why people choose us').toString().replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.1', letterSpacing: '-0.03em', textAlign: 'left' as any },
-    };
+      style: { fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 3rem)', lineHeight: '1.1', letterSpacing: '-0.03em', textAlign: 'left' as any },
+    });
     if (existing) {
       return { ...existing, type: 'heading', content: { ...(existing.content || {}), htmlTag: (existing.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), ...(existing.style as any) } } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-wc-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-wc-desc`, type: 'text',
     content: { text: content.subtitle || "The little things that add up to a job done properly, and a business you'll want to call again.", textSize: 'large' },
-    style: { color: textColor, textAlign: 'left' as any, maxWidth: '420px', lineHeight: '1.7' },
-  };
+    style: { textAlign: 'left' as any, maxWidth: '420px', lineHeight: '1.7' },
+  });
 
   const getReasonEl = (feat: any, i: number): WebsiteElement => {
     const id = `${section.id}-wc-card${i}`;
@@ -151,12 +152,10 @@ export const WhyChooseEditorial: React.FC<Props> = ({
     return {
       id, type: 'feature-box',
       content: { icon: hideAllIcons ? 'none' : feat.icon, text: feat.title, subText: feat.description, iconPosition: 'left' },
-      style: {
-        iconContainerSize: '2.75rem', iconBorderRadius: '0.625rem',
+      style: { iconContainerSize: '2.75rem', iconBorderRadius: '0.625rem',
         titleFontSize: '1.05rem', titleFontWeight: '700', descriptionFontSize: '0.875rem',
-        borderWidth: '0', padding: '0', backgroundColor: 'transparent',
-        textAlign: 'left' as any, titleAlign: 'left' as any, descriptionAlign: 'left' as any, gap: '1rem',
-      } as any,
+        borderWidth: '0', padding: '0', 
+        textAlign: 'left' as any, titleAlign: 'left' as any, descriptionAlign: 'left' as any, gap: '1rem'} as any,
     };
   };
 

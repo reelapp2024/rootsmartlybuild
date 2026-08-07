@@ -229,7 +229,7 @@ export const ElementBackgroundOverlayBlock: React.FC<ElementBgOverlayProps> = ({
   return (
     <AccordionGroup title="Background" defaultOpen={false}>
       <ColorInput
-        label="Background Color"
+        label={styles.backgroundColor ? "Background Color" : "Background Color (Inherited)"}
         value={styles.backgroundColor || ''}
         onChange={(v) => onUpdate('backgroundColor', v)}
         onReset={() => onUpdate('backgroundColor', '')}
@@ -386,7 +386,7 @@ export const ImageElementStylesBlock: React.FC<BlockProps> = ({
                 onChange={(v: string) => onUpdate('borderStyle', v)}
               />
               <ColorInput
-                label="Border Color"
+                label={styles.borderColor ? "Border Color" : "Border Color (Inherited)"}
                 value={styles.borderColor || '#ffffff'}
                 onChange={(v: string) => onUpdate('borderColor', v)}
                 onReset={() => onUpdate('borderColor', '')}
@@ -509,7 +509,7 @@ export const ImageElementStylesBlock: React.FC<BlockProps> = ({
             Color behind the image — visible when the image is transparent, loading, or fits with letterbox bars (Image Fit = Contain).
           </p>
           <ColorInput
-            label="Background Color"
+            label={styles.backgroundColor ? "Background Color" : "Background Color (Inherited)"}
             value={styles.backgroundColor || ''}
             onChange={(v: string) => onUpdate('backgroundColor', v)}
             onReset={() => onUpdate('backgroundColor', '')}
@@ -524,7 +524,7 @@ export const ImageElementStylesBlock: React.FC<BlockProps> = ({
             A flat color layer on top of the image — good for darkening hero photos.
           </p>
           <ColorInput
-            label="Overlay Color"
+            label={styles.overlayColor ? "Overlay Color" : "Overlay Color (Inherited)"}
             value={styles.overlayColor || 'transparent'}
             onChange={(v: string) => onUpdate('overlayColor', v)}
             onReset={() => onUpdate('overlayColor', '')}

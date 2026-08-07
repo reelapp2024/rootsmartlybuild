@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { PRESET_THEMES } from '../../../../constants';
 import { motion } from 'motion/react';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
 import {
   mergeSectionContent,
   pickAboutServiceBody,
@@ -10,6 +11,7 @@ import {
   pickAboutServiceTitle,
   resolveAboutImageUrl,
 } from '../../service/aboutservice/aboutServiceShared';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -52,6 +54,7 @@ export const ServiceDetailAboutDefault: React.FC<Props> = ({
     });
   })();
   const bg = isThemeSurface ? '#FFFFFF' : savedBg;
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop    ?? 'pt-12 sm:pt-16 lg:pt-20';
@@ -86,15 +89,14 @@ export const ServiceDetailAboutDefault: React.FC<Props> = ({
     themeColors,
   } as const;
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sda-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sda-badge`, type: 'badge',
     content: { text: (content as any).badgeText || 'About This Service', icon: 'fa-circle-info', iconPosition: 'left', iconSize: '0.65rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '6px 14px', borderRadius: '9999px',
       textAlign: 'left' as any,
     },
-  };
+  });
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-sda-title`;
@@ -105,11 +107,11 @@ export const ServiceDetailAboutDefault: React.FC<Props> = ({
     let textBefore = '';
     let highlightedText = sourceText;
     if (words.length > 1) { highlightedText = words[words.length - 1]; textBefore = words.slice(0, -1).join(' '); }
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: 'h2' },
       style: { fontWeight: '800', fontSize: 'clamp(1.75rem, 3.5vw, 2.5rem)', lineHeight: '1.15', letterSpacing: '-0.02em', textAlign: 'left' as any },
-    };
+    });
     if (existing) {
       return {
         ...existing,
@@ -124,15 +126,15 @@ export const ServiceDetailAboutDefault: React.FC<Props> = ({
     return { ...base, content: { ...(base.content || {}), text: sourceText, textBefore, highlightedText, textAfter: '', htmlTag: base.content?.htmlTag || 'h2' } };
   })();
 
-  const bodyEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-sda-body`) || {
+  const bodyEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-sda-body`, type: 'text',
     content: { text: bodyText, textSize: 'base' },
     style: { lineHeight: '1.75', textAlign: 'left' as any },
-  };
+  });
   const bodyElResolved: WebsiteElement = { ...bodyEl, content: { ...(bodyEl.content || {}), text: (bodyEl.content as any)?.text || bodyText } };
 
   return (
-    <div className="w-full" style={{ backgroundColor: bg }}>
+    <div className="w-full" style={{ ...bgStyle }}>
       <div className={innerClass} style={innerStyle}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
           {/* Image */}
@@ -147,7 +149,7 @@ export const ServiceDetailAboutDefault: React.FC<Props> = ({
               <img src={img} alt="" className="w-full rounded-2xl object-cover shadow-lg max-h-[440px]" />
             ) : (
               <div className="w-full aspect-[4/3] rounded-2xl flex items-center justify-center text-sm border"
-                style={{ backgroundColor: `${accent}0A`, borderColor: `${accent}22`, color: textColor }}>
+                style={{ backgroundColor: `${accent}0A`, borderColor: `${accent}22` }}>
                 <i className="fas fa-image text-2xl opacity-40" aria-hidden="true" />
               </div>
             )}

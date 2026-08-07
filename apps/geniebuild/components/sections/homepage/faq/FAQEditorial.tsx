@@ -3,6 +3,7 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../ElementsSection';
 import { resolveSectionBackground, resolveSectionOverlay, sectionBgHasImage } from '../utils/sectionBackground';
 import { motion } from 'motion/react';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -85,33 +86,33 @@ export const FAQEditorial: React.FC<Props> = ({
     buttonBackgroundColor: btnBg, buttonTextColor: btnText,
   };
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fqp-badge`, type: 'badge',
     content: { text: c.badgeText || 'FAQ', iconPosition: 'left' },
-    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any, backgroundColor: 'transparent', color: mutedColor },
-  };
+    style: { fontSize: '0.7rem', fontWeight: '700', letterSpacing: '0.24em', textTransform: 'uppercase' as any, padding: '0', borderRadius: '0', textAlign: 'left' as any},
+  });
   const badgeElResolved: WebsiteElement = { ...badgeEl, content: { ...(badgeEl.content || {}), text: apiBadgeText } };
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-fqp-title`;
     const existing = section.elements?.find(e => e.id === id);
     const src = String((existing?.content as any)?.text || apiTitleText).replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: src, htmlTag: 'h2' },
-      style: { textAlign: 'left' as any, color: titleColor, fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 2.875rem)', lineHeight: '1.12', letterSpacing: '-0.03em' },
-    };
+      style: { textAlign: 'left' as any,  fontWeight: '800', fontSize: 'clamp(2rem, 4vw, 2.875rem)', lineHeight: '1.12', letterSpacing: '-0.03em' },
+    });
     if (existing) {
       return { ...existing, type: 'heading', content: { ...(existing.content || {}), htmlTag: (existing.content as any)?.htmlTag || 'h2' }, style: { ...(base.style as any), ...(existing.style as any) } } as WebsiteElement;
     }
     return { ...base, content: { ...(base.content || {}), text: src, htmlTag: 'h2' } };
   })();
 
-  const descEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-desc`) || {
+  const descEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fqp-desc`, type: 'text',
     content: { text: apiDescriptionText, textSize: 'large' },
-    style: { textAlign: 'left' as any, maxWidth: '420px', lineHeight: '1.7', color: textColor },
-  };
+    style: { textAlign: 'left' as any, maxWidth: '420px', lineHeight: '1.7' },
+  });
   const descElResolved: WebsiteElement = { ...descEl, content: { ...(descEl.content || {}), text: apiDescriptionText } };
 
   const sourceItems: any[] = Array.isArray(content.items) && content.items.length > 0 ? content.items : [];
@@ -124,18 +125,17 @@ export const FAQEditorial: React.FC<Props> = ({
 
   const savedAccordion = section.elements?.find(e => e.id === `${section.id}-fqp-accordion`);
   const accordionDefaultStyle: Record<string, any> = {
-    backgroundColor: cardBg, borderColor: cardBorder, borderWidth: '1px', borderStyle: 'solid',
+      borderWidth: '1px', borderStyle: 'solid',
     borderRadius: '0.875rem', padding: '1.35rem 1.6rem', itemGap: '0.75rem',
     iconType: 'plus', iconPosition: 'right', iconShape: 'circle', iconSize: '0.875rem',
-    iconColor: accent, iconBackgroundColor: `${accent}15`,
+     
     titleColor, questionFontSize: '1.0625rem', questionFontWeight: '700',
-    color: textColor, answerFontSize: '0.9375rem', answerLineHeight: '1.65',
-    activeBackgroundColor: cardBg, activeBorderColor: cardBorder, activeTitleColor: '', hoverBackgroundColor: '', dividerColor: '',
-  };
+     answerFontSize: '0.9375rem', answerLineHeight: '1.65',
+      activeTitleColor: '', hoverBackgroundColor: '', dividerColor: ''};
   const accordionEl: WebsiteElement = {
     id: `${section.id}-fqp-accordion`, type: 'accordion',
     content: { ...((savedAccordion?.content as any) || {}), items, exclusive: true } as any,
-    style: { ...accordionDefaultStyle, ...(savedAccordion?.style as any || {}), backgroundColor: cardBg, borderColor: cardBorder, activeBackgroundColor: cardBg } as any,
+    style: { ...accordionDefaultStyle, ...(savedAccordion?.style as any || {})} as any,
   };
 
   const faqCtaTitle = String(c.faqCtaTitle || c.ctaTitle || 'Still have questions?').trim();
@@ -143,21 +143,21 @@ export const FAQEditorial: React.FC<Props> = ({
   const faqCtaButtonText = String(c.ctaButtonText || '').trim();
   const faqCtaButtonLink = String(c.ctaButtonLink || '').trim();
 
-  const ctaTitleEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-cta-title`) || {
+  const ctaTitleEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fqp-cta-title`, type: 'heading',
     content: { text: faqCtaTitle, htmlTag: 'h3' as any },
     style: { textAlign: 'left' as any, fontWeight: '800', fontSize: 'clamp(1.15rem, 2.5vw, 1.4rem)', lineHeight: '1.2', letterSpacing: '-0.01em' } as any,
-  };
-  const ctaDescEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-cta-desc`) || {
+  });
+  const ctaDescEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fqp-cta-desc`, type: 'text',
     content: { text: faqCtaDescription, textSize: 'base' },
-    style: { textAlign: 'left' as any, maxWidth: '360px', lineHeight: '1.6', color: textColor } as any,
-  };
-  const ctaBtnEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-fqp-cta-btn`) || {
+    style: { textAlign: 'left' as any, maxWidth: '360px', lineHeight: '1.6' } as any,
+  });
+  const ctaBtnEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-fqp-cta-btn`, type: 'cta-button',
     content: { text: faqCtaButtonText, link: faqCtaButtonLink, icon: 'fa-headset', iconPosition: 'left' } as any,
-    style: { backgroundColor: btnBg, color: btnText, padding: '0 1.6rem', height: '2.9rem', borderRadius: '0.5rem', fontWeight: '700', fontSize: '0.9rem' } as any,
-  };
+    style: { padding: '0 1.6rem', height: '2.9rem', borderRadius: '0.5rem', fontWeight: '700', fontSize: '0.9rem' } as any,
+  });
   const ctaTitleElResolved: WebsiteElement = { ...ctaTitleEl, content: { ...(ctaTitleEl.content || {}), text: faqCtaTitle } };
   const ctaDescElResolved: WebsiteElement = { ...ctaDescEl, content: { ...(ctaDescEl.content || {}), text: faqCtaDescription } };
   const ctaBtnElResolved: WebsiteElement = { ...ctaBtnEl, content: { ...(ctaBtnEl.content || {}), ...(faqCtaButtonText ? { text: faqCtaButtonText } : {}), ...(faqCtaButtonLink ? { link: faqCtaButtonLink } : {}) } };

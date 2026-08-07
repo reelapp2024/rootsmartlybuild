@@ -3,6 +3,8 @@ import { Section, WebsiteElement } from '../../../../types';
 import { ElementsSection } from '../../homepage/ElementsSection';
 import { motion } from 'motion/react';
 import { toAbsoluteMediaUrl, extractMediaUrl } from '../../../../config';
+import { resolveSectionBackground } from '../../../../utils/sectionBackground';
+import { resolveSectionElement, elementFromExistingOrDna } from '../../../../elements';
 
 interface Props {
   section: Section;
@@ -34,17 +36,7 @@ export const BlogArticleHeroDefault: React.FC<Props> = ({
   const textColor  = tc?.textColor  || '#E5E7EB';
   const accent     = tc?.iconColor || tc?.accentColor || '#E11D48';
   const bg = s.backgroundColor || tc?.backgroundColor || '#0C1015';
-
-  const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
-  const padT = s.paddingTop    ?? 'pt-24 sm:pt-28 lg:pt-32';
-  const padB = s.paddingBottom ?? 'pb-0';
-  const padX = s.paddingX      ?? 'px-4 sm:px-6';
-  const innerClass = `max-w-3xl mx-auto ${isCssValue(padX) ? '' : padX} ${isCssValue(padT) ? '' : padT} ${isCssValue(padB) ? '' : padB}`.trim();
-  const innerStyle: React.CSSProperties = {
-    ...(isCssValue(padX) ? { paddingLeft: padX, paddingRight: padX } : {}),
-    ...(isCssValue(padT) ? { paddingTop: padT } : {}),
-    ...(isCssValue(padB) ? { paddingBottom: padB } : {}),
-  };
+  const bgStyle = resolveSectionBackground(s, { defaultSurface: bg });
 
   const coverRaw =
     extractMediaUrl(c.coverImage) ||
@@ -58,6 +50,25 @@ export const BlogArticleHeroDefault: React.FC<Props> = ({
   const coverUrl =
     toAbsoluteMediaUrl(coverRaw) ||
     (!readOnly ? BUILDER_COVER_FALLBACK : '');
+  const hasCover = Boolean(coverUrl);
+
+  const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
+  const padT = s.paddingTop    ?? 'pt-24 sm:pt-28 lg:pt-32';
+  // Cover layout uses pb-0 so the image can overlap the next section. Without a cover,
+  // use a compact bottom pad — enough air under meta, not a full cover-height void.
+  const rawPadB = s.paddingBottom;
+  const padB = hasCover
+    ? (rawPadB ?? 'pb-0')
+    : (!rawPadB || rawPadB === 'pb-0' || rawPadB === '0' || rawPadB === '0px'
+        ? 'pb-12 sm:pb-14 lg:pb-16'
+        : rawPadB);
+  const padX = s.paddingX      ?? 'px-4 sm:px-6';
+  const innerClass = `max-w-3xl mx-auto ${isCssValue(padX) ? '' : padX} ${isCssValue(padT) ? '' : padT} ${isCssValue(padB) ? '' : padB}`.trim();
+  const innerStyle: React.CSSProperties = {
+    ...(isCssValue(padX) ? { paddingLeft: padX, paddingRight: padX } : {}),
+    ...(isCssValue(padT) ? { paddingTop: padT } : {}),
+    ...(isCssValue(padB) ? { paddingBottom: padB } : {}),
+  };
 
   const hasLiveTitle = Boolean(String(c.title || '').trim());
   const apiCategory = String(c.category || c.badgeText || (hasLiveTitle || readOnly ? 'Article' : 'Tips & Guides'));
@@ -80,31 +91,30 @@ export const BlogArticleHeroDefault: React.FC<Props> = ({
     selectedElementId, readOnly, isWrapped: false, buttonClass, themeColors,
   } as const;
 
-  const badgeEl: WebsiteElement = section.elements?.find(e => e.id === `${section.id}-ah-badge`) || {
+  const badgeEl: WebsiteElement = resolveSectionElement(section, {
     id: `${section.id}-ah-badge`, type: 'badge',
     content: { text: apiCategory, icon: 'fa-tag', iconPosition: 'left', iconSize: '0.7rem' },
-    style: {
-      fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
+    style: { fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.12em',
       textTransform: 'uppercase' as any, padding: '8px 16px', borderRadius: '9999px',
       textAlign: 'center' as any,
     },
-  };
+  });
   const badgeElResolved: WebsiteElement = { ...badgeEl, content: { ...(badgeEl.content || {}), text: apiCategory } };
 
   const titleEl: WebsiteElement = (() => {
     const id = `${section.id}-ah-title`;
     const existing = section.elements?.find(e => e.id === id);
     const sourceText = apiTitle.toString().replace(/<[^>]+>/g, '').trim();
-    const base: WebsiteElement = existing || {
+    const base: WebsiteElement = elementFromExistingOrDna(existing, {
       id, type: 'heading',
       content: { text: sourceText, htmlTag: 'h1' },
       style: { fontWeight: '900', fontSize: 'clamp(1.9rem, 4.5vw, 3rem)', lineHeight: '1.15', letterSpacing: '-0.02em', textAlign: 'center' as any },
-    };
+    });
     return { ...base, content: { ...(base.content || {}), text: (existing?.content as any)?.text || sourceText } };
   })();
 
   return (
-    <div className="relative w-full overflow-hidden" style={{ backgroundColor: bg }}>
+    <div className="relative w-full overflow-hidden" style={{ ...bgStyle }}>
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[36rem] h-[36rem] rounded-full blur-[130px]"
           style={{ backgroundColor: `${accent}14` }} />
@@ -132,8 +142,7 @@ export const BlogArticleHeroDefault: React.FC<Props> = ({
           </div>
         </motion.div>
 
-        {/* Cover image — always keep the element when a real URL resolves */}
-        {coverUrl ? (
+        {hasCover ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}

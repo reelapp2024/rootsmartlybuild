@@ -86,14 +86,18 @@ export const HighlightTextStylesBlock: React.FC<HighlightTextStylesBlockProps> =
       <AccordionGroup title="Highlight Colors" defaultOpen={true}>
         <div className="space-y-3">
           <ColorInput
-            label={hlMode === 'marker' ? 'Highlight Background' : 'Highlight Accent'}
+            label={
+              styles.highlightColor
+                ? (hlMode === 'marker' ? 'Highlight Background' : 'Highlight Accent')
+                : (hlMode === 'marker' ? 'Highlight Background (Inherited)' : 'Highlight Accent (Inherited)')
+            }
             value={styles.highlightColor || accent}
             onChange={(v) => onUpdate('highlightColor', v)}
             onReset={() => onUpdate('highlightColor', '')}
           />
           {showsBg && (
             <ColorInput
-              label="Highlighted Word Text Color"
+              label={styles.highlightTextColor ? "Highlighted Word Text Color" : "Highlighted Word Text Color (Inherited)"}
               value={styles.highlightTextColor || ''}
               onChange={(v) => onUpdate('highlightTextColor', v)}
               onReset={() => onUpdate('highlightTextColor', '')}
@@ -191,7 +195,7 @@ export const HighlightTextStylesBlock: React.FC<HighlightTextStylesBlockProps> =
             max={1}
           />
           <ColorInput
-            label="Text Color (rest of paragraph)"
+            label={styles.color ? "Text Color (rest of paragraph)" : "Text Color (rest of paragraph) (Inherited)"}
             value={styles.color || textColor}
             onChange={(v) => onUpdate('color', v)}
             onReset={() => onUpdate('color', '')}
