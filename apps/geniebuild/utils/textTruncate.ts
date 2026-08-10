@@ -1,6 +1,6 @@
 /**
- * Display-length helpers for `type: 'text'` (and service blurbs).
- * Full copy stays in element content; these only shape what is shown.
+ * Display-length helpers for text / feature-box / image-box descriptions.
+ * Full copy always stays in element content — these only shape what is shown.
  */
 
 export type TextLimitMode = 'none' | 'lines' | 'words';
@@ -56,8 +56,7 @@ export function truncateToNearestSentence(
   }
 
   if (!foundSentence) {
-    endIdx = limit;
-    const cut = words.slice(0, endIdx).join(' ');
+    const cut = words.slice(0, limit).join(' ');
     return opts?.ellipsis === false ? cut : `${cut}…`;
   }
 
@@ -76,7 +75,7 @@ export function lineClampStyle(maxLines: number): Record<string, string | number
   };
 }
 
-/** Normalize content fields used by TextContentForm + ElementsSection. */
+/** Normalize content fields used by forms + ElementsSection. */
 export function resolveTextLimit(content: Record<string, any> | null | undefined): {
   mode: TextLimitMode;
   maxLines: number;
@@ -94,4 +93,73 @@ export function resolveTextLimit(content: Record<string, any> | null | undefined
   if (wordLimit > 0) wordLimit = Math.min(100, Math.max(20, wordLimit));
 
   return { mode, maxLines, wordLimit };
+}
+
+/**
+ * When content has no explicit limit, apply a sensible default (e.g. feature-box
+ * / service card blurbs → 3 lines). Explicit `textLimitMode: 'none'` wins.
+ */
+export function withDefaultTextLimit(
+  content: Record<string, any> | null | undefined,
+  defaults: { mode: TextLimitMode; maxLines?: number; wordLimit?: number }
+): Record<string, any> {
+  const c = { ...(content || {}) };
+  if (c.textLimitMode === 'none') return c;
+  if (c.textLimitMode === 'lines' || c.textLimitMode === 'words') return c;
+  if (Number(c.maxLines) > 0 || Number(c.wordLimit) > 0) return c;
+  return {
+    ...c,
+    textLimitMode: defaults.mode,
+    maxLines: defaults.mode === 'lines' ? defaults.maxLines ?? 3 : 0,
+    wordLimit: defaults.mode === 'words' ? defaults.wordLimit ?? 40 : 0,
+  };
+}
+
+/**
+ * Single display resolver for canvas + live site.
+ *
+ * - **lines**: CSS clamp always applied (sidebar Max Lines updates live while selected).
+ * - **words**: show trimmed unless the editable is focused (so we never save trimmed copy).
+ * - Expand for edit only on **focus**, not mere selection — selection is used for sidebar.
+ */
+export function resolveLimitedTextDisplay(opts: {
+  fullHtml: string;
+  content: Record<string, any> | null | undefined;
+  isFocused: boolean;
+}): {
+  limit: ReturnType<typeof resolveTextLimit>;
+  displayHtml: string;
+  clampStyle: Record<string, string | number>;
+  /** False while showing a words-mode preview string — do not contentEditable. */
+  allowEdit: boolean;
+  limitKey: string;
+} {
+  const limit = resolveTextLimit(opts.content);
+  const full = String(opts.fullHtml ?? '');
+
+  const clampStyle =
+    limit.mode === 'lines' && limit.maxLines > 0 ? lineClampStyle(limit.maxLines) : {};
+
+  if (limit.mode === 'words' && limit.wordLimit > 0 && !opts.isFocused) {
+    return {
+      limit,
+      displayHtml: truncateToNearestSentence(full, limit.wordLimit),
+      clampStyle: {},
+      allowEdit: false,
+      limitKey: `words-${limit.wordLimit}`,
+    };
+  }
+
+  return {
+    limit,
+    displayHtml: full,
+    clampStyle,
+    allowEdit: true,
+    limitKey:
+      limit.mode === 'lines'
+        ? `lines-${limit.maxLines}`
+        : limit.mode === 'words'
+          ? `words-${limit.wordLimit}-edit`
+          : 'full',
+  };
 }

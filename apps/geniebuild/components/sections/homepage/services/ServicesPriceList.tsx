@@ -261,8 +261,9 @@ export const ServicesPriceList: React.FC<Props> = ({
           ...(existing.content || {}),
           text: (existing.content as any)?.text || fullText,
           textSize: (existing.content as any)?.textSize || 'base',
-          textLimitMode: (existing.content as any)?.textLimitMode || 'words',
-          wordLimit: (existing.content as any)?.wordLimit || 40,
+          textLimitMode: (existing.content as any)?.textLimitMode || 'lines',
+          maxLines: (existing.content as any)?.maxLines || 3,
+          wordLimit: (existing.content as any)?.wordLimit || 0,
         },
         style: {
           textAlign: 'left' as any,
@@ -276,8 +277,8 @@ export const ServicesPriceList: React.FC<Props> = ({
       content: {
         text: fullText,
         textSize: 'base',
-        textLimitMode: 'words',
-        wordLimit: 40,
+        textLimitMode: 'lines',
+        maxLines: 3,
       },
       style: { textAlign: 'left' as any, lineHeight: '1.6' },
     };

@@ -168,8 +168,8 @@ export const ServicesEditorial: React.FC<Props> = ({
       content: {
         text: def.desc,
         textSize: 'base',
-        textLimitMode: 'words',
-        wordLimit: 40,
+        textLimitMode: 'lines',
+        maxLines: 3,
       },
       style: { textAlign: 'left' as any, lineHeight: '1.7' },
     });
@@ -178,8 +178,9 @@ export const ServicesEditorial: React.FC<Props> = ({
       content: {
         ...(base.content || {}),
         text: (existing?.content as any)?.text || def.desc,
-        textLimitMode: (base.content as any)?.textLimitMode || 'words',
-        wordLimit: (base.content as any)?.wordLimit || 40,
+        textLimitMode: (base.content as any)?.textLimitMode || 'lines',
+        maxLines: (base.content as any)?.maxLines || 3,
+        wordLimit: (base.content as any)?.wordLimit || 0,
       },
     };
   };

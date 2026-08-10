@@ -1,6 +1,7 @@
 import React from 'react';
 import { IconPicker, ImageControl, RangeInput, SelectInput, TextInput, TextAreaInput } from '../inputs';
 import type { ContentFormWithUploadProps } from './types';
+import { TextLimitControls } from './TextLimitControls';
 
 type ImageFormProps = ContentFormWithUploadProps;
 
@@ -151,6 +152,11 @@ export const ImageBoxContentForm: React.FC<ImageFormProps> = ({ content, onConte
         value={content.description || content.subText || ''}
         onChange={(v) => onContentUpdate({ description: v, subText: v })}
         placeholder="Card description"
+      />
+      <TextLimitControls
+        content={content as any}
+        onContentUpdate={onContentUpdate}
+        label="Description Show Text"
       />
     </div>
   );

@@ -18,10 +18,9 @@ import {
   type TextSizePreset,
 } from '../../utils/resolveElementTypography';
 import {
-  lineClampStyle,
   plainTextForTruncate,
-  resolveTextLimit,
-  truncateToNearestSentence,
+  resolveLimitedTextDisplay,
+  withDefaultTextLimit,
 } from '../../utils/textTruncate';
 import {
   isDarkCanvasTextColor,
@@ -624,6 +623,8 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
   const [activeTabs, setActiveTabs] = useState<Record<string, number>>({});
   // Open lightbox keyed by element id — null when no lightbox is open
   const [openLightboxId, setOpenLightboxId] = useState<string | null>(null);
+  /** Word-limit preview stays truncated until the user clicks to edit (then expands to full copy). */
+  const [limitEditIds, setLimitEditIds] = useState<Record<string, true>>({});
   const [linkChooser, setLinkChooser] = useState<{
     element: WebsiteElement;
     href: string;
@@ -1477,41 +1478,56 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 );
             }
 
-            const textLimit = resolveTextLimit(c);
-            // Full text always stored. Truncate only for display when not actively editing
-            // so card layouts stay even (homepage services) without destroying copy.
-            const editingThisText = !readOnly && (isSelected || isInlineEditing(id));
             const fullTextHtml = c.text || '';
-            const displayTextHtml =
-              !editingThisText && textLimit.mode === 'words' && textLimit.wordLimit > 0
-                ? truncateToNearestSentence(fullTextHtml, textLimit.wordLimit)
-                : fullTextHtml;
-            const clampCss =
-              !editingThisText && textLimit.mode === 'lines' && textLimit.maxLines > 0
-                ? lineClampStyle(textLimit.maxLines)
-                : {};
-            // Words mode swaps the DOM string — only editable while selected so we never
-            // save the trimmed blurb over the full copy. Lines mode keeps full text + CSS clamp.
-            const textEditable = !readOnly && (textLimit.mode !== 'words' || editingThisText);
+            // Focus OR explicit click-to-edit expands words preview. Selection alone does NOT —
+            // so sidebar Max Lines / Word Limit update the canvas live while the element is selected.
+            const focusedText = isInlineEditing(id) || !!limitEditIds[id];
+            const limited = resolveLimitedTextDisplay({
+              fullHtml: fullTextHtml,
+              content: c,
+              isFocused: focusedText,
+            });
+            const textEditable = !readOnly && limited.allowEdit;
 
             const paragraphEl = (
                 <p
-                    key={`${id}-${c.textSize || 'base'}-${resolvedTextFontSize}-${textLimit.mode}-${textLimit.maxLines}-${textLimit.wordLimit}-${editingThisText ? 'edit' : 'view'}`}
+                    key={`${id}-${c.textSize || 'base'}-${resolvedTextFontSize}-${limited.limitKey}`}
                     id={scopedId}
+                    data-gb-editable-id={id}
                     className={`outline-none rounded px-1 relative transition-all cursor-pointer ${selectedClass}`}
-                    style={{ ...textStyle, ...clampCss }}
+                    style={{
+                      ...textStyle,
+                      ...limited.clampStyle,
+                      ...(limited.limit.mode === 'lines' && limited.limit.maxLines > 0
+                        ? { lineHeight: textStyle.lineHeight || 1.7 }
+                        : {}),
+                    }}
                     title={
-                      textLimit.mode !== 'none' && !editingThisText
+                      limited.limit.mode !== 'none' && !focusedText
                         ? plainTextForTruncate(fullTextHtml) || undefined
                         : undefined
                     }
                     {...(hasUsableHref(String(c.link || '').trim()) && !readOnly
                       ? { 'data-gb-editable-link': '1' }
                       : {})}
-                    onClick={!readOnly ? (e: React.MouseEvent) => handleElementActivate(e, el, c.link) : undefined}
-                    ref={bindHtml(id, displayTextHtml)}
+                    onClick={!readOnly ? (e: React.MouseEvent) => {
+                      handleElementActivate(e, el, c.link);
+                      if (limited.limit.mode === 'words' && !focusedText) {
+                        setLimitEditIds((prev) => ({ ...prev, [id]: true }));
+                      }
+                    } : undefined}
+                    ref={bindHtml(id, limited.displayHtml)}
                     contentEditable={textEditable}
-                    {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html), textEditable)}
+                    {...editHandlers(id, (html) => {
+                      if (!limited.allowEdit) return;
+                      handleContentUpdate(id, 'text', html);
+                      setLimitEditIds((prev) => {
+                        if (!prev[id]) return prev;
+                        const next = { ...prev };
+                        delete next[id];
+                        return next;
+                      });
+                    }, textEditable)}
                 />
             );
 
@@ -2535,6 +2551,16 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const iconBoxColor = renderStyle.iconColor || theme?.iconColor || renderStyle?.accentColor || theme?.accentColor || '#F59E0B';
             const iconBoxBg = renderStyle.iconBackgroundColor || renderStyle.iconBgColor || theme?.iconBgColor || 'rgba(241, 245, 249, 0.05)';
             const ibResolvedBg = resolveElementBackground(renderStyle);
+            const ibTitleId = `${id}::title`;
+            const ibDescId = `${id}::desc`;
+            const ibDescLimitContent = withDefaultTextLimit(content as any, { mode: 'lines', maxLines: 3 });
+            const ibDescFocused = isInlineEditing(ibDescId) || !!limitEditIds[ibDescId];
+            const ibDescLimited = resolveLimitedTextDisplay({
+              fullHtml: String(content.subText || 'Description for this icon box goes here.'),
+              content: ibDescLimitContent,
+              isFocused: ibDescFocused,
+            });
+            const ibDescEditable = !readOnly && ibDescLimited.allowEdit;
 
             return (
                 <div key={id} className={`flex gap-4 p-4 rounded-lg relative ${ibResolvedBg.overlay ? 'overflow-hidden' : ''} ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={{ ...safeStyle, backgroundColor: safeStyle.backgroundColor || theme?.cardBackgroundColor || 'rgba(255,255,255,0.05)', borderColor: safeStyle.borderColor || theme?.cardBorderColor || 'rgba(255,255,255,0.08)', borderWidth: safeStyle.borderWidth || '1px', borderStyle: safeStyle.borderStyle || 'solid', ...ibResolvedBg.backgroundStyle }}>
@@ -2570,11 +2596,14 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                 letterSpacing: renderStyle.titleLetterSpacing || 'normal',
                                 fontFamily: renderStyle.titleFontFamily || renderStyle.fontFamily || theme?.titleFontFamily
                             }} 
-                            ref={bindHtml(id, content.text || 'Icon Box Title')} 
+                            ref={bindHtml(ibTitleId, content.text || 'Icon Box Title')} 
                             contentEditable={!readOnly} 
-                            {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))} 
+                            {...editHandlers(ibTitleId, (html) => handleContentUpdate(id, 'text', html))} 
                         />
-                        <p className="opacity-70 outline-none" 
+                        <p
+                            key={`${ibDescId}-${ibDescLimited.limitKey}`}
+                            className="opacity-70 outline-none"
+                            data-gb-editable-id={ibDescId}
                             style={{ 
                                 color: renderStyle.descriptionColor || renderStyle.textColor || theme?.textColor || '#475569',
                                 fontSize: renderStyle.descriptionFontSize || '0.875rem',
@@ -2582,11 +2611,28 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                 textTransform: (renderStyle.descriptionTextTransform || renderStyle.textTransform) as any || 'none',
                                 fontStyle: renderStyle.descriptionFontStyle || 'normal',
                                 letterSpacing: renderStyle.descriptionLetterSpacing || 'normal',
-                                fontFamily: renderStyle.descriptionFontFamily || renderStyle.fontFamily || theme?.descriptionFontFamily
-                            }} 
-                            ref={bindHtml(id, content.subText || 'Description for this icon box goes here.')} 
-                            contentEditable={!readOnly} 
-                            {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))} 
+                                fontFamily: renderStyle.descriptionFontFamily || renderStyle.fontFamily || theme?.descriptionFontFamily,
+                                lineHeight: 1.7,
+                                ...ibDescLimited.clampStyle,
+                            }}
+                            onClick={!readOnly ? (e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              if (ibDescLimited.limit.mode === 'words' && !ibDescFocused) {
+                                setLimitEditIds((prev) => ({ ...prev, [ibDescId]: true }));
+                              }
+                            } : undefined}
+                            ref={bindHtml(ibDescId, ibDescLimited.displayHtml)} 
+                            contentEditable={ibDescEditable} 
+                            {...editHandlers(ibDescId, (html) => {
+                              if (!ibDescLimited.allowEdit) return;
+                              handleContentUpdate(id, 'subText', html);
+                              setLimitEditIds((prev) => {
+                                if (!prev[ibDescId]) return prev;
+                                const next = { ...prev };
+                                delete next[ibDescId];
+                                return next;
+                              });
+                            }, ibDescEditable)} 
                         />
                     </div>
                 </div>
@@ -2772,6 +2818,17 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 </div>
             );
 
+            const titleEditId = `${id}::title`;
+            const descEditId = `${id}::desc`;
+            const descLimitContent = withDefaultTextLimit(c, { mode: 'lines', maxLines: 3 });
+            const descFocused = isInlineEditing(descEditId) || !!limitEditIds[descEditId];
+            const descLimited = resolveLimitedTextDisplay({
+              fullHtml: String(c.subText || ''),
+              content: descLimitContent,
+              isFocused: descFocused,
+            });
+            const descEditable = !readOnly && descLimited.allowEdit;
+
             const renderTitle = (size?: string) => (
                 <h4
                     className="font-bold outline-none leading-snug"
@@ -2785,15 +2842,17 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         fontFamily: renderStyle.titleFontFamily || renderStyle.fontFamily || theme?.titleFontFamily,
                         margin: 0,
                     }}
-                    ref={bindHtml(id, c.text || 'Feature Title')}
+                    ref={bindHtml(titleEditId, c.text || 'Feature Title')}
                     contentEditable={!readOnly}
-                    {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
+                    {...editHandlers(titleEditId, (html) => handleContentUpdate(id, 'text', html))}
                 />
             );
 
             const renderDescription = () => c.subText && c.subText.toString().trim() !== '' && (
                 <p
+                    key={`${descEditId}-${descLimited.limitKey}`}
                     className="leading-relaxed outline-none"
+                    data-gb-editable-id={descEditId}
                     style={{
                         color: featureTextColor,
                         fontSize: renderStyle.descriptionFontSize || '0.875rem',
@@ -2804,10 +2863,33 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         fontFamily: renderStyle.descriptionFontFamily || renderStyle.fontFamily || theme?.descriptionFontFamily,
                         opacity: 0.85,
                         margin: 0,
+                        lineHeight: 1.7,
+                        ...descLimited.clampStyle,
                     }}
-                    ref={bindHtml(id, c.subText)}
-                    contentEditable={!readOnly}
-                    {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))}
+                    title={
+                      descLimited.limit.mode !== 'none' && !descFocused
+                        ? plainTextForTruncate(String(c.subText || '')) || undefined
+                        : undefined
+                    }
+                    onClick={!readOnly ? (e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      handleClick(e, el);
+                      if (descLimited.limit.mode === 'words' && !descFocused) {
+                        setLimitEditIds((prev) => ({ ...prev, [descEditId]: true }));
+                      }
+                    } : undefined}
+                    ref={bindHtml(descEditId, descLimited.displayHtml)}
+                    contentEditable={descEditable}
+                    {...editHandlers(descEditId, (html) => {
+                      if (!descLimited.allowEdit) return;
+                      handleContentUpdate(id, 'subText', html);
+                      setLimitEditIds((prev) => {
+                        if (!prev[descEditId]) return prev;
+                        const next = { ...prev };
+                        delete next[descEditId];
+                        return next;
+                      });
+                    }, descEditable)}
                 />
             );
 
@@ -2823,9 +2905,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 >
                     <span
                         className="outline-none"
-                        ref={bindHtml(id, ctaText)}
+                        ref={bindHtml(`${id}::cta`, ctaText)}
                         contentEditable={!readOnly}
-                        {...editHandlers(id, (html) => handleContentUpdate(id, 'ctaText', html))}
+                        {...editHandlers(`${id}::cta`, (html) => handleContentUpdate(id, 'ctaText', html))}
                     />
                     <i className="fa-solid fa-arrow-right text-[0.7rem] transition-transform group-hover/cta:translate-x-0.5" />
                 </span>
@@ -3811,8 +3893,29 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 : '0.875rem');
             const ibDescFontFamily = (renderStyle as any).descriptionFontFamily || theme?.descriptionFontFamily || '';
             const ibDescAlign    = (renderStyle as any).descriptionAlign || (renderStyle as any).textAlign || 'left';
-            // Line clamp — limit description to N lines (0 = no clamp)
+            // Line clamp — limit description to N lines (0 = no clamp). Prefer content Show Text.
             const ibDescLineClamp: number = parseInt(String((renderStyle as any).descriptionLineClamp || 0), 10) || 0;
+            const ibDescEditId = `${id}::desc`;
+            const ibDescFull = String(content.description || content.subText || 'Description text.');
+            const ibDescLimitContent = (() => {
+              const base: Record<string, any> = { ...(content as any) };
+              if (
+                !base.textLimitMode &&
+                !(Number(base.maxLines) > 0) &&
+                !(Number(base.wordLimit) > 0) &&
+                ibDescLineClamp > 0
+              ) {
+                return { ...base, textLimitMode: 'lines', maxLines: ibDescLineClamp };
+              }
+              return base;
+            })();
+            const ibDescFocused = isInlineEditing(ibDescEditId) || !!limitEditIds[ibDescEditId];
+            const ibDescLimited = resolveLimitedTextDisplay({
+              fullHtml: ibDescFull,
+              content: ibDescLimitContent,
+              isFocused: ibDescFocused,
+            });
+            const ibDescEditable = !readOnly && ibDescLimited.allowEdit;
             // Button (CTA) — default to showing when showButton is unset
             const ibShowButton: boolean = (content as any).showButton !== false && (
                 (content as any).showButton === true || !!(content as any).buttonText || (content as any).showButton === undefined
@@ -3938,7 +4041,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                             }, true)}
                         />
                         <p
+                            key={`${ibDescEditId}-${ibDescLimited.limitKey}`}
                             className="outline-none m-0"
+                            data-gb-editable-id={ibDescEditId}
                             style={{
                                 color: ibDescCol,
                                 fontSize: ibDescFontSize,
@@ -3946,25 +4051,36 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                 lineHeight: 1.6,
                                 textAlign: ibDescAlign as any,
                                 margin: 0,
-                                // Line-clamp to N lines (truncate with ellipsis). Off when 0/unset.
-                                ...(ibDescLineClamp > 0 ? {
-                                    display: '-webkit-box',
-                                    WebkitLineClamp: ibDescLineClamp,
-                                    WebkitBoxOrient: 'vertical' as any,
-                                    overflow: 'hidden',
-                                } : {}),
+                                ...ibDescLimited.clampStyle,
                             }}
-                            ref={bindHtml(`${id}::desc`, content.description || content.subText || 'Description text.')}
-                            contentEditable={!readOnly}
-                            {...editHandlers(`${id}::desc`, (html) => {
-                                if (readOnly) return;
+                            title={
+                              ibDescLimited.limit.mode !== 'none' && !ibDescFocused
+                                ? plainTextForTruncate(ibDescFull) || undefined
+                                : undefined
+                            }
+                            onClick={!readOnly ? (e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              if (ibDescLimited.limit.mode === 'words' && !ibDescFocused) {
+                                setLimitEditIds((prev) => ({ ...prev, [ibDescEditId]: true }));
+                              }
+                            } : undefined}
+                            ref={bindHtml(ibDescEditId, ibDescLimited.displayHtml)}
+                            contentEditable={ibDescEditable}
+                            {...editHandlers(ibDescEditId, (html) => {
+                                if (readOnly || !ibDescLimited.allowEdit) return;
                                 const el0 = elements.find((e) => e.id === id);
                                 if (!el0) return;
                                 onElementUpdate(id, {
                                     ...el0,
                                     content: { ...el0.content, description: html, subText: html },
                                 });
-                            }, true)}
+                                setLimitEditIds((prev) => {
+                                  if (!prev[ibDescEditId]) return prev;
+                                  const next = { ...prev };
+                                  delete next[ibDescEditId];
+                                  return next;
+                                });
+                            }, ibDescEditable)}
                         />
                         {ibShowButton && (() => {
                             const ibBtnIcon: string | undefined = (content as any).buttonIcon && (content as any).buttonIcon !== 'none'

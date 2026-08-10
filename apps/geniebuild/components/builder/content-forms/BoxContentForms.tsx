@@ -2,6 +2,7 @@ import React from 'react';
 import { IconPicker, ImageControl, RangeInput, SelectInput, TextInput, TextAreaInput } from '../inputs';
 import { LinkNewTabToggle } from './LinkNewTabToggle';
 import type { ContentFormProps, ContentFormWithUploadProps } from './types';
+import { TextLimitControls } from './TextLimitControls';
 
 type FormProps = ContentFormProps;
 
@@ -43,6 +44,11 @@ export const FeatureBoxContentForm: React.FC<FormProps> = ({ content, onContentU
           label="Description"
           value={(c.subText as string) || ''}
           onChange={(v) => onContentUpdate({ subText: v })}
+        />
+        <TextLimitControls
+          content={c}
+          onContentUpdate={onContentUpdate}
+          label="Description Show Text"
         />
       </div>
 
@@ -574,6 +580,11 @@ export const IconBoxContentForm: React.FC<FormProps> = ({ content, onContentUpda
         value={content.subText || ''}
         onChange={(v) => onContentUpdate({ subText: v })}
         placeholder="Enter description"
+      />
+      <TextLimitControls
+        content={content as any}
+        onContentUpdate={onContentUpdate}
+        label="Description Show Text"
       />
       <TextInput
         label="Link (optional URL)"

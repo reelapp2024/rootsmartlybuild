@@ -14,6 +14,7 @@ import {
   composeHeadingText,
   resolveHeadingSidebarParts,
 } from '../../sections/homepage/utils/headingHighlight';
+import { TextLimitControls } from './TextLimitControls';
 
 type HeadingContentFormProps = TypographyContentFormProps;
 
@@ -330,81 +331,9 @@ export const TextContentForm: React.FC<TextContentFormProps> = ({
         }}
       />
 
-      {/* Visible length — full text stays stored; display is clamped / sentence-trimmed. */}
-      {(() => {
-        const mode = (c.textLimitMode as string) || (
-          Number(c.maxLines) > 0 ? 'lines' : Number(c.wordLimit) > 0 ? 'words' : 'none'
-        );
-        const maxLines = Math.min(12, Math.max(1, Number(c.maxLines) || 3));
-        const wordLimit = Math.min(100, Math.max(20, Number(c.wordLimit) || 40));
-        return (
-          <div className="space-y-3 mt-3">
-            <SelectInput
-              label="Show Text"
-              value={mode}
-              options={[
-                { label: 'Full text', value: 'none' },
-                { label: 'Limit by lines', value: 'lines' },
-                { label: 'Limit by words (to sentence)', value: 'words' },
-              ]}
-              onChange={(v) => {
-                if (v === 'none') {
-                  onContentUpdate({ textLimitMode: 'none', maxLines: 0, wordLimit: 0 } as any);
-                  return;
-                }
-                if (v === 'lines') {
-                  onContentUpdate({
-                    textLimitMode: 'lines',
-                    maxLines: Number(c.maxLines) > 0 ? Number(c.maxLines) : 3,
-                    wordLimit: 0,
-                  } as any);
-                  return;
-                }
-                onContentUpdate({
-                  textLimitMode: 'words',
-                  wordLimit: Number(c.wordLimit) >= 20 ? Number(c.wordLimit) : 40,
-                  maxLines: 0,
-                } as any);
-              }}
-            />
-            {mode === 'lines' && (
-              <SelectInput
-                label="Max Lines"
-                value={String(maxLines)}
-                options={[1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({
-                  label: `${n} line${n === 1 ? '' : 's'}`,
-                  value: String(n),
-                }))}
-                onChange={(v) =>
-                  onContentUpdate({ textLimitMode: 'lines', maxLines: parseInt(v, 10) || 3, wordLimit: 0 } as any)
-                }
-              />
-            )}
-            {mode === 'words' && (
-              <SelectInput
-                label="Word Limit"
-                value={String(wordLimit)}
-                options={[20, 30, 40, 50, 60, 70, 80, 90, 100].map((n) => ({
-                  label: `${n} words (extend to “.”)`,
-                  value: String(n),
-                }))}
-                onChange={(v) =>
-                  onContentUpdate({
-                    textLimitMode: 'words',
-                    wordLimit: parseInt(v, 10) || 40,
-                    maxLines: 0,
-                  } as any)
-                }
-              />
-            )}
-            {mode === 'words' && (
-              <p className="text-[9px] text-white/35 leading-relaxed px-1">
-                Shows at least this many words, then continues to the nearest full stop so cards don’t cut mid-sentence.
-              </p>
-            )}
-          </div>
-        );
-      })()}
+      <div className="mt-3">
+        <TextLimitControls content={c} onContentUpdate={(u) => onContentUpdate(u as any)} />
+      </div>
 
       <div className="flex items-center justify-between mt-3">
         <label className="text-[10px] font-bold text-white/40 capitalize ml-1">Enable Marquee</label>
