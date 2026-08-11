@@ -17,7 +17,7 @@ const PinterestControllerV2 = require("../controller/PinterestControllerV2");
 const ProjectControoler = require("../controller/projectcontrooler");
 const projectcontrooler = require('../controller/projectcontrooler');
 const WalletSystemController = require("../controller/WalletSystemController");
-
+const PinterestAPIsV2 = require("../controller/PinterestAPIsV2");
 // Dashboard Stats
 router.get("/getDashboardStats", authentication, AdminController.getDashboardStats);
 
@@ -91,6 +91,21 @@ router.post("/pinterest/v2/runContentClusters", authentication, PinterestControl
 router.post("/pinterest/v2/listProjectClusters", authentication, PinterestControllerV2.listProjectClusters);
 router.post("/pinterest/v2/getContentTaxonomy", authentication, PinterestControllerV2.getContentTaxonomy);
 
+
+
+
+// Pinterest APIs V2
+router.post("/pinterest/v2/getConfig", authentication, PinterestAPIsV2.getConfig);
+router.post("/pinterest/v2/pinterestRequest", authentication, PinterestAPIsV2.pinterestRequest);
+router.post("/pinterest/v2/createPin", authentication, PinterestAPIsV2.createPin);
+router.post("/pinterest/v2/updatePin", authentication, PinterestAPIsV2.updatePin);
+router.post("/pinterest/v2/deletePin", authentication, PinterestAPIsV2.deletePin);
+router.post("/pinterest/v2/getPin", authentication, PinterestAPIsV2.getPin);
+router.post("/pinterest/v2/listPins", authentication, PinterestAPIsV2.listPins);
+router.post("/pinterest/v2/listBoards", authentication, PinterestAPIsV2.listBoards);
+router.post("/pinterest/v2/listBoards", authentication, PinterestAPIsV2.listBoards);  
+
+// Categories Routes
 router.post("/addBulkCategoriesWithSubs", CategoriesController.addBulkCategoriesWithSubs);
 
 
