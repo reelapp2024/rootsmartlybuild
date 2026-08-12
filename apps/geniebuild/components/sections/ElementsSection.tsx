@@ -1127,6 +1127,52 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     
     const safeStyle = getSafeStyle(mergedStyle);
 
+    // ---- Layout elements: row (N columns) + column (vertical group) --------
+    // Canvas-based variants (HeroDarkBold, HeroCanvasTrust, …) lay elements out
+    // with `row`/`column` wrappers. These must render everywhere ElementsSection
+    // renders (live preview + published), not only inside CanvasFreeform — else
+    // their children (buttons, stats, stars) silently drop to the fallback.
+    if (type === 'row') {
+      const cc = (content || {}) as any;
+      const cols = Math.min(Math.max(parseInt(String(cc.columnCount), 10) || 2, 1), 4);
+      const kids: WebsiteElement[] = Array.isArray(cc.children) ? cc.children : [];
+      const gap = cc.gap || '1.5rem';
+      const align = cc.verticalAlign || 'stretch';
+      // Multi-column rows collapse to a single column on mobile (≤767px), so
+      // the layout never squishes side-by-side content on small screens.
+      const rowUid = `gbrow-${String(id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
+      const stackOnMobile = cols > 1 && cc.stackOnMobile !== false;
+      return (
+        <div
+          key={id}
+          className={`gb-canvas-row grid ${rowUid}`}
+          style={{ ...(style as any), gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap, alignItems: align }}
+        >
+          {stackOnMobile && (
+            <style>{`@media (max-width:767px){.${rowUid}{grid-template-columns:1fr !important;}}`}</style>
+          )}
+          {kids.map((child) => (
+            <div key={child.id} className="min-w-0">{renderElement(child)}</div>
+          ))}
+        </div>
+      );
+    }
+    if (type === 'column') {
+      const cc = (content || {}) as any;
+      const kids: WebsiteElement[] = Array.isArray(cc.children) ? cc.children : [];
+      const gap = cc.gap || '1rem';
+      const alignItems = (style as any)?.alignItems || 'flex-start';
+      return (
+        <div key={id} className="gb-canvas-col flex flex-col min-w-0" style={{ ...(style as any), gap, alignItems }}>
+          {/* Each child is wrapped in a real element (not a Fragment) so the
+              data-element-id responsive wrapper can attach without a warning. */}
+          {kids.map((child) => (
+            <div key={child.id} className="min-w-0">{renderElement(child)}</div>
+          ))}
+        </div>
+      );
+    }
+
     switch (type) {
         case 'heading': {
             const c: any = content || {};
@@ -4851,13 +4897,19 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const iconForOpen = accIconType === 'plus' ? 'fa-minus' : iconForClosed;
             const iconShouldRotate = accIconType !== 'plus' && accIconType !== 'none';
 
-            // Resolved colors with theme fallback
+            // Resolved colors with theme fallback. On a LIGHT section the item
+            // card must be light even if the passed theme card colour is a dark
+            // token (which can happen for Canvas variants) — isLightMode wins.
             const itemBg = (safeStyle.backgroundColor && safeStyle.backgroundColor !== 'transparent')
                 ? safeStyle.backgroundColor
-                : (theme?.accordionBackgroundColor || theme?.cardBackgroundColor || '#FFFFFF');
+                : (isLightMode
+                    ? '#FFFFFF'
+                    : (theme?.accordionBackgroundColor || theme?.cardBackgroundColor || '#131A20'));
             const itemBorder = (safeStyle.borderColor && safeStyle.borderColor !== 'transparent')
                 ? safeStyle.borderColor
-                : (theme?.accordionBorderColor || theme?.cardBorderColor || '#E5E7EB');
+                : (isLightMode
+                    ? 'rgba(15,23,42,0.10)'
+                    : (theme?.accordionBorderColor || theme?.cardBorderColor || 'rgba(255,255,255,0.10)'));
             const itemRadius = safeStyle.borderRadius || '0.75rem';
             const itemPadding = safeStyle.padding || '1.25rem';
 
@@ -6993,7 +7045,10 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
 
   /** Attach data-element-id so tablet/mobile CSS overrides from buildResponsiveOverrideCss match. */
   const withElementId = (el: WebsiteElement, node: React.ReactNode): React.ReactNode => {
-    if (React.isValidElement(node)) {
+    // A React.Fragment IS a valid element but can only take `key`/`children` —
+    // cloning `data-element-id` onto it warns. Wrap those in a display:contents
+    // span instead (same layout, no warning).
+    if (React.isValidElement(node) && node.type !== React.Fragment) {
       const props = node.props as Record<string, unknown>;
       if (props['data-element-id']) return node;
       return React.cloneElement(node as React.ReactElement<any>, {

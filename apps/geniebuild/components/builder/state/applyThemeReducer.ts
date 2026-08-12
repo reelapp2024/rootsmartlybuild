@@ -59,7 +59,13 @@ export const applyThemeToSiteData = (
     const isTemplateWhite = templateBg === '#FFFFFF' || templateBg === '#FFF' || templateBg === 'WHITE';
     const isTemplateLight = overrides.themeMode === 'light' || template?.styles?.themeMode === 'light' || isTemplateWhite;
 
-    const isLight = isTemplateLight;
+    // The SECTION's OWN themeMode is the source of truth — honour it first so a
+    // section set to light/dark keeps that when the theme changes. Only fall back
+    // to the template's default light/dark when the section didn't set its own.
+    const ownThemeMode = String(section.styles?.themeMode || '').toLowerCase();
+    const isLight = ownThemeMode === 'light' ? true
+      : ownThemeMode === 'dark' ? false
+      : isTemplateLight;
     const isWhite = isLight;
 
     const activeSurface = isWhite ? '#FFFFFF' : (isLight ? (colors.light?.surface || '#FFFFFF') : colors.surface);

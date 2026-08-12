@@ -277,6 +277,50 @@ export const PRESET_THEMES = [
   // Admin swatches/catalog are derived via: node scripts/extract-theme-swatches.cjs
   // → packages/schema/presetThemeSwatches.json + presetThemeCatalog.json
   {
+    // === Dark & Bold — matches plumbing-landing.html: near-black navy + amber ===
+    "name": "Dark & Bold",
+    "typography": THEME_TYPOGRAPHY,
+    "elements": {
+      "heading": "#F1F5F9", "description": "#94A3B8", "surface": "#0A0E17",
+      "cardBackground": "#131A28", "cardBorder": "rgba(255,255,255,0.10)",
+      "borderColor": "rgba(255,255,255,0.08)",
+      "divider": "rgba(255,255,255,0.06)",
+      "muted": "#64748B",
+      "overlay": { "color": "#0A0E17", "opacity": 0.92, "blend": "normal" },
+      "primaryButton": { "bg": "#FBBF24", "text": "#1A1206", "hover": "#F59E0B" },
+      "secondaryButton": { "bg": "rgba(255,255,255,0.05)", "text": "#F1F5F9", "border": "rgba(255,255,255,0.14)", "hover": "rgba(255,255,255,0.10)" },
+      "icon": "#FBBF24", "iconBg": "rgba(251,191,36,0.12)",
+      "featureBox": { "background": "#131A28", "border": "rgba(255,255,255,0.10)", "iconColor": "#FBBF24", "iconBg": "rgba(251,191,36,0.12)", "titleColor": "#F1F5F9", "textColor": "#94A3B8" },
+      "subheading": "#CBD5E1", "secondaryHeading": "#FBBF24",
+      "accent": "#FBBF24",
+      "gradient": { "from": "#0A0E17", "to": "#131A28" },
+      "ring": "#FBBF24", "shadow": "rgba(251,191,36,0.20)",
+      "badge": { "text": "#FBBF24", "background": "rgba(251,191,36,0.12)" },
+      "trust": { "text": "#94A3B8", "dot1": "#34D399", "dot2": "#22D3EE", "dot3": "#FBBF24" },
+      "accordion": { "questionColor": "#F1F5F9", "answerColor": "#94A3B8" },
+      "link": "#FBBF24", "success": "#34D399", "warning": "#FBBF24", "error": "#EF4444",
+      "inputBg": "#131A28", "inputBorder": "rgba(255,255,255,0.14)", "inputText": "#F1F5F9", "inputPlaceholder": "#64748B",
+      "navBackground": "rgba(10,14,23,0.85)", "navBorder": "rgba(255,255,255,0.08)",
+      "footerBackground": "#0E1420",
+      "light": {
+        "surface": "#FFFFFF", "heading": "#0F172A", "description": "#475569",
+        "cardBackground": "#F8FAFC", "cardBorder": "rgba(15,23,42,0.08)",
+        "borderColor": "rgba(15,23,42,0.08)", "divider": "rgba(15,23,42,0.06)",
+        "muted": "#64748B", "accent": "#F59E0B",
+        "subheading": "#475569", "secondaryHeading": "#F59E0B",
+        "icon": "#F59E0B", "iconBg": "rgba(251,191,36,0.12)",
+        "featureBox": { "background": "#FFFFFF", "border": "rgba(15,23,42,0.08)", "iconColor": "#F59E0B", "iconBg": "rgba(251,191,36,0.12)", "titleColor": "#0F172A", "textColor": "#475569" },
+        "primaryButton": { "bg": "#FBBF24", "text": "#1A1206", "hover": "#F59E0B" },
+        "badge": { "text": "#B45309", "background": "rgba(251,191,36,0.14)" },
+        "trust": { "text": "#64748B", "dot1": "#059669", "dot2": "#0EA5E9", "dot3": "#F59E0B" },
+        "link": "#B45309",
+        "inputBg": "#FFFFFF", "inputBorder": "rgba(15,23,42,0.15)", "inputText": "#0F172A", "inputPlaceholder": "#94A3B8",
+        "overlay": { "color": "#FFFFFF", "opacity": 0.92, "blend": "normal" },
+        "accordion": { "questionColor": "#0F172A", "answerColor": "#475569" }
+      }
+    }
+  },
+  {
     "name": "Crimson Jet",
     "typography": THEME_TYPOGRAPHY,
     "elements": {
@@ -1204,39 +1248,45 @@ export const ADVANCED_ELEMENTS_LIST: WebsiteElement[] = [
     }
 ];
 
+// Dark & Bold typography — Sora (headings) + Inter (body), matching the
+// plumbing-landing.html preview. Theme-level, so every section inherits it.
 export const DEFAULT_TYPOGRAPHY = {
-    h1: { fontFamily: '"Poppins", sans-serif', fontWeight: '700', fontSize: '3.75rem', lineHeight: '1.1', letterSpacing: '-0.02em' },
-    h2: { fontFamily: '"Poppins", sans-serif', fontWeight: '600', fontSize: '2.25rem', lineHeight: '1.2', letterSpacing: '-0.01em' },
-    h3: { fontFamily: '"Poppins", sans-serif', fontWeight: '600', fontSize: '1.5rem', lineHeight: '1.3', letterSpacing: '-0.005em' },
-    h4: { fontFamily: '"Poppins", sans-serif', fontWeight: '600', fontSize: '1.25rem', lineHeight: '1.4', letterSpacing: '0' },
-    h5: { fontFamily: '"Poppins", sans-serif', fontWeight: '500', fontSize: '1.125rem', lineHeight: '1.45', letterSpacing: '0' },
-    h6: { fontFamily: '"Poppins", sans-serif', fontWeight: '500', fontSize: '1rem',    lineHeight: '1.5',  letterSpacing: '0.01em' },
+    h1: { fontFamily: '"Sora", sans-serif', fontWeight: '800', fontSize: '3.75rem', lineHeight: '1.05', letterSpacing: '-0.03em' },
+    h2: { fontFamily: '"Sora", sans-serif', fontWeight: '800', fontSize: '2.25rem', lineHeight: '1.1', letterSpacing: '-0.02em' },
+    h3: { fontFamily: '"Sora", sans-serif', fontWeight: '700', fontSize: '1.5rem', lineHeight: '1.2', letterSpacing: '-0.01em' },
+    h4: { fontFamily: '"Sora", sans-serif', fontWeight: '700', fontSize: '1.25rem', lineHeight: '1.3', letterSpacing: '0' },
+    h5: { fontFamily: '"Sora", sans-serif', fontWeight: '600', fontSize: '1.125rem', lineHeight: '1.4', letterSpacing: '0' },
+    h6: { fontFamily: '"Sora", sans-serif', fontWeight: '600', fontSize: '1rem',    lineHeight: '1.5',  letterSpacing: '0.01em' },
     p: { fontFamily: '"Inter", sans-serif', fontWeight: '400', fontSize: '1rem', lineHeight: '1.7' },
-    button: { fontFamily: '"Poppins", sans-serif', fontWeight: '600', fontSize: '0.9rem', textTransform: 'none' as const },
-    link: { fontFamily: '"Inter", sans-serif', fontWeight: '500', fontSize: '1rem', textTransform: 'none' as const },
+    button: { fontFamily: '"Inter", sans-serif', fontWeight: '700', fontSize: '0.9rem', textTransform: 'none' as const },
+    link: { fontFamily: '"Inter", sans-serif', fontWeight: '600', fontSize: '1rem', textTransform: 'none' as const },
     caption: { fontFamily: '"Inter", sans-serif', fontWeight: '400', fontSize: '0.8rem', lineHeight: '1.5' },
 };
 
 export const INITIAL_TEMPLATE: WebsiteData = {
   name: "GenieBuild Template",
   globalStyles: {
-    primaryFont: '"Poppins", sans-serif',
+    primaryFont: '"Inter", sans-serif',
     themeMode: 'dark',
     borderRadius: 'rounded-xl',
+    // === "Dark & Bold" theme (matches the plumbing-landing.html preview) ===
+    // Near-black navy base + warm amber accent. Applied globally; every section
+    // inherits these, and each section's own themeMode (light|dark) decides the
+    // white-vs-dark rhythm while text contrast auto-resolves from luminance.
     colors: {
-        backgroundColor: '#0E1214',
-        textColor: '#C7CDD6',
-        titleColor: '#F8FAFC',
-        subtitleColor: '#C7CDD6',
-        accentColor: '#F59E0B',
-        buttonBackgroundColor: '#E11D48',
-        buttonTextColor: '#FFFFFF',
-        linkColor: '#F43F5E',
-        borderColor: '#F43F5E',
-        subheadingColor: '#D1D5DB',
-        iconColor: '#E11D48',
-        iconBgColor: 'rgba(225,29,72,0.1)',
-        secondaryHeadingColor: '#E11D48'
+        backgroundColor: '#0A0E17',   // near-black navy base
+        textColor: '#94A3B8',         // muted body text on dark
+        titleColor: '#F1F5F9',        // near-white headings
+        subtitleColor: '#94A3B8',
+        accentColor: '#FBBF24',       // amber — links/eyebrow/highlights
+        buttonBackgroundColor: '#FBBF24', // amber CTA
+        buttonTextColor: '#1A1206',   // dark ink on amber
+        linkColor: '#FBBF24',
+        borderColor: 'rgba(255,255,255,0.08)',
+        subheadingColor: '#CBD5E1',
+        iconColor: '#FBBF24',
+        iconBgColor: 'rgba(251,191,36,0.12)',
+        secondaryHeadingColor: '#FBBF24'
     },
     typography: DEFAULT_TYPOGRAPHY
   },
@@ -1264,18 +1314,20 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         id: 'hero-1',
         type: 'hero',
         content: {
-            title: 'Fast & Reliable <span style="color:#E11D48">Plumbing</span> Services',
-            subtitle: 'Available 24/7 for emergency repairs. Licensed, insured and trusted by 5,000+ homeowners.',
-            ctaText: 'Get Free Estimate',
+            badgeText: 'Licensed · Insured · Local',
+            title: 'Fast, honest plumbing you can actually rely on.',
+            subtitle: 'Upfront pricing, on-time arrival and a written guarantee on every job. Book a fully-vetted local plumber in under 60 seconds.',
+            ctaText: 'Get a free quote',
+            phoneNumber: '(555) 123-4567',
             secondaryCtaText: 'Call (555) 123-4567',
-            imageUrl: 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=800&q=80'
+            imageUrl: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1000&q=80'
         },
         styles: {
             paddingTop: 'pt-10 lg:pt-16',
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'left',
-            variant: 'HeroPlumbing4'
+            variant: 'HeroDarkBold'
         }
     },
     // 2. FEATURES (light)
@@ -1283,15 +1335,22 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         id: 'features-1',
         type: 'features',
         content: {
+            badgeText: 'Why choose us',
             title: 'Why Homeowners Trust Us',
-            subtitle: 'We combine speed, expertise and transparency to deliver plumbing services you can rely on.'
+            subtitle: 'We combine speed, expertise and transparency to deliver plumbing services you can rely on.',
+            items: [
+                { icon: 'fa-circle-dollar-to-slot', title: 'Upfront, fixed pricing', description: 'You approve the price before we lift a tool — no hourly surprises, no hidden add-ons on the final bill.' },
+                { icon: 'fa-clock', title: 'Same-day availability', description: "Book in under a minute and we'll often be at your door the very same day — 24/7 for emergencies." },
+                { icon: 'fa-shield-halved', title: 'Fully vetted pros', description: 'Every team member is licensed, background-checked and insured — the same trusted face, every visit.' },
+                { icon: 'fa-award', title: '10-year guarantee', description: "Our workmanship is backed in writing for a full decade. If something's not right, we make it right." }
+            ]
         },
         styles: {
             paddingTop: 'pt-10 lg:pt-16',
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'center',
-            variant: 'FeaturesPlumbing',
+            variant: 'FeaturesDarkBold',
             themeMode: 'light'
         }
     },
@@ -1300,8 +1359,13 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         id: 'about-1',
         type: 'about',
         content: {
+            badgeText: 'About our company',
             title: 'About ProFlow Plumbing',
             subtitle: 'Trusted local plumbers with over 20 years of experience serving homeowners and businesses across Texas.',
+            items: [
+                { icon: 'fa-shield-halved', heading: 'Licensed & insured', description: 'Fully certified professionals you can trust in your home.' },
+                { icon: 'fa-clock', heading: '24/7 emergency service', description: "We're available day or night for your urgent plumbing needs." }
+            ],
             ctaText: 'Meet Our Team',
             imageUrl: 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=800&q=80'
         },
@@ -1310,7 +1374,7 @@ export const INITIAL_TEMPLATE: WebsiteData = {
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'left',
-            variant: 'AboutPlumbing',
+            variant: 'AboutDarkBold',
             themeMode: 'light'
         }
     },
@@ -1319,8 +1383,14 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         id: 'services-1',
         type: 'services',
         content: {
-            title: 'Our Plumbing Services',
+            badgeText: 'What we do',
+            title: 'Every job, done right the first time',
             subtitle: 'From routine maintenance to emergency repairs, we handle every plumbing need with expertise and care.',
+            items: [
+                { icon: 'fa-wrench', title: 'Leak & drain repair', description: 'Fast detection and lasting fixes for leaks, blocked drains and burst pipes — no mess left behind.' },
+                { icon: 'fa-fire', title: 'Water heater install', description: 'Supply, install and service of tankless and storage heaters, sized right for your home and budget.' },
+                { icon: 'fa-shower', title: 'Bathroom & kitchen', description: 'Full fit-outs and remodels — fixtures, taps, toilets and pipework installed to a spotless finish.' }
+            ],
             ctaText: 'View All Services',
             ctaHref: '#'
         },
@@ -1329,7 +1399,28 @@ export const INITIAL_TEMPLATE: WebsiteData = {
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'left',
-            variant: 'ServicesPlumbing2',
+            variant: 'ServicesDarkBold',
+            themeMode: 'light'
+        }
+    },
+    // 4b. STATS (dark proof band on a light section, like the html)
+    {
+        id: 'stats-1',
+        type: 'stats',
+        content: {
+            items: [
+                { value: '12,000+', label: 'Jobs completed' },
+                { value: '4.9 / 5', label: 'Average rating' },
+                { value: '15+', label: 'Years serving the area' },
+                { value: '60s', label: 'Average booking time' }
+            ]
+        },
+        styles: {
+            paddingTop: 'pt-6 lg:pt-8',
+            paddingBottom: 'pb-10 lg:pb-16',
+            paddingX: 'px-6',
+            textAlign: 'center',
+            variant: 'StatsDarkBold',
             themeMode: 'light'
         }
     },
@@ -1340,14 +1431,16 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         content: {
             title: "Pipe Burst? We're On Our Way.",
             subtitle: "Don't let a plumbing emergency wreck your home. Our team is standing by 24/7 to respond fast.",
-            ctaText: 'Call Now — Free Quote'
+            ctaText: 'Book online',
+            phoneNumber: '(555) 123-4567'
         },
         styles: {
             paddingTop: 'pt-10 lg:pt-16',
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'center',
-            variant: 'CTAPlumbing1'
+            variant: 'CTADarkBold',
+            themeMode: 'dark'
         }
     },
     // 6. PROCESS (light)
@@ -1355,15 +1448,22 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         id: 'process-1',
         type: 'process',
         content: {
+            badge: 'How it works',
             title: 'How Our Service Works',
-            subtitle: 'Four simple steps from your call to a fully fixed plumbing system — fast, clean and professional.'
+            description: 'Four simple steps from your call to a fully fixed plumbing system — fast, clean and professional.',
+            items: [
+                { title: 'Tell us the problem', description: 'Call or book online in under a minute — describe the issue and pick a time that suits you.' },
+                { title: 'Get a fixed quote', description: 'We assess the job and give you an upfront, written price before any work begins.' },
+                { title: 'We fix it right', description: 'A vetted local plumber arrives on time and completes the work cleanly and carefully.' },
+                { title: "Relax — you're covered", description: 'Every job is backed by our 10-year guarantee, so you can forget about it for good.' }
+            ]
         },
         styles: {
             paddingTop: 'pt-10 lg:pt-16',
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'center',
-            variant: 'ProcessPlumbing',
+            variant: 'ProcessDarkBold',
             themeMode: 'light'
         }
     },
@@ -1372,15 +1472,21 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         id: 'why-choose-us-1',
         type: 'why-choose-us',
         content: {
+            badgeText: 'The difference',
             title: 'Why Choose Our Plumbing Services?',
-            subtitle: "We set the benchmark for plumbing excellence — here's why homeowners choose us every time."
+            subtitle: "We set the benchmark for plumbing excellence — here's why homeowners choose us every time.",
+            items: [
+                { icon: 'fa-bolt', title: 'Rapid response', description: "We answer fast and arrive on time — with live tracking so you're never left waiting around." },
+                { icon: 'fa-hand-holding-dollar', title: 'Fair, honest pricing', description: "Clear quotes before we start. You'll always know exactly what you're paying and why." },
+                { icon: 'fa-shield-halved', title: 'Guaranteed work', description: 'Backed by a 10-year workmanship guarantee — we stand behind every job long after we leave.' }
+            ]
         },
         styles: {
             paddingTop: 'pt-10 lg:pt-16',
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'center',
-            variant: 'WhyChoosePlumbing',
+            variant: 'WhyChooseDarkBold',
             themeMode: 'light'
         }
     },
@@ -1391,14 +1497,16 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         content: {
             title: 'Ready to Fix Your Plumbing Issues?',
             subtitle: 'Our expert technicians arrive on time, fix it right the first time, and leave your home clean and tidy.',
-            ctaText: 'Book a Service'
+            ctaText: 'Book online',
+            phoneNumber: '(555) 123-4567'
         },
         styles: {
             paddingTop: 'pt-10 lg:pt-16',
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
-            textAlign: 'left',
-            variant: 'CTAPlumbing2'
+            textAlign: 'center',
+            variant: 'CTADarkBold',
+            themeMode: 'dark'
         }
     },
     // 9. GUARANTEE (light)
@@ -1406,8 +1514,15 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         id: 'guarantee-1',
         type: 'guarantee',
         content: {
+            badgeText: 'Our promise',
             title: 'Our 100% Satisfaction Guarantee',
-            subtitle: "We stand behind every job we do. If anything goes wrong, we'll make it right — guaranteed.",
+            subtitle: "We stand behind every job we do. If anything goes wrong, we'll make it right — guaranteed. That's our written promise to every customer.",
+            metrics: [
+                { icon: 'fa-shield-halved', value: '10 yr', label: 'Workmanship', description: 'In writing, on every job we complete.' },
+                { icon: 'fa-thumbs-up', value: '100%', label: 'Satisfaction', description: "We're not done until you're happy." },
+                { icon: 'fa-file-invoice-dollar', value: 'No fee', label: 'Call-out', description: 'No charge to come and quote a booked job.' },
+                { icon: 'fa-clock', value: '24/7', label: 'Emergency', description: 'Round-the-clock cover when it matters.' }
+            ],
             ctaText: 'Book With Confidence'
         },
         styles: {
@@ -1415,7 +1530,7 @@ export const INITIAL_TEMPLATE: WebsiteData = {
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'left',
-            variant: 'GuaranteePlumbing',
+            variant: 'GuaranteeDarkBold',
             themeMode: 'light'
         }
     },
@@ -1424,15 +1539,21 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         id: 'testimonials-1',
         type: 'testimonials',
         content: {
+            badgeText: 'Loved by locals',
             title: 'What Our Customers Say',
-            subtitle: 'Real reviews from real homeowners who trusted us with their plumbing needs.'
+            subtitle: 'Real reviews from real homeowners who trusted us with their plumbing needs.',
+            items: [
+                { description: "Turned up on time, quoted before starting and left the place spotless. Fixed a leak two other plumbers couldn't.", author: 'Sarah M.', role: 'Homeowner · Riverside', avatar: 'https://i.pravatar.cc/96?img=32', rating: 5 },
+                { description: 'Booked online in under a minute and they were out the same afternoon. Honest pricing, no surprises on the bill.', author: 'James K.', role: 'Landlord · Oakfield', avatar: 'https://i.pravatar.cc/96?img=12', rating: 5 },
+                { description: 'The 10-year guarantee sold me and the work backed it up. Polite, tidy and genuinely knew their stuff.', author: 'Priya D.', role: 'Homeowner · Elm Park', avatar: 'https://i.pravatar.cc/96?img=45', rating: 5 }
+            ]
         },
         styles: {
             paddingTop: 'pt-10 lg:pt-16',
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'center',
-            variant: 'TestimonialsPlumbing',
+            variant: 'TestimonialsDarkBold',
             themeMode: 'light'
         },
         elements: []
@@ -1442,15 +1563,21 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         id: 'areas-1',
         type: 'areas',
         content: {
+            badgeText: 'Coverage',
             title: 'Service Areas',
-            subtitle: 'We provide fast, reliable plumbing services across the greater Texas area. Not sure if we serve your area? Give us a call!'
+            subtitle: 'We provide fast, reliable plumbing services across the greater Texas area. Not sure if we serve your area? Give us a call!',
+            ctaText: 'Check your area',
+            items: [
+                { title: 'Riverside' }, { title: 'Oakfield' }, { title: 'Elm Park' }, { title: 'Hillcrest' },
+                { title: 'Maple Heights' }, { title: 'Fairview' }, { title: 'Brookside' }, { title: 'Westgate' }
+            ]
         },
         styles: {
             paddingTop: 'pt-10 lg:pt-16',
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
-            textAlign: 'center',
-            variant: 'AreasPlumbing',
+            textAlign: 'left',
+            variant: 'AreasDarkBold',
             themeMode: 'light'
         }
     },
@@ -1461,14 +1588,16 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         content: {
             title: 'Join 5,000+ Satisfied Customers',
             subtitle: 'Trusted by thousands of homeowners. Schedule your service today and experience the difference.',
-            ctaText: 'Schedule Service Today'
+            ctaText: 'Book online',
+            phoneNumber: '(555) 123-4567'
         },
         styles: {
             paddingTop: 'pt-10 lg:pt-16',
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'center',
-            variant: 'CTAPlumbing3'
+            variant: 'CTADarkBold',
+            themeMode: 'dark'
         }
     },
     // 13. FAQ (after final CTA)
@@ -1476,18 +1605,43 @@ export const INITIAL_TEMPLATE: WebsiteData = {
         id: 'faq-1',
         type: 'faq',
         content: {
+            badgeText: 'Questions',
             title: 'Frequently Asked Questions',
-            subtitle: 'Straight answers about our services, pricing and guarantees — from the team you\'ll actually talk to.'
+            subtitle: 'Straight answers about our services, pricing and guarantees — from the team you\'ll actually talk to.',
+            items: [
+                { question: 'How quickly can you come out?', answer: 'For most jobs we offer same-day or next-day slots, and we run a 24/7 line for genuine emergencies like burst pipes or major leaks.' },
+                { question: 'Do you charge a call-out fee?', answer: 'No call-out fee on booked jobs. We give you a fixed, written quote before any work starts, so there are no surprises.' },
+                { question: 'Are your plumbers licensed and insured?', answer: 'Absolutely. Every plumber is fully licensed, background-checked and insured, and all our work is covered by a 10-year guarantee.' },
+                { question: 'What areas do you cover?', answer: "We serve the whole city and surrounding towns. If your area isn't listed, give us a call — we can almost always help." }
+            ]
         },
         styles: {
             paddingTop: 'pt-10 lg:pt-16',
             paddingBottom: 'pb-10 lg:pb-16',
             paddingX: 'px-6',
             textAlign: 'center',
-            variant: 'FAQPlumbing',
+            variant: 'FAQDarkBold',
             themeMode: 'light'
         },
         elements: []
+    },
+    // 13b. LOCATION MAP (like the html "Right here in your community")
+    {
+        id: 'locationmap-1',
+        type: 'locationmap',
+        content: {
+            badgeText: 'Find us',
+            title: 'Right here in your community',
+            subtitle: "Locally based, so we're never far away when you need us."
+        },
+        styles: {
+            paddingTop: 'pt-10 lg:pt-16',
+            paddingBottom: 'pb-10 lg:pb-16',
+            paddingX: 'px-6',
+            textAlign: 'center',
+            variant: 'LocationMapDefault',
+            themeMode: 'light'
+        }
     },
     // 14. FOOTER (dark, last)
     {
@@ -2411,6 +2565,20 @@ export const SECTION_TEMPLATES: Record<string, Partial<Section>> = {
       ],
     },
     styles: { paddingTop: 'pt-16 lg:pt-24', paddingBottom: 'pb-16 lg:pb-24', paddingX: 'px-6', textAlign: 'center', variant: 'ServiceDetailFaqDefault' }
+  },
+
+  /** Homepage proof-numbers band (dark card with big stats). */
+  stats: {
+    type: 'stats',
+    content: {
+      items: [
+        { value: '12,000+', label: 'Jobs completed' },
+        { value: '4.9 / 5', label: 'Average rating' },
+        { value: '15+', label: 'Years serving the area' },
+        { value: '60s', label: 'Average booking time' },
+      ],
+    },
+    styles: { paddingTop: 'pt-6 lg:pt-8', paddingBottom: 'pb-10 lg:pb-16', paddingX: 'px-6', textAlign: 'center', variant: 'StatsDarkBold', themeMode: 'light' }
   },
 
   /** All Areas listing — hero (`allareas/areashero`). */

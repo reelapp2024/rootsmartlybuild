@@ -17,7 +17,10 @@ module.exports = {
     subtitle: "string",
     ctaText: "string",
     badgeText: "string",
+    phoneNumber: "string",
+    ratingText: "string",
     trustStripItems: "array<{icon:string,label:string}>",
+    heroStats: "array<{value:string,label:string,icon:string}>",
     ai_image_prompt: "string",
     non_ai_image_prompt: "string",
   },
@@ -73,10 +76,16 @@ Return STRICT JSON ONLY (NO explanation, NO markdown):
   "subtitle": "Supporting subheading (20-35 words)",
   "ctaText": "2-4 word call to action button text",
   "badgeText": "Short badge text (2-5 words)",
+  "phoneNumber": "A realistic local phone number in display format, e.g. (555) 123-4567",
+  "ratingText": "Short social-proof line, e.g. \"4.9/5 from 500+ reviews\"",
   "trustStripItems": [
     { "icon": "fa-clock", "label": "2-5 word trust point" },
     { "icon": "fa-shield-halved", "label": "2-5 word trust point" },
     { "icon": "fa-star", "label": "2-5 word trust point" }
+  ],
+  "heroStats": [
+    { "value": "Short number/metric, e.g. \"12,000+\"", "label": "2-4 word label", "icon": "fa-wrench" },
+    { "value": "Short number/metric, e.g. \"15+ yrs\"", "label": "2-4 word label", "icon": "fa-medal" }
   ],
   "ai_image_prompt": "28-55 words: one rich paragraph describing the MAIN wide hero photograph AND the same visual world for several supporting images (crew, tools, finished work, residential/commercial context). Photoreal, specific actions and lighting. Category: ${mainCategory}. No text in frame.",
   "non_ai_image_prompt": "3-10 words, keyword-only stock query for ${mainCategory} hero + lifestyle shots (e.g. \"solar installer rooftop safety harness\")"
@@ -119,6 +128,25 @@ TRUST STRIP ITEMS:
   - "label": short trust phrase, 2-5 words, no punctuation at end
 - Keep labels specific to the business category and location context
 
+PHONE NUMBER:
+- REQUIRED (must not be empty)
+- A single realistic local phone number in display format, e.g. "(555) 123-4567"
+- Digits only inside standard formatting — no words, no extension
+
+RATING TEXT:
+- REQUIRED (must not be empty)
+- One short social-proof line, 4-8 words, e.g. "4.9/5 from 500+ reviews" or "Rated 5 stars by 300+ locals"
+- Believable numbers for a local business — do NOT overstate
+
+HERO STATS:
+- REQUIRED (must not be empty)
+- Return EXACTLY 2 objects in heroStats
+- Each object must have:
+  - "value": a short, punchy metric — number + unit/sign, 1-3 tokens (e.g. "12,000+", "15+ yrs", "24/7", "100%")
+  - "label": 2-4 word label describing the metric (e.g. "Jobs completed", "Years serving", "Response time")
+  - "icon": valid Font Awesome token without prefix relevant to the metric (e.g. "fa-wrench", "fa-medal", "fa-clock", "fa-star")
+- Make the two stats specific and credible for ${mainCategory}; do NOT reuse the same metric twice
+
 ${IMAGE_PROMPT_JSON_RULES}
 
 GLOBAL RULES:
@@ -126,7 +154,7 @@ GLOBAL RULES:
 - Output MUST be valid JSON
 - Do NOT skip any key
 - Do NOT add extra keys
-- Do NOT include phone/email/address
+- The ONLY contact detail allowed is the "phoneNumber" field above — do NOT put email or street address anywhere
 - No markdown, no explanation
 - Make content SEO optimized
 - Each local area page must feel distinct: vary headline shape and trust points while keeping real place names for SEO

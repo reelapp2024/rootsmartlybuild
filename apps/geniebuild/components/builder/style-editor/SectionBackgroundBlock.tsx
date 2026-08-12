@@ -3,6 +3,8 @@ import { Section } from '../../../types';
 import { PRESET_THEMES } from '../../../constants';
 import { AccordionGroup, BackgroundControl, ColorInput, RangeInput, SelectInput } from '../inputs';
 import { normalizeBackground, syncLegacyBackgroundFlats } from '../../../utils/normalizeSectionStyles';
+import { BG_PATTERN_CHOICES } from '../../sections/homepage/utils/sectionBgPatterns';
+import { isCanvasRenderedVariant } from '../../sections/canvas/isCanvasVariant';
 
 interface SectionBackgroundBlockProps {
   styles: any;
@@ -41,9 +43,7 @@ export const SectionBackgroundBlock: React.FC<SectionBackgroundBlockProps> = ({
   // (e.g. HeroCanvas) — don't use the light/dark theme-mode surface swap, so the
   // Theme Mode toggle is hidden for them.
   const _variantName = String((styles as any)?.variant || '');
-  const _isCanvasSection = selectedSection?.type === 'canvas'
-    || _variantName === 'CanvasFreeform'
-    || /canvas/i.test(_variantName);
+  const _isCanvasSection = isCanvasRenderedVariant(_variantName, selectedSection?.type);
   const _themeOverlayColor = _isLight
     ? (_activeTheme?.light?.overlay?.color || '#FFFFFF')
     : (_activeTheme?.overlay?.color || PRESET_THEMES[0].elements.overlay.color);
@@ -228,6 +228,24 @@ export const SectionBackgroundBlock: React.FC<SectionBackgroundBlockProps> = ({
         </div>
       </div>
       )}
+
+      {/* --- BACKGROUND PATTERN ---
+          A reusable, theme-driven decorative layer (grid / glow / dots) painted
+          ON TOP of the section's base colour. Works on ANY section — pick once,
+          and it follows whichever theme is active (uses accent + divider colour).
+      */}
+      <div className="space-y-3 pt-4 border-t border-white/10">
+        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Background Pattern</h4>
+        <p className="text-[10px] text-white/40 leading-relaxed">
+          A decorative grid / glow layer over the background. Theme-coloured, so it matches the active theme.
+        </p>
+        <SelectInput
+          label="Pattern"
+          value={String((styles as any).bgPattern || 'none')}
+          options={BG_PATTERN_CHOICES}
+          onChange={(v) => onUpdate('bgPattern', v)}
+        />
+      </div>
 
       {/* --- BACKGROUND OVERLAY ---
           Overlay only makes sense on top of an image or vivid gradient

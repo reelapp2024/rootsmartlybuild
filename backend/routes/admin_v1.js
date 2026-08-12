@@ -101,9 +101,8 @@ router.post("/pinterest/v2/createPin", authentication, PinterestAPIsV2.createPin
 router.post("/pinterest/v2/updatePin", authentication, PinterestAPIsV2.updatePin);
 router.post("/pinterest/v2/deletePin", authentication, PinterestAPIsV2.deletePin);
 router.post("/pinterest/v2/getPin", authentication, PinterestAPIsV2.getPin);
-router.post("/pinterest/v2/listPins", authentication, PinterestAPIsV2.listPins);
-router.post("/pinterest/v2/listBoards", authentication, PinterestAPIsV2.listBoards);
-router.post("/pinterest/v2/listBoards", authentication, PinterestAPIsV2.listBoards);  
+router.post("/pinterest/v2/listPins", authentication, PinterestAPIsV2.getPins);
+router.post("/pinterest/v2/listBoards", authentication, PinterestAPIsV2.getBoards);
 
 // Categories Routes
 router.post("/addBulkCategoriesWithSubs", CategoriesController.addBulkCategoriesWithSubs);

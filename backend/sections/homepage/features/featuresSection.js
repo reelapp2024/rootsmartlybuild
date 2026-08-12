@@ -7,6 +7,7 @@ module.exports = {
   id: "features",
 
   schema: {
+    badgeText: "string",
     title: "string",
     subtitle: "string",
     items: [
@@ -48,6 +49,7 @@ ${JSON.stringify(extraData)}
 Return STRICT JSON ONLY:
 
 {
+  "badgeText": "2-4 word section eyebrow (e.g. \"Why choose us\")",
   "title": "Section heading (3-6 words)",
   "subtitle": "Optional supporting text (18-30 words)",
   "items": [

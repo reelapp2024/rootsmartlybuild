@@ -4,6 +4,7 @@ import { ElementsSection } from '../ElementsSection';
 import { PALETTE_ELEMENTS, createCanvasElement } from './canvasElementFactory';
 import { resolveSectionWrapperStyle, resolveSectionOverlay, sectionBgHasImage } from '../homepage/utils/sectionBackground';
 import { SectionEffectsLayer } from '../homepage/utils/SectionEffectsLayer';
+import { resolveBgPatternLayers } from '../homepage/utils/sectionBgPatterns';
 
 interface Props {
   section: Section;
@@ -49,9 +50,31 @@ export const CanvasFreeform: React.FC<Props> = ({
   // overlay, margin (top/bottom) and border — via the shared resolver. Dividers
   // are drawn by the shared SectionEffectsLayer below.
   const defaultSurface = tc?.backgroundColor || tc?.light?.surface || 'transparent';
-  const wrapperStyle = resolveSectionWrapperStyle(s, { defaultSurface });
+  const baseWrapperStyle = resolveSectionWrapperStyle(s, { defaultSurface });
   const bgOverlay = resolveSectionOverlay(s);
   const hasBgImage = sectionBgHasImage(s);
+
+  // Design-tab "Background Pattern" (grid / glow / dots) — a theme-driven
+  // decorative layer applied on top of the resolved base colour. Reusable on ANY
+  // Canvas section; skipped when the section already uses its own bg image so the
+  // two don't fight for the backgroundImage slot.
+  const patternLayers = !hasBgImage
+    ? resolveBgPatternLayers((s as any).bgPattern, {
+        accent: tc?.accentColor || tc?.light?.accentColor,
+        line: tc?.dividerColor || tc?.cardBorderColor || cardBorder,
+      })
+    : {};
+  const wrapperStyle: React.CSSProperties = {
+    ...baseWrapperStyle,
+    ...(patternLayers.backgroundImage
+      ? {
+          backgroundColor: (baseWrapperStyle as any).backgroundColor || defaultSurface,
+          backgroundImage: patternLayers.backgroundImage,
+          backgroundSize: patternLayers.backgroundSize,
+          backgroundRepeat: patternLayers.backgroundRepeat,
+        }
+      : {}),
+  };
 
   const isCssValue = (v: any) => typeof v === 'string' && /(px|rem|em|%|vh|vw)$/.test(v.trim());
   const padT = s.paddingTop  ?? 'pt-14 lg:pt-20';
@@ -191,7 +214,7 @@ export const CanvasFreeform: React.FC<Props> = ({
           const colAlign = (child.style as any)?.alignItems || 'flex-start';
           return (
             <div className="flex flex-col min-w-0" style={{ ...(child.style as any), gap: colGap, alignItems: colAlign }}>
-              {kids.map((k) => <React.Fragment key={k.id}>{renderColItem(k)}</React.Fragment>)}
+              {kids.map((k) => <div key={k.id} className="min-w-0">{renderColItem(k)}</div>)}
             </div>
           );
         }

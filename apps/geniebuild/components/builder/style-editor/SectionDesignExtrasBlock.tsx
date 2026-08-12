@@ -1,5 +1,6 @@
 import React from 'react';
 import { AccordionGroup, RangeInput, SelectInput } from '../inputs';
+import { isCanvasRenderedVariant } from '../../sections/canvas/isCanvasVariant';
 
 interface SectionDesignExtrasBlockProps {
   styles: any;
@@ -30,7 +31,7 @@ export const SectionDesignExtrasBlock: React.FC<SectionDesignExtrasBlockProps> =
   // Grid Columns only makes sense for card-grid sections. Freeform Canvas (and
   // any Canvas-based variant, e.g. HeroCanvas) stacks its elements, so hide it.
   const _variantName = String((styles as any)?.variant || '');
-  const _isCanvasSection = _variantName === 'CanvasFreeform' || /canvas/i.test(_variantName);
+  const _isCanvasSection = isCanvasRenderedVariant(_variantName);
   const currentMinHeight = String(styles.minHeight || '').trim();
   const activeMinHeightPreset = MIN_HEIGHT_PRESETS.find(p => p.value === currentMinHeight)?.key
     || (currentMinHeight && currentMinHeight !== '' ? 'custom' : 'auto');

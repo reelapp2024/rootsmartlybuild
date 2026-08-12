@@ -95,6 +95,13 @@ export function resolveSectionBackground(
     out.backgroundSize = s.backgroundSize || 'cover';
     out.backgroundPosition = s.backgroundPosition || 'center';
     out.backgroundRepeat = s.backgroundRepeat || 'no-repeat';
+    // A flat backgroundImage can sit ON TOP of a base colour (e.g. a decorative
+    // grid/glow over the theme surface). Keep the explicit colour, else default.
+    if (typeof s.backgroundColor === 'string' && s.backgroundColor.trim() && s.backgroundColor.trim().toLowerCase() !== 'transparent') {
+      out.backgroundColor = s.backgroundColor;
+    } else {
+      out.backgroundColor = defaultSurface;
+    }
     return out;
   }
 
