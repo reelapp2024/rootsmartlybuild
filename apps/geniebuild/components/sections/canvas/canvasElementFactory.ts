@@ -41,6 +41,7 @@ export const PALETTE_ELEMENTS: PaletteItem[] = [
   { type: 'logo-cloud',    label: 'Logo Cloud',   icon: 'fa-icons',          group: 'Media' },
   // Layout
   { type: 'row' as any,    label: 'Row (2 cols)', icon: 'fa-table-columns',  group: 'Content' },
+  { type: 'column' as any, label: 'Column',       icon: 'fa-grip-lines-vertical', group: 'Content' },
   // Content
   { type: 'icon-box',      label: 'Icon Box',     icon: 'fa-square-check',   group: 'Content' },
   { type: 'feature-box',   label: 'Feature Box',  icon: 'fa-list-check',     group: 'Content' },
@@ -126,6 +127,15 @@ function defaultForType(type: WebsiteElement['type']): { content: any; style: an
         ],
       },
       style: {},
+    };
+    case 'column' as any:  return {
+      content: {
+        gap: '1rem',
+        children: [
+          { id: `col-c1-${Math.floor(performance.now() % 100000)}`, type: 'text', content: { text: 'Column item. Click to edit.', textSize: 'base' }, style: { textAlign: 'left' }, settings: {} },
+        ],
+      },
+      style: { alignItems: 'flex-start' },
     };
     default:               return { content: { text: 'New element' }, style: {} };
   }

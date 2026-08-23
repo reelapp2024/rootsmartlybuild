@@ -1138,6 +1138,13 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
       const kids: WebsiteElement[] = Array.isArray(cc.children) ? cc.children : [];
       const gap = cc.gap || '1.5rem';
       const align = cc.verticalAlign || 'stretch';
+      // Column widths: default equal (1fr each). If `columnRatios` is given
+      // (e.g. [30,70] or ['1fr','2fr']) use those for asymmetric layouts —
+      // Elementor-style 30/70, 70/30, sidebar layouts, etc.
+      const ratios: any[] = Array.isArray(cc.columnRatios) ? cc.columnRatios : [];
+      const gridTemplateColumns = (ratios.length === cols && cols > 1)
+        ? ratios.map((r) => (typeof r === 'number' ? `${r}fr` : String(r))).join(' ')
+        : `repeat(${cols}, minmax(0, 1fr))`;
       // Multi-column rows collapse to a single column on mobile (≤767px), so
       // the layout never squishes side-by-side content on small screens.
       const rowUid = `gbrow-${String(id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -1146,7 +1153,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
         <div
           key={id}
           className={`gb-canvas-row grid ${rowUid}`}
-          style={{ ...(style as any), gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap, alignItems: align }}
+          style={{ ...(style as any), gridTemplateColumns, gap, alignItems: align }}
         >
           {stackOnMobile && (
             <style>{`@media (max-width:767px){.${rowUid}{grid-template-columns:1fr !important;}}`}</style>
@@ -4474,64 +4481,27 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             );
         }
 
-        case 'badge':
-            // 1. Get LIVE theme badge colors (Bypassing stale ThemeProvider context)
-            const getLiveBadgeColors = () => {
-                const liveSurface = (theme as Record<string, string>)?.backgroundColor || (sectionStyles?.backgroundColor as string) || '';
-                const preset = PRESET_THEMES.find(t => t.elements.surface.toLowerCase() === liveSurface.toLowerCase());
-                if (preset) return { bg: preset.elements.badge.background, text: preset.elements.badge.text };
-                
-                const hex = theme?.buttonBackgroundColor || '#3b82f6';
-                let r = 59, g = 130, b = 246;
-                if (hex.startsWith('#') && hex.length === 7) {
-                    r = parseInt(hex.slice(1, 3), 16) || r; g = parseInt(hex.slice(3, 5), 16) || g; b = parseInt(hex.slice(5, 7), 16) || b;
-                }
-                return { bg: `rgba(${r}, ${g}, ${b}, 0.15)`, text: theme?.buttonTextColor || '#FFFFFF' };
-            };
-            const liveBadge = getLiveBadgeColors();
-            const currentThemeBg = liveBadge.bg;
-            const currentThemeText = liveBadge.text;
-            
-            // 2. Safely extract element style
+        case 'badge': {
+            // Badge colours — light/dark aware, clean (no theme-guessing heuristic).
+            // A user's explicit colour always wins; otherwise we build a readable
+            // default from the theme accent that works on BOTH light and dark
+            // sections (previously a white text on a 15%-accent wash was faded /
+            // unreadable on light sections).
             const elementStyle = el.style || {};
-            const rawBg = elementStyle.backgroundColor || elementStyle.accentColor || '';
-            const rawText = elementStyle.color || '';
+            const rawBg = String(elementStyle.backgroundColor || (elementStyle as any).accentColor || '').trim();
+            const rawText = String(elementStyle.color || '').trim();
 
-            // 3. Helper to clean duplicated color strings (e.g., "#HEX,#HEX" or "rgba(...),rgba(...)")
-            const sanitizeColor = (colorStr: string) => {
-                if (!colorStr) return '';
-                // Fix duplicated rgba: "rgba(255,0,0,0.5),rgba(255,0,0,0.5)"
-                if (colorStr.includes('),rgba')) {
-                    return colorStr.split('),rgba')[0] + ')';
-                }
-                // Fix duplicated hex: "#F8FAFC,#F8FAFC"
-                if (colorStr.includes('#') && colorStr.indexOf('#', 1) !== -1) {
-                    return colorStr.substring(0, colorStr.indexOf('#', 1)).replace(/,$/, '');
-                }
-                return colorStr;
-            };
+            const badgeAccent =
+                theme?.accentColor || theme?.buttonBackgroundColor || '#3b82f6';
 
-            const cleanElementBg = sanitizeColor(rawBg);
-            const cleanElementText = sanitizeColor(rawText);
+            // Default fill = a soft accent tint; default text = the accent itself
+            // (readable on light AND dark because it's the saturated brand colour,
+            // not white). Explicit element colours override.
+            const defaultBadgeBg = `${badgeAccent}22`; // ~13% accent tint
+            const defaultBadgeText = badgeAccent;
 
-            // 4. Build a list of ALL known preset theme colors to detect remnants of previous themes
-            const knownThemeBgs = PRESET_THEMES.map(t => t.elements.badge?.background).filter(Boolean) as string[];
-            knownThemeBgs.push('#ec4899', '#F59E0B', 'rgba(225,29,72,0.15)', 'transparent');
-
-            const knownThemeTexts = PRESET_THEMES.map(t => t.elements.badge?.text).filter(Boolean) as string[];
-            knownThemeTexts.push('#F8FAFC', '#FFFFFF', '#D1D5DB', 'transparent');
-
-            // 5. Determine if it's a TRUE custom color
-            // It is custom ONLY if it exists AND it does not match ANY of our known theme colors
-            const isCustomBg = cleanElementBg !== '' && 
-                !knownThemeBgs.some(bg => bg.replace(/\s/g, '') === cleanElementBg.replace(/\s/g, ''));
-                               
-            const isCustomText = cleanElementText !== '' && 
-                !knownThemeTexts.some(text => text.replace(/\s/g, '') === cleanElementText.replace(/\s/g, ''));
-
-            // 6. Resolve final colors: Use custom if it exists, otherwise strictly force the current theme
-            const badgeBgColor = isCustomBg ? cleanElementBg : currentThemeBg;
-            const badgeTextColor = isCustomText ? cleanElementText : currentThemeText;
+            const badgeBgColor = rawBg && rawBg.toLowerCase() !== 'transparent' ? rawBg : defaultBadgeBg;
+            const badgeTextColor = rawText && rawText.toLowerCase() !== 'transparent' ? rawText : defaultBadgeText;
             
             // 7. Badge size and padding
             const badgeFontSize = renderStyle?.fontSize || '0.75rem';
@@ -4658,6 +4628,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     )}
                 </div>
             );
+        }
 
         case 'highlight-text': {
             // Highlight style mode (stored on style for one-place editing).

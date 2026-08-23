@@ -91,8 +91,25 @@ export function useCountUp({
  * - If raw included "M"/"m" → divides by 1_000_000 + M suffix
  * Otherwise uses locale thousands separators.
  */
+/**
+ * True only when a value is a *pure* count-up number: optional minus, digits
+ * (with commas / one decimal), then optionally ONE magnitude/format suffix
+ * (K, M, %, +). Anything else — "6AM", "7PM", "10km", "4.9/5", "Open 24/7",
+ * "$29" — is NOT eligible and must render as-is with no animation. This is what
+ * fixes "6AM" animating to "6.0M" (the "M" in "AM" was read as millions).
+ */
+export function isCountUpEligible(raw: unknown): boolean {
+  if (typeof raw === 'number') return Number.isFinite(raw);
+  const s = String(raw || '').trim();
+  if (!s) return false;
+  return /^-?\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*[kKmM]?[%+]?$/.test(s)
+      || /^-?\d+(?:\.\d+)?\s*[kKmM]?[%+]?$/.test(s);
+}
+
 export function formatCountUpValue(current: number, originalText: string): string {
   const raw = String(originalText || '').trim();
+  // Non-numeric / non-unit values (times, ratios, prices) are shown verbatim.
+  if (!isCountUpEligible(raw)) return raw;
   const hasPercent = raw.endsWith('%');
   const hasPlus = raw.endsWith('+');
   const hasK = /[kK]$/.test(raw.replace(/[+%]$/, ''));
@@ -120,10 +137,12 @@ export function parseCountUpTarget(raw: unknown): number {
   if (typeof raw === 'number') return raw;
   const s = String(raw || '').trim();
   if (!s) return 0;
-  // Strip suffixes/commas, parse float
+  // Only parse values that are genuinely count-up numbers; everything else
+  // returns NaN so the caller can skip the animation and render raw text.
+  if (!isCountUpEligible(s)) return NaN;
   const cleaned = s.replace(/[,\s]/g, '');
   const match = cleaned.match(/^(-?\d+(?:\.\d+)?)([kKmM])?/);
-  if (!match) return 0;
+  if (!match) return NaN;
   const n = parseFloat(match[1]);
   const mult = match[2] ? (match[2].toLowerCase() === 'k' ? 1000 : 1_000_000) : 1;
   return n * mult;

@@ -1788,8 +1788,10 @@ const AppContent: React.FC = () => {
       const isElementAdvancedTab = context === 'element' && elementEditorTab === 'advanced';
 
       // Layout (padding/margin) lives in Advanced tab for both sections + elements.
-      // Card/Accordion elements keep their own specialized panels — no generic Layout block.
-      const showLayoutBlock = isSectionAdvancedTab || (isElementAdvancedTab && !isCardOrAccordion);
+      // UNIVERSAL: every element gets spacing controls (Elementor-style). Previously
+      // card/accordion were excluded, and row/column had no spacing at all — which
+      // blocked free layout. Now padding/margin is available on all element types.
+      const showLayoutBlock = isSectionAdvancedTab || isElementAdvancedTab;
 
       // Border:
       //   • Sections — Advanced tab (unchanged).
@@ -1803,6 +1805,18 @@ const AppContent: React.FC = () => {
       ]);
       const showBorderBlock = isSectionAdvancedTab
           || (isElementDesignTab && !ELEMENTS_WITH_BUILTIN_BORDER.has(elementType || ''));
+
+      // Elements that carry their own typography controls inside their dedicated
+      // style block — the generic TypographyBlock is shown for everything else
+      // (row / column / any new element), so no element is left without type control.
+      const ELEMENTS_WITH_BUILTIN_TYPOGRAPHY = new Set([
+          'card', 'accordion', 'feature-box', 'icon-box', 'stat-card', 'testimonial-card',
+          'trust-strip', 'list', 'alert-box', 'badge', 'icon', 'highlight-text', 'blockquote',
+          'counter', 'progress-bar', 'countdown-timer', 'toggle', 'tabs', 'pricing-table',
+          'pricing-item', 'flip-box', 'image-box', 'logo-cloud', 'user-avatars', 'review-carousel',
+          'button', 'call-to-action', 'cta-button', 'heading', 'text', 'image', 'video',
+          'divider', 'nav-menu', 'spacer',
+      ]);
 
       return (
           <div className="space-y-6 animate-in fade-in slide-in-from-right-2 duration-300">
@@ -1824,41 +1838,7 @@ const AppContent: React.FC = () => {
                   <BorderBlock styles={styles} onUpdate={onUpdate} onBatchUpdate={onBatchUpdate} />
               )}
               {isElementDesignTab
-                && elementType !== 'card'
-                && elementType !== 'accordion'
-                && elementType !== 'feature-box'
-                && elementType !== 'icon-box'
-                && elementType !== 'stat-card'
-                && elementType !== 'testimonial-card'
-                && elementType !== 'trust-strip'
-                && elementType !== 'list'
-                && elementType !== 'alert-box'
-                && elementType !== 'badge'
-                && elementType !== 'icon'
-                && elementType !== 'highlight-text'
-                && elementType !== 'blockquote'
-                && elementType !== 'counter'
-                && elementType !== 'progress-bar'
-                && elementType !== 'countdown-timer'
-                && elementType !== 'toggle'
-                && elementType !== 'tabs'
-                && elementType !== 'pricing-table'
-                && elementType !== 'pricing-item'
-                && elementType !== 'flip-box'
-                && elementType !== 'image-box'
-                && elementType !== 'logo-cloud'
-                && elementType !== 'user-avatars'
-                && elementType !== 'review-carousel'
-                && elementType !== 'button'
-                && elementType !== 'call-to-action'
-                && elementType !== 'cta-button'
-                && elementType !== 'heading'
-                && elementType !== 'text'
-                && elementType !== 'image'
-                && elementType !== 'video'
-                && elementType !== 'divider'
-                && elementType !== 'nav-menu'
-                && elementType !== 'spacer' && (
+                && !ELEMENTS_WITH_BUILTIN_TYPOGRAPHY.has(elementType || '') && (
                   <TypographyBlock
                       styles={styles}
                       onUpdate={onUpdate}

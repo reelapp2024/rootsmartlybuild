@@ -99,11 +99,12 @@ export const CanvasFreeform: React.FC<Props> = ({
   };
 
   // Authoring controls, split:
-  //   • ADD_ENABLED   — the "Add element" palette. OFF: we hand the user a
-  //     pre-designed set of elements; they don't add new ones.
+  //   • ADD_ENABLED   — the "Add element" palette. ON: a true Elementor-style
+  //     freeform canvas — the user (or AI) can drop any of the elements onto a
+  //     section, not just edit a pre-designed set.
   //   • ITEM_TOOLS_ENABLED — per-element DELETE + REORDER (move up/down). ON so
   //     the user can remove elements they don't want and change their order.
-  const ADD_ENABLED = false;
+  const ADD_ENABLED = true;
   const ITEM_TOOLS_ENABLED = true;
   const canAuthor = isSelected && !readOnly && !!onSectionUpdate;
   const showAddPalette = ADD_ENABLED && canAuthor;
@@ -135,6 +136,17 @@ export const CanvasFreeform: React.FC<Props> = ({
     const next = [...elements];
     const [moved] = next.splice(index, 1);
     next.splice(j, 0, moved);
+    writeElements(next);
+  };
+
+  // --- Native drag-to-reorder (Elementor-style) for top-level elements ---
+  const [dragIndex, setDragIndex] = React.useState<number | null>(null);
+  const [overIndex, setOverIndex] = React.useState<number | null>(null);
+  const reorderTo = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= elements.length) return;
+    const next = [...elements];
+    const [moved] = next.splice(from, 1);
+    next.splice(to > from ? to - 1 : to, 0, moved);
     writeElements(next);
   };
 
@@ -276,10 +288,31 @@ export const CanvasFreeform: React.FC<Props> = ({
             if (isHidden && readOnly) return null;
             const curWidth = String((el.style as any)?.width || '');
             const widthKey = curWidth === '100%' ? 'full' : curWidth === '50%' ? 'half' : curWidth === 'max-content' ? 'auto' : '';
+            const isOver = overIndex === i && dragIndex !== null && dragIndex !== i;
             return (
-              <div key={el.id} className={`cv-el ${active ? 'cv-active' : ''}`} style={{ ...(active ? { outline: `2px solid ${accent}`, outlineOffset: '4px', borderRadius: '6px' } : {}), ...(isHidden ? { opacity: 0.4 } : {}) }}>
+              <div
+                key={el.id}
+                className={`cv-el ${active ? 'cv-active' : ''}`}
+                onDragOver={showItemTools ? (e) => { e.preventDefault(); if (overIndex !== i) setOverIndex(i); } : undefined}
+                onDrop={showItemTools ? (e) => { e.preventDefault(); if (dragIndex !== null) reorderTo(dragIndex, i); setDragIndex(null); setOverIndex(null); } : undefined}
+                style={{
+                  ...(active ? { outline: `2px solid ${accent}`, outlineOffset: '4px', borderRadius: '6px' } : {}),
+                  ...(isHidden ? { opacity: 0.4 } : {}),
+                  ...(dragIndex === i ? { opacity: 0.4 } : {}),
+                  ...(isOver ? { boxShadow: `0 -3px 0 0 ${accent}` } : {}),
+                }}
+              >
                 {showItemTools && (
                   <div className="cv-tools absolute -top-3 right-0 z-20 flex items-center gap-1">
+                    {/* Drag handle — reorder by dragging (Elementor-style) */}
+                    <button type="button" title="Drag to reorder" aria-label="Drag to reorder"
+                      draggable
+                      onDragStart={(e) => { setDragIndex(i); e.dataTransfer.effectAllowed = 'move'; }}
+                      onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs shadow cursor-grab active:cursor-grabbing"
+                      style={{ backgroundColor: accent }}>
+                      <i className="fa-solid fa-up-down-left-right" />
+                    </button>
                     {/* Width quick-control (full / half / auto) */}
                     <div className="flex items-center rounded-md overflow-hidden shadow" style={{ backgroundColor: '#1e293b' }}>
                       {(['full', 'half', 'auto'] as const).map((w) => (
