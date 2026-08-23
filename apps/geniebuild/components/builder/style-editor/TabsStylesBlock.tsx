@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  AccordionGroup, ButtonGroup, ColorInput, NumericUnitInput,
+  AccordionGroup, ButtonGroup, ColorInput, NumericUnitInput, FontSizeInput, SelectInput, TextInput,
 } from '../inputs';
 import { TypographyControls } from './TypographyControls';
 
@@ -28,6 +28,7 @@ export const TabsStylesBlock: React.FC<TabsStylesBlockProps> = ({
       activeColor: '', inactiveColor: '', activeTextColor: '', accentColor: '',
       panelBackground: '', panelBorder: '', panelPadding: '',
       segmentedBg: '',
+      tabFontSize: '', tabFontWeight: '', tabPadding: '', headerBorderColor: '', pillActiveTextColor: '',
       textAlign: '', color: '',
     };
     if (onBatchUpdate) onBatchUpdate(patch);
@@ -136,8 +137,52 @@ export const TabsStylesBlock: React.FC<TabsStylesBlockProps> = ({
         </div>
       </AccordionGroup>
 
-      {/* ── 3.5 TYPOGRAPHY ──────────────────────────────────────────── */}
-      <AccordionGroup title="Typography" defaultOpen={false}>
+      {/* ── 3.4 TAB TITLES (button typography — was locked text-sm/font-bold/px-4 py-2) ── */}
+      <AccordionGroup title="Tab Titles" defaultOpen={false}>
+        <div className="space-y-3">
+          <FontSizeInput
+            label="Font Size"
+            value={styles.tabFontSize || ''}
+            onChange={(v) => onUpdate('tabFontSize', v)}
+            placeholder="0.875rem"
+          />
+          <SelectInput
+            label="Font Weight"
+            value={String(styles.tabFontWeight || '700')}
+            options={[
+              { label: 'Normal', value: '400' },
+              { label: 'Medium', value: '500' },
+              { label: 'Semibold', value: '600' },
+              { label: 'Bold', value: '700' },
+              { label: 'Black', value: '900' },
+            ]}
+            onChange={(v) => onUpdate('tabFontWeight', v)}
+          />
+          <TextInput
+            label="Tab Padding"
+            value={styles.tabPadding || ''}
+            onChange={(v) => onUpdate('tabPadding', v)}
+            placeholder="0.5rem 1rem"
+          />
+          <ColorInput
+            label={styles.headerBorderColor ? 'Header Line Color' : 'Header Line Color (Auto)'}
+            value={styles.headerBorderColor || ''}
+            onChange={(v) => onUpdate('headerBorderColor', v)}
+            onReset={() => onUpdate('headerBorderColor', '')}
+          />
+          {(tabStyle === 'pills' || tabStyle === 'segmented') && (
+            <ColorInput
+              label={styles.pillActiveTextColor ? 'Active Pill Text' : 'Active Pill Text (Auto)'}
+              value={styles.pillActiveTextColor || '#FFFFFF'}
+              onChange={(v) => onUpdate('pillActiveTextColor', v)}
+              onReset={() => onUpdate('pillActiveTextColor', '')}
+            />
+          )}
+        </div>
+      </AccordionGroup>
+
+      {/* ── 3.5 CONTENT TYPOGRAPHY ──────────────────────────────────── */}
+      <AccordionGroup title="Content Typography" defaultOpen={false}>
         <TypographyControls
           styles={styles}
           onUpdate={onUpdate}

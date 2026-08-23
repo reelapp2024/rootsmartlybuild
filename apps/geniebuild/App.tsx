@@ -88,7 +88,7 @@ import { GlobalThemePanel } from './components/builder/layout/GlobalThemePanel';
 import { SectionSidebarHeader } from './components/builder/layout/SectionSidebarHeader';
 import { SectionSidebarBody } from './components/builder/layout/SectionSidebarBody';
 import { formatVariantName } from './components/builder/state/variantNameFormatter';
-import { BadgeStylesBlock, CardStylesBlock, AccordionStylesBlock, ButtonStylesBlock, FeatureBoxStylesBlock, TestimonialCardStylesBlock, TrustStripStylesBlock, ListStylesBlock, NavMenuStylesBlock, AlertBoxStylesBlock, DividerStylesBlock, IconStylesBlock, HighlightTextStylesBlock, BlockquoteStylesBlock, CounterStylesBlock, ProgressBarStylesBlock, CountdownTimerStylesBlock, ToggleStylesBlock, TabsStylesBlock, PricingTableStylesBlock, PricingItemStylesBlock, FlipBoxStylesBlock, VideoStylesBlock, ImageBoxStylesBlock, LogoCloudStylesBlock, UserAvatarsStylesBlock, ReviewCarouselStylesBlock, HeadingStylesBlock, TextStylesBlock, TypographyBlock, LayoutSpacingBlock, BorderBlock, SectionImageSettingsBlock, ElementBackgroundOverlayBlock, ImageElementStylesBlock, SectionBackgroundBlock, BulkElementStylesBlock, ElementBackgroundBlock, SectionLayoutPresetsBlock, SectionDesignExtrasBlock } from './components/builder/style-editor';
+import { BadgeStylesBlock, CardStylesBlock, AccordionStylesBlock, ButtonStylesBlock, FeatureBoxStylesBlock, StatCardStylesBlock, StarRatingStylesBlock, TestimonialCardStylesBlock, TrustStripStylesBlock, ListStylesBlock, NavMenuStylesBlock, AlertBoxStylesBlock, DividerStylesBlock, IconStylesBlock, HighlightTextStylesBlock, BlockquoteStylesBlock, CounterStylesBlock, ProgressBarStylesBlock, CountdownTimerStylesBlock, ToggleStylesBlock, TabsStylesBlock, PricingTableStylesBlock, PricingItemStylesBlock, FlipBoxStylesBlock, VideoStylesBlock, ImageBoxStylesBlock, LogoCloudStylesBlock, UserAvatarsStylesBlock, ReviewCarouselStylesBlock, HeadingStylesBlock, TextStylesBlock, TypographyBlock, LayoutSpacingBlock, BorderBlock, SectionImageSettingsBlock, ElementBackgroundOverlayBlock, ImageElementStylesBlock, SectionBackgroundBlock, BulkElementStylesBlock, ElementBackgroundBlock, SectionLayoutPresetsBlock, SectionDesignExtrasBlock } from './components/builder/style-editor';
 
 import {
   resolveClientProjectId,
@@ -1815,7 +1815,7 @@ const AppContent: React.FC = () => {
           'counter', 'progress-bar', 'countdown-timer', 'toggle', 'tabs', 'pricing-table',
           'pricing-item', 'flip-box', 'image-box', 'logo-cloud', 'user-avatars', 'review-carousel',
           'button', 'call-to-action', 'cta-button', 'heading', 'text', 'image', 'video',
-          'divider', 'nav-menu', 'spacer',
+          'divider', 'nav-menu', 'spacer', 'star-rating',
       ]);
 
       return (
@@ -1888,12 +1888,28 @@ const AppContent: React.FC = () => {
               {isElementDesignTab && (elementType === 'button' || elementType === 'call-to-action' || elementType === 'cta-button') && (
                   <ButtonStylesBlock styles={styles} onUpdate={onUpdate} onBatchUpdate={onBatchUpdate} />
               )}
-              {isElementDesignTab && (elementType === 'feature-box' || elementType === 'icon-box' || elementType === 'stat-card') && (
+              {isElementDesignTab && (elementType === 'feature-box' || elementType === 'icon-box') && (
                   <FeatureBoxStylesBlock
                       styles={styles}
                       onUpdate={onUpdate}
                       onBatchUpdate={onBatchUpdate}
-                      elementType={elementType as 'feature-box' | 'icon-box' | 'stat-card'}
+                      elementType={elementType as 'feature-box' | 'icon-box'}
+                      themeColors={themeColors}
+                  />
+              )}
+              {isElementDesignTab && elementType === 'stat-card' && (
+                  <StatCardStylesBlock
+                      styles={styles}
+                      onUpdate={onUpdate}
+                      onBatchUpdate={onBatchUpdate}
+                      themeColors={themeColors}
+                  />
+              )}
+              {isElementDesignTab && elementType === 'star-rating' && (
+                  <StarRatingStylesBlock
+                      styles={styles}
+                      onUpdate={onUpdate}
+                      onBatchUpdate={onBatchUpdate}
                       themeColors={themeColors}
                   />
               )}

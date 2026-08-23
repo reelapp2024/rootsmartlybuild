@@ -200,6 +200,35 @@ export const SectionLayoutPresetsBlock: React.FC<SectionLayoutPresetsBlockProps>
           <p className="text-[9px] text-white/30 italic">
             Power-user only. Multiple classes separated by spaces.
           </p>
+          <TextInput
+            label="Custom CSS ID"
+            value={styles.customId || ''}
+            onChange={(v) => {
+              const cleaned = String(v).replace(/[^A-Za-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+              onUpdate('customId', cleaned);
+            }}
+            placeholder="hero-main"
+          />
+          <p className="text-[9px] text-white/30 italic">
+            A CSS id on the section wrapper (for custom CSS / JS targeting).
+          </p>
+        </div>
+      </AccordionGroup>
+
+      {/* Custom CSS — Elementor Advanced › Custom CSS. Use `selector` to target this section. */}
+      <AccordionGroup title="Custom CSS" defaultOpen={false}>
+        <div className="space-y-2">
+          <textarea
+            value={styles.customCss || ''}
+            onChange={(e) => onUpdate('customCss', e.target.value)}
+            placeholder={"selector {\n  border-radius: 24px;\n}\nselector:hover {\n  transform: translateY(-4px);\n}"}
+            rows={6}
+            spellCheck={false}
+            className="w-full bg-[#151515] border border-[#333] rounded px-2 py-2 text-[11px] font-mono text-white/80 outline-none focus:border-blue-500 resize-y"
+          />
+          <p className="text-[9px] text-white/30 italic leading-relaxed">
+            Write CSS for this section. <code className="text-white/50">selector</code> maps to this section's wrapper — exactly like Elementor.
+          </p>
         </div>
       </AccordionGroup>
     </>

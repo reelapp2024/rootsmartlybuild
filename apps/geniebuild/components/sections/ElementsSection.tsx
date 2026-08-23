@@ -2615,12 +2615,19 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             });
             const ibDescEditable = !readOnly && ibDescLimited.allowEdit;
 
+            const ibs = renderStyle as any;
+            // Wrapper padding / radius / icon-to-content gap were hardcoded Tailwind
+            // classes (p-4 gap-4 rounded-lg). Now overridable (Elementor icon_space
+            // + container padding/radius). Defaults preserve the old look.
+            const ibGap = ibs.iconSpace || ibs.contentGap || '1rem';
+            const ibPad = safeStyle.padding || '1rem';
+            const ibRadius = safeStyle.borderRadius || '0.5rem';
             return (
-                <div key={id} className={`flex gap-4 p-4 rounded-lg relative ${ibResolvedBg.overlay ? 'overflow-hidden' : ''} ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={{ ...safeStyle, backgroundColor: safeStyle.backgroundColor || theme?.cardBackgroundColor || 'rgba(255,255,255,0.05)', borderColor: safeStyle.borderColor || theme?.cardBorderColor || 'rgba(255,255,255,0.08)', borderWidth: safeStyle.borderWidth || '1px', borderStyle: safeStyle.borderStyle || 'solid', ...ibResolvedBg.backgroundStyle }}>
+                <div key={id} className={`flex relative ${ibResolvedBg.overlay ? 'overflow-hidden' : ''} ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={{ ...safeStyle, gap: ibGap, padding: ibPad, borderRadius: ibRadius, backgroundColor: safeStyle.backgroundColor || theme?.cardBackgroundColor || 'rgba(255,255,255,0.05)', borderColor: safeStyle.borderColor || theme?.cardBorderColor || 'rgba(255,255,255,0.08)', borderWidth: safeStyle.borderWidth || '1px', borderStyle: safeStyle.borderStyle || 'solid', ...ibResolvedBg.backgroundStyle }}>
                     {ibResolvedBg.overlay && (
                         <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ backgroundColor: ibResolvedBg.overlay.color, opacity: ibResolvedBg.overlay.opacity, mixBlendMode: ibResolvedBg.overlay.blendMode as any, zIndex: 0 }} />
                     )}
-                    <div className="shrink-0 flex items-center justify-center rounded-lg" 
+                    <div className="shrink-0 flex items-center justify-center rounded-lg"
                         style={{ 
                             width: renderStyle.iconContainerSize || '3rem',
                             height: renderStyle.iconContainerSize || '3rem',
@@ -2655,9 +2662,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         />
                         <p
                             key={`${ibDescId}-${ibDescLimited.limitKey}`}
-                            className="opacity-70 outline-none"
+                            className="outline-none"
                             data-gb-editable-id={ibDescId}
-                            style={{ 
+                            style={{
                                 color: renderStyle.descriptionColor || renderStyle.textColor || theme?.textColor || '#475569',
                                 fontSize: renderStyle.descriptionFontSize || '0.875rem',
                                 fontWeight: renderStyle.descriptionFontWeight || '400',
@@ -2665,7 +2672,8 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                 fontStyle: renderStyle.descriptionFontStyle || 'normal',
                                 letterSpacing: renderStyle.descriptionLetterSpacing || 'normal',
                                 fontFamily: renderStyle.descriptionFontFamily || renderStyle.fontFamily || theme?.descriptionFontFamily,
-                                lineHeight: 1.7,
+                                lineHeight: ibs.descriptionLineHeight || 1.7,
+                                opacity: ibs.descriptionOpacity !== undefined ? ibs.descriptionOpacity : 0.7,
                                 ...ibDescLimited.clampStyle,
                             }}
                             onClick={!readOnly ? (e: React.MouseEvent) => {
@@ -2823,19 +2831,20 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
 
             const softBorder = `${featureTitleColor}12`;
 
+            const fbx = renderStyle as any;
             const badgeCol = renderStyle.badgeColor || accentColor;
             const renderBadge = () => hasBadge && (
                 <span
                     className="outline-none inline-flex items-center"
                     style={{
-                        backgroundColor: `${badgeCol}14`,
+                        backgroundColor: fbx.badgeBackgroundColor || `${badgeCol}14`,
                         color: badgeCol,
-                        fontSize: '0.62rem',
-                        fontWeight: 800,
-                        letterSpacing: '0.08em',
-                        textTransform: 'uppercase',
-                        padding: '3px 9px',
-                        borderRadius: '9999px',
+                        fontSize: fbx.badgeFontSize || '0.62rem',
+                        fontWeight: fbx.badgeFontWeight || 800,
+                        letterSpacing: fbx.badgeLetterSpacing || '0.08em',
+                        textTransform: (fbx.badgeTextTransform as any) || 'uppercase',
+                        padding: fbx.badgePadding || '3px 9px',
+                        borderRadius: fbx.badgeRadius || '9999px',
                     }}
                     ref={bindHtml(id, badgeText)}
                     contentEditable={!readOnly}
@@ -2914,9 +2923,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         fontStyle: renderStyle.descriptionFontStyle || 'normal',
                         letterSpacing: renderStyle.descriptionLetterSpacing || 'normal',
                         fontFamily: renderStyle.descriptionFontFamily || renderStyle.fontFamily || theme?.descriptionFontFamily,
-                        opacity: 0.85,
+                        opacity: fbx.descriptionOpacity !== undefined ? fbx.descriptionOpacity : 0.85,
                         margin: 0,
-                        lineHeight: 1.7,
+                        lineHeight: fbx.descriptionLineHeight || 1.7,
                         ...descLimited.clampStyle,
                     }}
                     title={
@@ -2952,8 +2961,8 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     className="inline-flex items-center gap-1.5 mt-3 outline-none group/cta"
                     style={{
                         color: ctaCol,
-                        fontSize: '0.82rem',
-                        fontWeight: 700,
+                        fontSize: fbx.ctaFontSize || '0.82rem',
+                        fontWeight: fbx.ctaFontWeight || 700,
                     }}
                 >
                     <span
@@ -4453,25 +4462,34 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             // white 20% tint, which is invisible on light backgrounds.
             const inactiveColor = (renderStyle as any).inactiveColor
                 || (renderStyle as any).emptyStarColor
+                || (renderStyle as any).unmarkedColor
                 || `${starColor}33`;
             const starAlign = resolveTextAlign(renderStyle);
+            const rs = renderStyle as any;
+            // Star size + gap between stars are now overridable (Elementor `size` /
+            // `spacing`). Before: size was uncontrollable (no font-size at all) and
+            // gap was locked to Tailwind `gap-1`.
+            const starSize = rs.starSize || '1rem';
+            const starGap = rs.starSpacing || '0.25rem';
+            // Empty-star fill: solid star vs hollow outline (Elementor unmarked_style).
+            const emptyStarClass = rs.unmarkedStyle === 'outline' ? 'fa-regular fa-star' : 'fa-solid fa-star';
 
             return (
-                <div key={id} className={`flex gap-1 w-full ${starAlign.justifyClass} ${selectedClass}`} onClick={!readOnly ? (e) => handleClick(e, el) : undefined} style={{ ...safeStyle, color: undefined }}>
+                <div key={id} className={`flex w-full ${starAlign.justifyClass} ${selectedClass}`} onClick={!readOnly ? (e) => handleClick(e, el) : undefined} style={{ ...safeStyle, color: undefined, gap: starGap, fontSize: starSize }}>
                     {Array.from({ length: maxRating }, (_, i) => i + 1).map(star => {
                         const isFull = rating >= star;
                         const isHalf = !isFull && rating >= star - 0.5;
-                        
+
                         return (
-                            <div key={star} className="relative inline-block leading-none">
+                            <div key={star} className="relative inline-block leading-none" style={{ fontSize: starSize }}>
                                 {/* Always render inactive background star */}
-                                <i className="fa-solid fa-star" style={{ color: inactiveColor }}></i>
-                                
+                                <i className={emptyStarClass} style={{ color: inactiveColor, fontSize: 'inherit' }}></i>
+
                                 {/* Render colored foreground star (Full or Half) over it */}
                                 {(isFull || isHalf) && (
-                                    <i 
+                                    <i
                                         className={`fa-solid ${isFull ? 'fa-star' : 'fa-star-half-stroke'} absolute top-0 left-0`}
-                                        style={{ color: starColor }}
+                                        style={{ color: starColor, fontSize: 'inherit' }}
                                     ></i>
                                 )}
                             </div>
@@ -4746,21 +4764,36 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 fontStyle: isItalic ? 'italic' : 'normal',
             };
 
+            const bq = renderStyle as any;
+            // Per-mode padding / radius / bar width are overridable now (were baked
+            // into Tailwind classes pl-4 py-2 / p-6 rounded-xl). Sensible per-mode
+            // defaults kick in only when the user hasn't set a value.
+            const bqBarWidth = bq.barWidth || '4px';
             let modeClass = '';
             const modeStyle: React.CSSProperties = { ...baseStyle };
+            if (bq.opacity !== undefined) modeStyle.opacity = bq.opacity;
             if (bqMode === 'bar-left') {
-                modeClass = 'pl-4 py-2 border-l-4';
+                modeStyle.padding = safeStyle.padding || '0.5rem 0 0.5rem 1rem';
+                modeStyle.borderLeftWidth = bqBarWidth;
+                modeStyle.borderLeftStyle = 'solid';
                 modeStyle.borderColor = blockquoteBorderColor;
             } else if (bqMode === 'card') {
-                modeClass = 'p-6 rounded-xl';
+                modeStyle.padding = safeStyle.padding || '1.5rem';
+                modeStyle.borderRadius = safeStyle.borderRadius || '0.75rem';
                 modeStyle.backgroundColor = safeStyle.backgroundColor || theme?.cardBackgroundColor || 'rgba(255,255,255,0.04)';
                 if (!safeStyle.borderColor) modeStyle.border = `1px solid ${theme?.cardBorderColor || 'rgba(255,255,255,0.08)'}`;
             } else if (bqMode === 'large-quote' || bqMode === 'center') {
-                modeClass = bqMode === 'center' ? 'text-center py-4' : 'py-2';
-            } else { /* minimal */ modeClass = 'py-2'; }
+                modeClass = bqMode === 'center' ? 'text-center' : '';
+                modeStyle.padding = safeStyle.padding || (bqMode === 'center' ? '1rem 0' : '0.5rem 0');
+            } else { /* minimal */ modeStyle.padding = safeStyle.padding || '0.5rem 0'; }
+
+            const bqQuoteSize = bq.quoteFontSize || (bqMode === 'center' ? '1.125rem' : undefined);
+            const bqAuthorSize = bq.authorFontSize || '0.875rem';
+            const bqAuthorWeight = bq.authorFontWeight || 700;
+            const bqAuthorOpacity = bq.authorOpacity !== undefined ? bq.authorOpacity : 0.7;
 
             return (
-                <blockquote key={id} className={`${modeClass} opacity-90 ${selectedClass}`} style={modeStyle} onClick={!readOnly ? (e) => handleClick(e, el) : undefined}>
+                <blockquote key={id} className={`${modeClass} ${selectedClass}`} style={modeStyle} onClick={!readOnly ? (e) => handleClick(e, el) : undefined}>
                     {bqResolvedBg.overlay && (
                         <div aria-hidden className="absolute inset-0 pointer-events-none"
                             style={{
@@ -4772,21 +4805,22 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     )}
                     <div className={bqResolvedBg.overlay ? 'relative' : ''} style={bqResolvedBg.overlay ? { zIndex: 1 } : undefined}>
                         {bqMode === 'large-quote' && (
-                            <div aria-hidden className="text-5xl leading-none mb-2 opacity-50" style={{ color: accentCol, fontStyle: 'normal' }}>❝</div>
+                            <div aria-hidden className="leading-none mb-2" style={{ color: accentCol, fontStyle: 'normal', fontSize: bq.quoteMarkSize || '3rem', opacity: bq.quoteMarkOpacity !== undefined ? bq.quoteMarkOpacity : 0.5 }}>❝</div>
                         )}
                         {bqMode === 'center' ? (
                             <p
-                              className="mb-3 text-lg"
+                              className="mb-3"
+                              style={{ fontSize: bqQuoteSize }}
                               ref={bindHtml(id, `“${quoteText}”`)}
                               contentEditable={!readOnly}
                               {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
                             />
                         ) : (
-                            <p className="mb-2" ref={bindHtml(id, quoteText)} contentEditable={!readOnly} {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))} />
+                            <p className="mb-2" style={bqQuoteSize ? { fontSize: bqQuoteSize } : undefined} ref={bindHtml(id, quoteText)} contentEditable={!readOnly} {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))} />
                         )}
                         <cite
-                            className="text-sm font-bold not-italic opacity-70 outline-none"
-                            style={{ color: (renderStyle as any).authorColor || accentCol }}
+                            className="not-italic outline-none"
+                            style={{ color: bq.authorColor || accentCol, fontSize: bqAuthorSize, fontWeight: bqAuthorWeight, opacity: bqAuthorOpacity }}
                             contentEditable={!readOnly}
                             suppressContentEditableWarning={!readOnly}
                             onBlur={!readOnly ? (e: any) => handleContentUpdate(id, 'author', e.currentTarget.innerHTML.replace(/^—\s*/, '').replace(/^-\s*/, '')) : undefined}
@@ -5109,49 +5143,66 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
 
         case 'tabs': {
             const currentTab = activeTabs[id] || 0;
-            const tabsAccentColor = (renderStyle as any).activeColor || renderStyle?.accentColor || theme?.accentColor || '#3b82f6';
-            const inactiveColor = (renderStyle as any).inactiveColor || (safeStyle.color ? `${safeStyle.color}80` : 'rgba(255,255,255,0.5)');
-            const activeTextColor = (renderStyle as any).activeTextColor || (theme?.titleColor || '#FFFFFF');
-            const tabsStyle = { ...safeStyle, color: safeStyle.color || theme?.textColor || '#D1D5DB' };
+            const ts = renderStyle as any;
+            // Light/dark-aware neutral surfaces — the old hardcoded rgba(255,255,255,…)
+            // defaults were invisible on light sections. On a light surface we tint
+            // toward black; on dark toward white. User overrides always win.
+            const softSurface = isLightMode ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)';
+            const softBorder = isLightMode ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.1)';
+            const softInactive = isLightMode ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.5)';
+            const tabsAccentColor = ts.activeColor || renderStyle?.accentColor || theme?.accentColor || '#3b82f6';
+            const inactiveColor = ts.inactiveColor || (safeStyle.color ? `${safeStyle.color}B0` : softInactive);
+            const activeTextColor = ts.activeTextColor || theme?.titleColor || (isLightMode ? '#0F172A' : '#FFFFFF');
+            const pillActiveText = ts.pillActiveTextColor || '#FFFFFF';
+            const tabsStyle = { ...safeStyle, color: safeStyle.color || theme?.textColor || (isLightMode ? '#334155' : '#D1D5DB') };
             const tabsAlign = resolveTextAlign(renderStyle);
             // Tab style variant — underline (default) | pills | box | segmented
-            const tabStyle: string = (renderStyle as any).tabStyle || 'underline';
+            const tabStyle: string = ts.tabStyle || 'underline';
             const showPanel: boolean = (content as any).showPanel !== false;
             const items: any[] = content.items?.length > 0 ? content.items : [{ title: 'Tab 1', content: 'Content 1' }, { title: 'Tab 2', content: 'Content 2' }];
+            // Tab-title typography is now overridable (was locked to text-sm font-bold px-4 py-2).
+            const tabFontSize = ts.tabFontSize || '0.875rem';
+            const tabFontWeight = ts.tabFontWeight || 700;
+            const tabPadding = ts.tabPadding || '0.5rem 1rem';
+            const tabFontFamily = ts.tabFontFamily || ts.fontFamily;
 
             // Per-style helpers
             const buildTabBtn = (item: any, idx: number) => {
                 const isActive = currentTab === idx;
-                let btnClass = 'px-4 py-2 text-sm font-bold transition-all whitespace-nowrap cursor-pointer outline-none';
-                let btnStyle: React.CSSProperties = {};
+                let btnClass = 'transition-all whitespace-nowrap cursor-pointer outline-none';
+                let btnStyle: React.CSSProperties = { fontSize: tabFontSize, fontWeight: tabFontWeight, padding: tabPadding, fontFamily: tabFontFamily };
 
                 if (tabStyle === 'underline') {
                     btnClass += ' border-b-2';
                     btnStyle = {
+                        ...btnStyle,
                         borderBottomColor: isActive ? tabsAccentColor : 'transparent',
                         color: isActive ? activeTextColor : inactiveColor,
                     };
                 } else if (tabStyle === 'pills') {
                     btnClass += ' rounded-full';
                     btnStyle = {
+                        ...btnStyle,
                         backgroundColor: isActive ? tabsAccentColor : 'transparent',
-                        color: isActive ? '#FFFFFF' : inactiveColor,
+                        color: isActive ? pillActiveText : inactiveColor,
                     };
                 } else if (tabStyle === 'box') {
                     btnClass += ' rounded-t-lg border border-b-0';
                     btnStyle = {
-                        backgroundColor: isActive ? ((renderStyle as any).panelBackground || 'rgba(255,255,255,0.05)') : 'transparent',
-                        borderColor: isActive ? ((renderStyle as any).panelBorder || 'rgba(255,255,255,0.1)') : 'transparent',
+                        ...btnStyle,
+                        backgroundColor: isActive ? (ts.panelBackground || softSurface) : 'transparent',
+                        borderColor: isActive ? (ts.panelBorder || softBorder) : 'transparent',
                         color: isActive ? activeTextColor : inactiveColor,
                         marginBottom: '-1px',
                         position: 'relative',
                         zIndex: 1,
                     };
                 } else if (tabStyle === 'segmented') {
-                    btnClass += '';
                     btnStyle = {
+                        ...btnStyle,
+                        borderRadius: '0.375rem',
                         backgroundColor: isActive ? tabsAccentColor : 'transparent',
-                        color: isActive ? '#FFFFFF' : inactiveColor,
+                        color: isActive ? pillActiveText : inactiveColor,
                     };
                 }
 
@@ -5176,25 +5227,28 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
 
             // Header wrapper class per style
             const headerClass = tabStyle === 'underline'
-                ? `flex border-b border-white/10 mb-4 overflow-x-auto ${tabsAlign.justifyClass}`
+                ? `flex mb-4 overflow-x-auto ${tabsAlign.justifyClass}`
                 : tabStyle === 'pills'
                     ? `flex gap-2 mb-4 overflow-x-auto ${tabsAlign.justifyClass}`
                     : tabStyle === 'box'
                         ? `flex gap-1 mb-0 overflow-x-auto ${tabsAlign.justifyClass}`
                         : /* segmented */ `inline-flex p-1 rounded-lg mb-4 overflow-x-auto`;
 
-            const headerStyle: React.CSSProperties = tabStyle === 'segmented'
-                ? { backgroundColor: (renderStyle as any).segmentedBg || 'rgba(255,255,255,0.05)', borderRadius: '0.5rem' }
+            const headerBorder = tabStyle === 'underline'
+                ? { borderBottom: `1px solid ${ts.headerBorderColor || softBorder}` }
                 : {};
+            const headerStyle: React.CSSProperties = tabStyle === 'segmented'
+                ? { backgroundColor: ts.segmentedBg || softSurface, borderRadius: '0.5rem' }
+                : headerBorder;
 
             // Panel style per variant
             const panelStyle: React.CSSProperties = {
-                backgroundColor: (renderStyle as any).panelBackground || (tabStyle === 'box' || showPanel ? 'rgba(255,255,255,0.05)' : 'transparent'),
-                borderColor: (renderStyle as any).panelBorder || 'rgba(255,255,255,0.1)',
+                backgroundColor: ts.panelBackground || (tabStyle === 'box' || showPanel ? softSurface : 'transparent'),
+                borderColor: ts.panelBorder || softBorder,
                 borderWidth: showPanel ? '1px' : '0px',
                 borderStyle: showPanel ? 'solid' : 'none',
                 borderRadius: tabStyle === 'box' ? '0 0.5rem 0.5rem 0.5rem' : '0.5rem',
-                padding: showPanel ? ((renderStyle as any).panelPadding || '1rem') : '0',
+                padding: showPanel ? (ts.panelPadding || '1rem') : '0',
                 minHeight: showPanel ? '100px' : 'auto',
             };
 
@@ -6118,6 +6172,14 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     borderWidth: '1px', borderColor: theme?.cardBorderColor || 'rgba(255,255,255,0.1)',
                 }),
             };
+            const sc = renderStyle as any;
+            // Every sub-part is overridable now (Elementor-level). Icon container
+            // size, wrapper gap/spacing, label + subtext typography & opacity were
+            // all hardcoded Tailwind classes before — the exact "predefined design"
+            // complaint. Defaults kick in only when the user hasn't set a value.
+            const statIconBox = sc.iconContainerSize || '2.5rem';
+            const statWrapGap = sc.iconGap || '1rem';
+            const statHeadGap = sc.valueBottomSpace || '0.75rem';
             return (
                 <div
                     key={id}
@@ -6125,13 +6187,15 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     onClick={(e) => handleClick(e, el)}
                     style={statCardStyle}
                 >
-                    <div className="flex items-center gap-4 mb-3">
+                    <div className="flex items-center" style={{ gap: statWrapGap, marginBottom: statHeadGap }}>
                         {content.icon && (
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform"
-                                style={{ 
-                                    backgroundColor: statIconBg, 
+                            <div className="flex items-center justify-center group-hover:scale-110 transition-transform shrink-0"
+                                style={{
+                                    width: statIconBox,
+                                    height: statIconBox,
+                                    backgroundColor: statIconBg,
                                     color: statIconColor,
-                                    border: renderStyle.iconBorderStyle && renderStyle.iconBorderStyle !== 'none' 
+                                    border: renderStyle.iconBorderStyle && renderStyle.iconBorderStyle !== 'none'
                                         ? `${renderStyle.iconBorderWidth || '1px'} ${renderStyle.iconBorderStyle} ${renderStyle.iconBorderColor || statIconColor}`
                                         : (renderStyle.iconBorder || 'none'),
                                     borderRadius: renderStyle.iconBorderRadius !== undefined ? renderStyle.iconBorderRadius : '0.5rem',
@@ -6142,28 +6206,49 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                     boxShadow: renderStyle.iconShadow || 'none'
                                 }}
                             >
-                                <IconRenderer icon={content.icon} size="1.125rem" style={{ color: statIconColor }} />
+                                <IconRenderer icon={content.icon} size={sc.iconSize || '1.125rem'} style={{ color: statIconColor }} />
                             </div>
                         )}
                         <StatCardValue
                             raw={String(content.value ?? content.targetNumber ?? '0')}
                             readOnly={!!readOnly}
                             color={renderStyle.titleColor || theme?.titleColor || '#F8FAFC'}
-                            className="text-3xl font-bold tracking-tight outline-none"
+                            className="tracking-tight outline-none"
+                            style={{
+                                fontSize: sc.titleFontSize || '1.875rem',
+                                fontWeight: sc.titleFontWeight || 700,
+                                fontFamily: sc.titleFontFamily || sc.fontFamily,
+                                lineHeight: sc.titleLineHeight || 1.1,
+                            }}
                             onBlur={(v) => handleContentUpdate(id, content.value !== undefined ? 'value' : 'targetNumber', v)}
                         />
                     </div>
-                    <div 
-                        className="text-sm font-semibold uppercase tracking-wider mb-1 outline-none" 
-                        style={{ color: renderStyle.subheadingColor || theme?.subheadingColor || theme?.textColor || '#C7CDD6', opacity: theme?.subheadingColor ? 1 : 0.6 }}
+                    <div
+                        className="mb-1 outline-none"
+                        style={{
+                            fontSize: sc.labelFontSize || '0.875rem',
+                            fontWeight: sc.labelFontWeight || 600,
+                            textTransform: sc.labelTextTransform || 'uppercase',
+                            letterSpacing: sc.labelLetterSpacing || '0.05em',
+                            lineHeight: sc.labelLineHeight,
+                            fontFamily: sc.labelFontFamily || sc.fontFamily,
+                            color: renderStyle.subheadingColor || theme?.subheadingColor || theme?.textColor || '#C7CDD6',
+                            opacity: sc.labelOpacity !== undefined ? sc.labelOpacity : (theme?.subheadingColor ? 1 : 0.6),
+                        }}
                         ref={bindHtml(id, content.text || 'Label')}
                         contentEditable={!readOnly}
                         {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
                     />
                     {content.subText && (
-                        <div 
-                            className="text-xs opacity-40 leading-relaxed outline-none" 
-                            style={{ color: renderStyle.textColor || theme?.textColor || '#C7CDD6' }}
+                        <div
+                            className="leading-relaxed outline-none"
+                            style={{
+                                fontSize: sc.subTextFontSize || '0.75rem',
+                                fontWeight: sc.subTextFontWeight,
+                                lineHeight: sc.subTextLineHeight,
+                                opacity: sc.subTextOpacity !== undefined ? sc.subTextOpacity : 0.4,
+                                color: sc.subTextColor || renderStyle.textColor || theme?.textColor || '#C7CDD6',
+                            }}
                             ref={bindHtml(id, content.subText)}
                             contentEditable={!readOnly}
                             {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))}
@@ -6622,51 +6707,90 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const resolvedCardImg = cardImgUrl
                 ? toDisplayImageUrl(cardImgUrl)
                 : null;
+            const cs = renderStyle as any;
+            // Every visual prop is overridable (Elementor-level). Defaults kick in
+            // only when the user hasn't set a value.
+            const cardRadius = safeStyle.borderRadius || '1rem';
+            const cardImgRatio = cs.imageAspectRatio || '16/9';
+            const cardImgFit = cs.imageObjectFit || 'cover';
+            const cardPad = safeStyle.padding || '1.5rem';
+            const cardGap = cs.contentGap || '0.75rem';
+            // Hover lift/shadow is opt-out (was hardcoded on).
+            const cardHover = cs.hoverEffect !== 'none' && cs.hoverLift !== false;
+            const cardHoverShadow = cs.hoverBoxShadow || '0 20px 40px -12px rgba(0,0,0,0.25)';
+            const cardLift = cs.hoverLiftDistance || '-4px';
+            const cardHoverCls = `cv-card-${(id || '').replace(/[^a-zA-Z0-9_-]/g, '')}`;
             return (
                 <div
                     key={id}
-                    className={`rounded-2xl overflow-hidden flex flex-col transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${selectedClass}`}
+                    className={`overflow-hidden flex flex-col transition-all duration-300 ${cardHover ? cardHoverCls : ''} ${selectedClass}`}
                     style={{
                         ...safeStyle,
                         backgroundColor: cardBg,
                         borderColor: cardBorder,
                         borderWidth: safeStyle.borderWidth || '1px',
                         borderStyle: safeStyle.borderStyle || 'solid',
-                        borderRadius: safeStyle.borderRadius || '1rem',
+                        borderRadius: cardRadius,
+                        boxShadow: safeStyle.boxShadow || undefined,
+                        padding: 0,
                     }}
                     onClick={(e) => handleClick(e, el)}
                 >
+                    {cardHover && (
+                        <style>{`.${cardHoverCls}:hover{transform:translateY(${cardLift});box-shadow:${cardHoverShadow};}`}</style>
+                    )}
                     {resolvedCardImg && (
-                        <div className="overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                        <div className="overflow-hidden" style={{ aspectRatio: cardImgRatio }}>
                             <img
                                 src={resolvedCardImg}
                                 alt={content.text || 'Card image'}
-                                className="w-full h-full object-cover"
+                                className="w-full h-full"
+                                style={{ objectFit: cardImgFit as any }}
                                 referrerPolicy="no-referrer"
                                 onError={(e) => { (e.target as HTMLImageElement).src = SECTION_IMAGE_PLACEHOLDER; }}
                             />
                         </div>
                     )}
-                    <div className="flex flex-col flex-1 p-6 gap-3">
+                    <div className="flex flex-col flex-1" style={{ padding: cardPad, gap: cardGap }}>
                         {(content.badge || content.badgeText) && (
                             <span
-                                className="self-start text-xs font-bold px-3 py-1 rounded-full"
-                                style={{ backgroundColor: (theme as any)?.badge?.background || ((theme?.accentColor || '') + '22') || 'rgba(99,102,241,0.12)', color: theme?.accentColor || '#6366f1' }}
+                                className="self-start font-bold rounded-full"
+                                style={{
+                                    fontSize: cs.badgeFontSize || '0.75rem',
+                                    padding: cs.badgePadding || '4px 12px',
+                                    borderRadius: cs.badgeRadius || '9999px',
+                                    backgroundColor: cs.badgeBackgroundColor || (theme as any)?.badge?.background || ((theme?.accentColor || '#6366f1') + '22'),
+                                    color: cs.badgeColor || theme?.accentColor || '#6366f1',
+                                }}
                             >
                                 {content.badge || content.badgeText}
                             </span>
                         )}
                         <div
-                            className="font-bold text-lg leading-snug outline-none"
-                            style={{ color: renderStyle.titleColor || theme?.titleColor || '#111827' }}
+                            className="outline-none"
+                            style={{
+                                fontSize: cs.titleFontSize || '1.125rem',
+                                fontWeight: cs.titleFontWeight || 700,
+                                fontFamily: cs.titleFontFamily || cs.fontFamily,
+                                lineHeight: cs.titleLineHeight || 1.35,
+                                letterSpacing: cs.titleLetterSpacing,
+                                textTransform: cs.titleTextTransform,
+                                color: cs.titleColor || theme?.titleColor || '#111827',
+                            }}
                             ref={bindHtml(id, content.text || 'Card Title')}
                             contentEditable={!readOnly}
                             {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
                         />
                         {(content.subText || content.description) && (
                             <div
-                                className="text-sm leading-relaxed opacity-80 flex-1 outline-none"
-                                style={{ color: safeStyle.color || theme?.textColor || '#4B5563' }}
+                                className="flex-1 outline-none"
+                                style={{
+                                    fontSize: cs.descriptionFontSize || '0.875rem',
+                                    fontWeight: cs.descriptionFontWeight,
+                                    lineHeight: cs.descriptionLineHeight || 1.625,
+                                    opacity: cs.descriptionOpacity !== undefined ? cs.descriptionOpacity : 0.8,
+                                    color: cs.descriptionColor || safeStyle.color || theme?.textColor || '#4B5563',
+                                }}
                                 ref={bindHtml(`${id}-card-desc`, content.subText || content.description || '')}
                                 contentEditable={!readOnly}
                                 {...editHandlers(`${id}-card-desc`, (html) =>
@@ -6677,10 +6801,13 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         {content.link && (
                             <a
                                 href={readOnly ? (content.link || '#') : undefined}
-                                className="mt-auto inline-flex items-center gap-1 text-sm font-semibold"
-                                style={{ color: theme?.accentColor || theme?.secondaryHeadingColor || '#6366f1' }}
+                                className="mt-auto inline-flex items-center gap-1 font-semibold"
+                                style={{
+                                    fontSize: cs.linkFontSize || '0.875rem',
+                                    color: cs.linkColor || theme?.accentColor || theme?.secondaryHeadingColor || '#6366f1',
+                                }}
                             >
-                                {content.linkText || 'Learn more'} <i className="fa-solid fa-arrow-right text-xs"></i>
+                                {content.linkText || 'Learn more'} <i className="fa-solid fa-arrow-right" style={{ fontSize: '0.8em' }}></i>
                             </a>
                         )}
                     </div>

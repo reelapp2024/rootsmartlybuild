@@ -32,7 +32,6 @@ export const PALETTE_ELEMENTS: PaletteItem[] = [
   { type: 'blockquote',    label: 'Quote',        icon: 'fa-quote-right',    group: 'Basic' },
   { type: 'divider',       label: 'Divider',      icon: 'fa-grip-lines',     group: 'Basic' },
   { type: 'spacer',        label: 'Spacer',       icon: 'fa-arrows-up-down', group: 'Basic' },
-  { type: 'table',         label: 'Table',        icon: 'fa-table',          group: 'Content' },
   { type: 'icon',          label: 'Icon',         icon: 'fa-star',           group: 'Basic' },
   // Media
   { type: 'image',         label: 'Image',        icon: 'fa-image',          group: 'Media' },
@@ -53,10 +52,9 @@ export const PALETTE_ELEMENTS: PaletteItem[] = [
   { type: 'trust-strip',   label: 'Trust Strip',  icon: 'fa-shield-halved',  group: 'Content' },
   { type: 'testimonial-card', label: 'Testimonial', icon: 'fa-comment',      group: 'Content' },
   // Interactive
-  { type: 'cta-button',    label: 'CTA Button',   icon: 'fa-bullhorn',       group: 'Interactive' },
   { type: 'call-to-action',label: 'CTA Block',    icon: 'fa-rectangle-ad',   group: 'Interactive' },
   { type: 'accordion',     label: 'Accordion',    icon: 'fa-bars-staggered', group: 'Interactive' },
-  { type: 'tabs',          label: 'Tabs',         icon: 'fa-table-columns',  group: 'Interactive' },
+  { type: 'tabs',          label: 'Tabs',         icon: 'fa-window-restore',  group: 'Interactive' },
   { type: 'toggle',        label: 'Toggle',       icon: 'fa-toggle-on',      group: 'Interactive' },
   { type: 'progress-bar',  label: 'Progress',     icon: 'fa-bars-progress',  group: 'Interactive' },
   { type: 'pricing-table', label: 'Pricing',      icon: 'fa-table-list',     group: 'Interactive' },

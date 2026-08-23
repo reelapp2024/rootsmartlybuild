@@ -9,6 +9,9 @@ interface StatCardValueProps {
   readOnly: boolean;
   color: string;
   className?: string;
+  /** Extra style overrides (fontSize/fontWeight/etc.) so the value is fully
+   *  restyleable rather than locked to a hardcoded size/weight. */
+  style?: React.CSSProperties;
   onBlur?: (value: string) => void;
 }
 
@@ -18,7 +21,7 @@ interface StatCardValueProps {
  * builder's edit mode (readOnly=false), shows the static raw value so
  * typing into it feels natural.
  */
-export const StatCardValue: React.FC<StatCardValueProps> = ({ raw, readOnly, color, className, onBlur }) => {
+export const StatCardValue: React.FC<StatCardValueProps> = ({ raw, readOnly, color, className, style, onBlur }) => {
   const target = parseCountUpTarget(raw);
   // Only animate on the public/preview side. In edit mode the contentEditable
   // flow + animated updates conflict — show the raw value instead.
@@ -31,7 +34,7 @@ export const StatCardValue: React.FC<StatCardValueProps> = ({ raw, readOnly, col
     <div
       ref={ref}
       className={className}
-      style={{ color }}
+      style={{ color, ...(style || {}) }}
       contentEditable={!readOnly}
       suppressContentEditableWarning={!readOnly}
       onBlur={!readOnly && onBlur ? (e) => onBlur(e.currentTarget.innerHTML) : undefined}

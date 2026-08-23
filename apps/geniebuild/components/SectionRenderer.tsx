@@ -905,6 +905,10 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
     ...(typeof styles.maxWidth === 'string' && /^\d+\s*(px|rem|em|%|vw)$/i.test(styles.maxWidth.trim())
       ? { maxWidth: styles.maxWidth, marginLeft: 'auto', marginRight: 'auto' }
       : {}),
+    // Advanced-tab wrapper controls (Elementor parity): box-shadow, z-index, overflow.
+    ...((styles as any).boxShadow ? { boxShadow: (styles as any).boxShadow } : {}),
+    ...((styles as any).zIndex !== undefined && (styles as any).zIndex !== '' ? { zIndex: Number((styles as any).zIndex) } : {}),
+    ...((styles as any).overflow ? { overflow: (styles as any).overflow } : {}),
   };
 
   const bgClass = !styles.background && !isCustomColor(styles.backgroundColor) ? styles.backgroundColor : '';
@@ -1221,6 +1225,19 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
   const anchorId = (styles as any).anchorId
     ? String((styles as any).anchorId).trim().replace(/\s+/g, '-').toLowerCase()
     : undefined;
+  // Custom CSS ID (Elementor Advanced tab) — distinct from the scroll anchor.
+  // Falls back to the anchor id so a single field still works for either use.
+  const customCssId = (styles as any).customId
+    ? String((styles as any).customId).trim().replace(/\s+/g, '-')
+    : undefined;
+  const domId = customCssId || anchorId || undefined;
+  // Raw custom CSS (Elementor Advanced › Custom CSS). `selector` is rewritten to
+  // this section's scope so the user can write `selector { ... }` like Elementor.
+  const rawCustomCss = typeof (styles as any).customCss === 'string' ? String((styles as any).customCss).trim() : '';
+  const customCssScopeId = domId || `sec-${section.id}`;
+  const scopedCustomCss = rawCustomCss
+    ? rawCustomCss.replace(/selector/g, `#${customCssScopeId}, [data-section-id="${section.id}"]`)
+    : '';
 
   // Semantic HTML5 element per section type. Using the right outer tag
   // (header/nav/footer/section) is a free SEO + a11y win — screen readers
@@ -1238,8 +1255,9 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
       className={containerClass}
       style={inlineStyles}
       data-section-id={section.id}
-      id={anchorId || undefined}
+      id={domId}
     >
+      {scopedCustomCss && <style>{scopedCustomCss}</style>}
       {/* Select Section Button — hover-only on the canvas. The button is the
           escape hatch for clicking the section background; selected sections
           already have a visible ring, so we don't need to broadcast it always. */}

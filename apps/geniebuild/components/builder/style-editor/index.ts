@@ -2,6 +2,8 @@ export { BadgeStylesBlock } from './BadgeStylesBlock';
 export { CardStylesBlock, AccordionStylesBlock } from './CardStylesBlock';
 export { ButtonStylesBlock } from './ButtonStylesBlock';
 export { FeatureBoxStylesBlock } from './FeatureBoxStylesBlock';
+export { StatCardStylesBlock } from './StatCardStylesBlock';
+export { StarRatingStylesBlock } from './StarRatingStylesBlock';
 export { TestimonialCardStylesBlock } from './TestimonialCardStylesBlock';
 export { TrustStripStylesBlock } from './TrustStripStylesBlock';
 export { ListStylesBlock } from './ListStylesBlock';

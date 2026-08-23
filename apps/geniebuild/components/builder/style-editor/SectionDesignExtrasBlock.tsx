@@ -1,5 +1,5 @@
 import React from 'react';
-import { AccordionGroup, RangeInput, SelectInput } from '../inputs';
+import { AccordionGroup, RangeInput, SelectInput, TextInput } from '../inputs';
 import { isCanvasRenderedVariant } from '../../sections/canvas/isCanvasVariant';
 
 interface SectionDesignExtrasBlockProps {
@@ -177,6 +177,39 @@ export const SectionDesignExtrasBlock: React.FC<SectionDesignExtrasBlockProps> =
               onChange={(v) => onUpdate('revealDelay', v)}
             />
           )}
+        </div>
+      </AccordionGroup>
+
+      {/* ─────────── ADVANCED (Elementor Advanced tab parity) ─────────── */}
+      <AccordionGroup title="Advanced" defaultOpen={false}>
+        <div className="space-y-3">
+          <TextInput
+            label="Box Shadow"
+            value={styles.boxShadow || ''}
+            onChange={(v) => onUpdate('boxShadow', v)}
+            placeholder="0 10px 30px rgba(0,0,0,.15)"
+          />
+          <div>
+            <label className="block text-[10px] text-white/50 uppercase tracking-widest mb-1.5">Z-Index</label>
+            <input
+              type="number"
+              value={styles.zIndex ?? ''}
+              onChange={(e) => onUpdate('zIndex', e.target.value === '' ? '' : e.target.value)}
+              placeholder="auto"
+              className="w-full bg-[#151515] border border-[#333] rounded px-2 py-1.5 text-xs text-white/80 outline-none focus:border-blue-500"
+            />
+          </div>
+          <SelectInput
+            label="Overflow"
+            value={styles.overflow || ''}
+            options={[
+              { label: 'Default', value: '' },
+              { label: 'Hidden', value: 'hidden' },
+              { label: 'Auto (scroll)', value: 'auto' },
+              { label: 'Visible', value: 'visible' },
+            ]}
+            onChange={(v) => onUpdate('overflow', v)}
+          />
         </div>
       </AccordionGroup>
     </>

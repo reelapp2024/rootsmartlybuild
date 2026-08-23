@@ -1,5 +1,5 @@
 import React from 'react';
-import { AccordionGroup, ColorInput, NumericUnitInput, RangeInput, SelectInput } from '../inputs';
+import { AccordionGroup, ColorInput, NumericUnitInput, RangeInput, SelectInput, FontSizeInput, TextInput } from '../inputs';
 import { colorToHex } from '../state/sectionUpdaters';
 
 interface CardStylesBlockProps {
@@ -30,34 +30,128 @@ const parsePx = (val: string | undefined, defaultVal: number): number => {
   return Math.round(num) || defaultVal;
 };
 
+const WEIGHTS = [
+  { label: 'Normal', value: '400' },
+  { label: 'Medium', value: '500' },
+  { label: 'Semibold', value: '600' },
+  { label: 'Bold', value: '700' },
+  { label: 'Black', value: '900' },
+];
+
 export const CardStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, onUpdate, onBatchUpdate, themeColors }) => {
-  const borderRadiusPx = parsePx(styles.borderRadius, 24);
+  const borderRadiusPx = parsePx(styles.borderRadius, 16);
   const paddingPx = parsePx(styles.padding, 24);
+  const themeAccent = themeColors?.accentColor || '#6366f1';
 
   const reset = () => {
-    const patch = { backgroundColor: '', borderColor: '', borderRadius: '', padding: '' };
+    const patch: Record<string, any> = {};
+    Object.keys(styles || {}).forEach((k) => {
+      if (k.startsWith('title') || k.startsWith('description') || k.startsWith('badge') ||
+          k.startsWith('link') || k.startsWith('image') || k.startsWith('hover') ||
+          k === 'contentGap' || k === 'backgroundColor' || k === 'borderColor' ||
+          k === 'borderWidth' || k === 'borderRadius' || k === 'padding' || k === 'boxShadow') {
+        patch[k] = '';
+      }
+    });
     if (onBatchUpdate) onBatchUpdate(patch);
     else Object.entries(patch).forEach(([k, v]) => onUpdate(k, v));
   };
 
   return (
-    <AccordionGroup title="Card styles" defaultOpen={true}>
+    <>
       <ResetRow onReset={reset} />
-      <ColorInput label={styles.backgroundColor ? "Background" : "Background (Inherited)"} value={styles.backgroundColor || themeColors?.cardBackgroundColor || '#FFFFFF'} onChange={(v) => onUpdate('backgroundColor', colorToHex(v) || v)} onReset={() => onUpdate('backgroundColor', '')} />
-      <ColorInput label={styles.borderColor ? "Border color" : "Border color (Inherited)"} value={styles.borderColor || themeColors?.cardBorderColor || '#E5E7EB'} onChange={(v) => onUpdate('borderColor', colorToHex(v) || v)} onReset={() => onUpdate('borderColor', '')} />
-      <RangeInput
-        label="Border radius"
-        value={Math.min(48, Math.max(0, borderRadiusPx))}
-        min={0} max={48} step={2} unit="px"
-        onChange={(v) => onUpdate('borderRadius', `${v}px`)}
-      />
-      <RangeInput
-        label="Padding"
-        value={Math.min(96, Math.max(0, paddingPx))}
-        min={0} max={96} step={4} unit="px"
-        onChange={(v) => onUpdate('padding', `${v}px`)}
-      />
-    </AccordionGroup>
+
+      {/* CARD BOX */}
+      <AccordionGroup title="Card Box" defaultOpen={true}>
+        <div className="space-y-3">
+          <ColorInput label={styles.backgroundColor ? "Background" : "Background (Inherited)"} value={styles.backgroundColor || themeColors?.cardBackgroundColor || '#FFFFFF'} onChange={(v) => onUpdate('backgroundColor', colorToHex(v) || v)} onReset={() => onUpdate('backgroundColor', '')} />
+          <ColorInput label={styles.borderColor ? "Border Color" : "Border Color (Inherited)"} value={styles.borderColor || themeColors?.cardBorderColor || '#E5E7EB'} onChange={(v) => onUpdate('borderColor', colorToHex(v) || v)} onReset={() => onUpdate('borderColor', '')} />
+          <RangeInput label="Border Width" value={parsePx(styles.borderWidth, 1)} min={0} max={6} step={1} unit="px" onChange={(v) => onUpdate('borderWidth', `${v}px`)} />
+          <RangeInput label="Corner Radius" value={Math.min(48, Math.max(0, borderRadiusPx))} min={0} max={48} step={2} unit="px" onChange={(v) => onUpdate('borderRadius', `${v}px`)} />
+          <RangeInput label="Padding" value={Math.min(96, Math.max(0, paddingPx))} min={0} max={96} step={4} unit="px" onChange={(v) => onUpdate('padding', `${v}px`)} />
+          <NumericUnitInput label="Content Gap" value={styles.contentGap || ''} onChange={(v) => onUpdate('contentGap', v)} placeholder="0.75rem" units={['rem', 'px', 'em']} step={0.125} min={0} max={4} />
+          <TextInput label="Box Shadow (rest)" value={styles.boxShadow || ''} onChange={(v) => onUpdate('boxShadow', v)} placeholder="0 1px 3px rgba(0,0,0,.1)" />
+        </div>
+      </AccordionGroup>
+
+      {/* HOVER */}
+      <AccordionGroup title="Hover Effect" defaultOpen={false}>
+        <div className="space-y-3">
+          <SelectInput
+            label="Hover Lift"
+            value={styles.hoverLift === false || styles.hoverEffect === 'none' ? 'off' : 'on'}
+            options={[{ label: 'On (lift + shadow)', value: 'on' }, { label: 'Off', value: 'off' }]}
+            onChange={(v) => { onUpdate('hoverLift', v === 'on'); if (v === 'on') onUpdate('hoverEffect', ''); else onUpdate('hoverEffect', 'none'); }}
+          />
+          <NumericUnitInput label="Lift Distance" value={styles.hoverLiftDistance || ''} onChange={(v) => onUpdate('hoverLiftDistance', v)} placeholder="-4px" units={['px', 'rem']} step={1} min={-24} max={0} />
+          <TextInput label="Hover Shadow" value={styles.hoverBoxShadow || ''} onChange={(v) => onUpdate('hoverBoxShadow', v)} placeholder="0 20px 40px -12px rgba(0,0,0,.25)" />
+        </div>
+      </AccordionGroup>
+
+      {/* IMAGE */}
+      <AccordionGroup title="Image" defaultOpen={false}>
+        <div className="space-y-3">
+          <SelectInput
+            label="Aspect Ratio"
+            value={styles.imageAspectRatio || '16/9'}
+            options={[
+              { label: '16:9 (wide)', value: '16/9' },
+              { label: '4:3', value: '4/3' },
+              { label: '1:1 (square)', value: '1/1' },
+              { label: '3:2', value: '3/2' },
+              { label: '21:9 (ultra-wide)', value: '21/9' },
+            ]}
+            onChange={(v) => onUpdate('imageAspectRatio', v)}
+          />
+          <SelectInput
+            label="Object Fit"
+            value={styles.imageObjectFit || 'cover'}
+            options={[{ label: 'Cover', value: 'cover' }, { label: 'Contain', value: 'contain' }, { label: 'Fill', value: 'fill' }]}
+            onChange={(v) => onUpdate('imageObjectFit', v)}
+          />
+        </div>
+      </AccordionGroup>
+
+      {/* TITLE */}
+      <AccordionGroup title="Title" defaultOpen={false}>
+        <div className="space-y-3">
+          <FontSizeInput label="Font Size" value={styles.titleFontSize || ''} onChange={(v) => onUpdate('titleFontSize', v)} placeholder="1.125rem" />
+          <SelectInput label="Font Weight" value={styles.titleFontWeight || '700'} options={WEIGHTS} onChange={(v) => onUpdate('titleFontWeight', v)} />
+          <NumericUnitInput label="Line Height" value={styles.titleLineHeight || ''} onChange={(v) => onUpdate('titleLineHeight', v)} placeholder="1.35" units={['', 'px', 'em']} step={0.05} min={0.8} max={3} />
+          <ColorInput label={styles.titleColor ? "Color" : "Color (Inherited)"} value={styles.titleColor || ''} onChange={(v) => onUpdate('titleColor', colorToHex(v) || v)} onReset={() => onUpdate('titleColor', '')} />
+        </div>
+      </AccordionGroup>
+
+      {/* DESCRIPTION */}
+      <AccordionGroup title="Description" defaultOpen={false}>
+        <div className="space-y-3">
+          <FontSizeInput label="Font Size" value={styles.descriptionFontSize || ''} onChange={(v) => onUpdate('descriptionFontSize', v)} placeholder="0.875rem" />
+          <SelectInput label="Font Weight" value={styles.descriptionFontWeight || '400'} options={WEIGHTS} onChange={(v) => onUpdate('descriptionFontWeight', v)} />
+          <NumericUnitInput label="Line Height" value={styles.descriptionLineHeight || ''} onChange={(v) => onUpdate('descriptionLineHeight', v)} placeholder="1.625" units={['', 'px', 'em']} step={0.05} min={0.8} max={3} />
+          <RangeInput label="Opacity" value={styles.descriptionOpacity !== undefined && styles.descriptionOpacity !== '' ? Math.round(Number(styles.descriptionOpacity) * 100) : 80} min={0} max={100} step={5} onChange={(v) => onUpdate('descriptionOpacity', v / 100)} />
+          <ColorInput label={styles.descriptionColor ? "Color" : "Color (Inherited)"} value={styles.descriptionColor || ''} onChange={(v) => onUpdate('descriptionColor', colorToHex(v) || v)} onReset={() => onUpdate('descriptionColor', '')} />
+        </div>
+      </AccordionGroup>
+
+      {/* BADGE */}
+      <AccordionGroup title="Badge" defaultOpen={false}>
+        <div className="space-y-3">
+          <FontSizeInput label="Font Size" value={styles.badgeFontSize || ''} onChange={(v) => onUpdate('badgeFontSize', v)} placeholder="0.75rem" />
+          <TextInput label="Padding" value={styles.badgePadding || ''} onChange={(v) => onUpdate('badgePadding', v)} placeholder="4px 12px" />
+          <NumericUnitInput label="Radius" value={styles.badgeRadius || ''} onChange={(v) => onUpdate('badgeRadius', v)} placeholder="9999px" units={['px', 'rem', '%']} step={1} min={0} max={9999} />
+          <ColorInput label={styles.badgeBackgroundColor ? "Background" : "Background (Auto)"} value={styles.badgeBackgroundColor || `${themeAccent}22`} onChange={(v) => onUpdate('badgeBackgroundColor', colorToHex(v) || v)} onReset={() => onUpdate('badgeBackgroundColor', '')} />
+          <ColorInput label={styles.badgeColor ? "Text Color" : "Text Color (Inherited)"} value={styles.badgeColor || themeAccent} onChange={(v) => onUpdate('badgeColor', colorToHex(v) || v)} onReset={() => onUpdate('badgeColor', '')} />
+        </div>
+      </AccordionGroup>
+
+      {/* LINK */}
+      <AccordionGroup title="Link" defaultOpen={false}>
+        <div className="space-y-3">
+          <FontSizeInput label="Font Size" value={styles.linkFontSize || ''} onChange={(v) => onUpdate('linkFontSize', v)} placeholder="0.875rem" />
+          <ColorInput label={styles.linkColor ? "Color" : "Color (Inherited)"} value={styles.linkColor || themeAccent} onChange={(v) => onUpdate('linkColor', colorToHex(v) || v)} onReset={() => onUpdate('linkColor', '')} />
+        </div>
+      </AccordionGroup>
+    </>
   );
 };
 

@@ -206,6 +206,18 @@ export const BlockquoteStylesBlock: React.FC<BlockquoteStylesBlockProps> = ({
               max={4}
             />
           )}
+          {mode === 'bar-left' && (
+            <NumericUnitInput
+              label="Bar Width"
+              value={styles.barWidth || ''}
+              onChange={(v) => onUpdate('barWidth', v)}
+              placeholder="4px"
+              units={['px', 'rem']}
+              step={1}
+              min={0}
+              max={20}
+            />
+          )}
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-white/40 uppercase">Alignment</label>
             <ButtonGroup
@@ -218,6 +230,39 @@ export const BlockquoteStylesBlock: React.FC<BlockquoteStylesBlockProps> = ({
               onChange={(v) => onUpdate('textAlign', v)}
             />
           </div>
+        </div>
+      </AccordionGroup>
+
+      {/* ── 5. AUTHOR (cite) — was locked text-sm/font-bold/opacity-70 ── */}
+      <AccordionGroup title="Author" defaultOpen={false}>
+        <div className="space-y-3">
+          <ColorInput
+            label={styles.authorColor ? 'Color' : 'Color (Inherited)'}
+            value={styles.authorColor || ''}
+            onChange={(v) => onUpdate('authorColor', v)}
+            onReset={() => onUpdate('authorColor', '')}
+          />
+          <NumericUnitInput
+            label="Font Size"
+            value={styles.authorFontSize || ''}
+            onChange={(v) => onUpdate('authorFontSize', v)}
+            placeholder="0.875rem"
+            units={['rem', 'px', 'em']}
+            step={0.0625}
+            min={0.5}
+            max={2}
+          />
+          <SelectInput
+            label="Font Weight"
+            value={String(styles.authorFontWeight || '700')}
+            options={[
+              { label: 'Normal', value: '400' },
+              { label: 'Medium', value: '500' },
+              { label: 'Semibold', value: '600' },
+              { label: 'Bold', value: '700' },
+            ]}
+            onChange={(v) => onUpdate('authorFontWeight', v)}
+          />
         </div>
       </AccordionGroup>
     </>

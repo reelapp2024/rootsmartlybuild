@@ -539,6 +539,41 @@ export const FeatureBoxStylesBlock: React.FC<FeatureBoxStylesBlockProps> = ({ st
         </div>
       </AccordionGroup>
 
+      {/* Icon-box layout: icon↔content gap + description opacity/line-height
+          (were hardcoded gap-4 / opacity-70 / line-height 1.7). */}
+      {elementType === 'icon-box' && (
+        <AccordionGroup title="Layout & Spacing" defaultOpen={false}>
+          <div className="space-y-3">
+            <NumericUnitInput
+              label="Icon ↔ Content Gap"
+              value={styles.iconSpace || ''}
+              onChange={(v) => onUpdate('iconSpace', v)}
+              placeholder="1rem"
+              units={['rem', 'px', 'em']}
+              step={1}
+              min={0}
+              max={80}
+            />
+            <RangeInput
+              label="Description Opacity"
+              value={styles.descriptionOpacity !== undefined && styles.descriptionOpacity !== '' ? Math.round(Number(styles.descriptionOpacity) * 100) : 70}
+              min={0} max={100} step={5}
+              onChange={(v) => onUpdate('descriptionOpacity', v / 100)}
+            />
+            <NumericUnitInput
+              label="Description Line Height"
+              value={styles.descriptionLineHeight || ''}
+              onChange={(v) => onUpdate('descriptionLineHeight', v)}
+              placeholder="1.7"
+              units={['', 'px', 'em']}
+              step={0.05}
+              min={0.8}
+              max={3}
+            />
+          </div>
+        </AccordionGroup>
+      )}
+
       {/* The groups below only make sense for feature-box (badge / CTA / stat / numbered).
           Icon-box / stat-card route through this block too, so we gate each group. */}
       {elementType === 'feature-box' && (
@@ -554,6 +589,15 @@ export const FeatureBoxStylesBlock: React.FC<FeatureBoxStylesBlockProps> = ({ st
                 onChange={(v) => onUpdate('badgeColor', v)}
                 onReset={() => onUpdate('badgeColor', '')}
               />
+              <ColorInput
+                label={styles.badgeBackgroundColor ? 'Badge Background' : 'Badge Background (Auto)'}
+                value={styles.badgeBackgroundColor || ''}
+                onChange={(v) => onUpdate('badgeBackgroundColor', v)}
+                onReset={() => onUpdate('badgeBackgroundColor', '')}
+              />
+              <FontSizeInput label="Font Size" value={styles.badgeFontSize || ''} onChange={(v) => onUpdate('badgeFontSize', v)} placeholder="0.62rem" />
+              <SelectInput label="Font Weight" value={String(styles.badgeFontWeight || '800')} options={[{ label: 'Semibold', value: '600' }, { label: 'Bold', value: '700' }, { label: 'Black', value: '800' }]} onChange={(v) => onUpdate('badgeFontWeight', v)} />
+              <TextInput label="Padding" value={styles.badgePadding || ''} onChange={(v) => onUpdate('badgePadding', v)} placeholder="3px 9px" />
             </div>
           </AccordionGroup>
 
@@ -568,6 +612,8 @@ export const FeatureBoxStylesBlock: React.FC<FeatureBoxStylesBlockProps> = ({ st
                 onChange={(v) => onUpdate('ctaColor', v)}
                 onReset={() => onUpdate('ctaColor', '')}
               />
+              <FontSizeInput label="Font Size" value={styles.ctaFontSize || ''} onChange={(v) => onUpdate('ctaFontSize', v)} placeholder="0.82rem" />
+              <SelectInput label="Font Weight" value={String(styles.ctaFontWeight || '700')} options={[{ label: 'Medium', value: '500' }, { label: 'Semibold', value: '600' }, { label: 'Bold', value: '700' }]} onChange={(v) => onUpdate('ctaFontWeight', v)} />
             </div>
           </AccordionGroup>
 
