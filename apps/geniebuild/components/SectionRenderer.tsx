@@ -1282,6 +1282,22 @@ const SectionRenderer: React.FC<SectionRendererProps> = ({
         />
       )}
 
+      {/* Background VIDEO (Elementor parity). Self-hosted mp4/webm only.
+          Autoplays muted + loops; poster falls back to backgroundImage. */}
+      {(styles as any).backgroundVideoUrl && (
+        <video
+          className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none"
+          src={(styles as any).backgroundVideoUrl}
+          poster={(styles as any).backgroundImage || undefined}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-hidden="true"
+        />
+      )}
+
       {/* Background overlay - Layer 1: Gradient (like website multicolor theme) */}
       {overlays.gradientOverlay && (
         <div 

@@ -1134,26 +1134,36 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     // their children (buttons, stats, stars) silently drop to the fallback.
     if (type === 'row') {
       const cc = (content || {}) as any;
-      const cols = Math.min(Math.max(parseInt(String(cc.columnCount), 10) || 2, 1), 4);
+      const rst = (style || {}) as any;
+      // Layout props are editable from the Row styles panel (style wins) with the
+      // element's own content as the fallback — Elementor container parity.
+      const cols = Math.min(Math.max(parseInt(String(rst.columnCount ?? cc.columnCount), 10) || 2, 1), 4);
       const kids: WebsiteElement[] = Array.isArray(cc.children) ? cc.children : [];
-      const gap = cc.gap || '1.5rem';
-      const align = cc.verticalAlign || 'stretch';
+      const gap = rst.columnGap || rst.gap || cc.gap || '1.5rem';
+      const align = rst.verticalAlign || cc.verticalAlign || 'stretch';
       // Column widths: default equal (1fr each). If `columnRatios` is given
       // (e.g. [30,70] or ['1fr','2fr']) use those for asymmetric layouts —
       // Elementor-style 30/70, 70/30, sidebar layouts, etc.
-      const ratios: any[] = Array.isArray(cc.columnRatios) ? cc.columnRatios : [];
+      const ratioSrc = rst.columnRatios ?? cc.columnRatios;
+      const ratios: any[] = Array.isArray(ratioSrc)
+        ? ratioSrc
+        : (typeof ratioSrc === 'string' && ratioSrc.trim()
+            ? ratioSrc.split(/[\/,\s]+/).filter(Boolean)
+            : []);
       const gridTemplateColumns = (ratios.length === cols && cols > 1)
         ? ratios.map((r) => (typeof r === 'number' ? `${r}fr` : String(r))).join(' ')
         : `repeat(${cols}, minmax(0, 1fr))`;
       // Multi-column rows collapse to a single column on mobile (≤767px), so
       // the layout never squishes side-by-side content on small screens.
       const rowUid = `gbrow-${String(id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
-      const stackOnMobile = cols > 1 && cc.stackOnMobile !== false;
+      const stackOnMobile = cols > 1 && (rst.stackOnMobile ?? cc.stackOnMobile) !== false;
+      // Strip layout-only keys so they don't leak into the wrapper's inline CSS.
+      const { columnCount: _cc, columnGap: _cg, columnRatios: _cr, verticalAlign: _va, stackOnMobile: _sm, ...rowBoxStyle } = rst;
       return (
         <div
           key={id}
           className={`gb-canvas-row grid ${rowUid}`}
-          style={{ ...(style as any), gridTemplateColumns, gap, alignItems: align }}
+          style={{ ...(rowBoxStyle as any), gridTemplateColumns, gap, alignItems: align }}
         >
           {stackOnMobile && (
             <style>{`@media (max-width:767px){.${rowUid}{grid-template-columns:1fr !important;}}`}</style>
@@ -1166,11 +1176,14 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
     }
     if (type === 'column') {
       const cc = (content || {}) as any;
+      const cst = (style || {}) as any;
       const kids: WebsiteElement[] = Array.isArray(cc.children) ? cc.children : [];
-      const gap = cc.gap || '1rem';
-      const alignItems = (style as any)?.alignItems || 'flex-start';
+      const gap = cst.columnGap || cst.gap || cc.gap || '1rem';
+      const alignItems = cst.alignItems || cc.horizontalAlign || 'flex-start';
+      const justifyContent = cst.justifyContent || cc.verticalAlign || undefined;
+      const { columnGap: _ccg, ...colBoxStyle } = cst;
       return (
-        <div key={id} className="gb-canvas-col flex flex-col min-w-0" style={{ ...(style as any), gap, alignItems }}>
+        <div key={id} className="gb-canvas-col flex flex-col min-w-0" style={{ ...(colBoxStyle as any), gap, alignItems, justifyContent }}>
           {/* Each child is wrapped in a real element (not a Fragment) so the
               data-element-id responsive wrapper can attach without a warning. */}
           {kids.map((child) => (

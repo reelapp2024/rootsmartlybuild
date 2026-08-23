@@ -4,6 +4,7 @@ export { ButtonStylesBlock } from './ButtonStylesBlock';
 export { FeatureBoxStylesBlock } from './FeatureBoxStylesBlock';
 export { StatCardStylesBlock } from './StatCardStylesBlock';
 export { StarRatingStylesBlock } from './StarRatingStylesBlock';
+export { RowStylesBlock, ColumnStylesBlock } from './RowColumnStylesBlock';
 export { TestimonialCardStylesBlock } from './TestimonialCardStylesBlock';
 export { TrustStripStylesBlock } from './TrustStripStylesBlock';
 export { ListStylesBlock } from './ListStylesBlock';

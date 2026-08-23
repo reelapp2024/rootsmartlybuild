@@ -1,7 +1,7 @@
 import React from 'react';
 import { Section } from '../../../types';
 import { PRESET_THEMES } from '../../../constants';
-import { AccordionGroup, BackgroundControl, ColorInput, RangeInput, SelectInput } from '../inputs';
+import { AccordionGroup, BackgroundControl, ColorInput, RangeInput, SelectInput, TextInput } from '../inputs';
 import { normalizeBackground, syncLegacyBackgroundFlats } from '../../../utils/normalizeSectionStyles';
 import { BG_PATTERN_CHOICES } from '../../sections/homepage/utils/sectionBgPatterns';
 import { isCanvasRenderedVariant } from '../../sections/canvas/isCanvasVariant';
@@ -112,6 +112,7 @@ export const SectionBackgroundBlock: React.FC<SectionBackgroundBlockProps> = ({
               background: undefined,
               backgroundColor: undefined,
               backgroundImage: undefined,
+              backgroundVideoUrl: undefined,
               backgroundPattern: undefined,
               overlayColor: undefined,
               overlayOpacityValue: undefined,
@@ -228,6 +229,20 @@ export const SectionBackgroundBlock: React.FC<SectionBackgroundBlockProps> = ({
         </div>
       </div>
       )}
+
+      {/* --- BACKGROUND VIDEO --- (Elementor parity: self-hosted mp4/webm loop) */}
+      <div className="space-y-2 pt-4 border-t border-white/10">
+        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Background Video</h4>
+        <TextInput
+          label="Video URL (mp4 / webm)"
+          value={(styles as any).backgroundVideoUrl || ''}
+          onChange={(v) => onUpdate('backgroundVideoUrl', v)}
+          placeholder="https://…/clip.mp4"
+        />
+        <p className="text-[10px] text-white/40 leading-relaxed">
+          Plays muted + looped behind the content. Uses the background image as the poster. Add a dark overlay below for text legibility.
+        </p>
+      </div>
 
       {/* --- BACKGROUND PATTERN ---
           A reusable, theme-driven decorative layer (grid / glow / dots) painted
