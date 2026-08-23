@@ -303,7 +303,17 @@ const AppContent: React.FC = () => {
     setLoadingPageData(true);
     (async () => {
       try {
-        if (pageId) await loadPageData(projectId, pageId);
+        // Resolve which page to open. When the URL carries no pageId (the common
+        // case when a site is opened straight from its projectId — e.g. the MCP
+        // link, or "open in builder" without a specific page), fall back to the
+        // project's FIRST page. Previously we only loaded page data when a pageId
+        // was present, so a bare ?projectId= link showed the empty default
+        // template instead of the real saved project.
+        let targetPageId = pageId;
+        if (!targetPageId) {
+          targetPageId = await resolveFirstPageId(projectId);
+        }
+        if (!cancelled && targetPageId) await loadPageData(projectId, targetPageId);
         if (!cancelled) await loadPageList(projectId);
       } finally {
         if (!cancelled) setLoadingPageData(false);
@@ -313,6 +323,31 @@ const AppContent: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  // Fetch the project's page list and return the first page's id, so a bare
+  // ?projectId= link (no pageId) can still open the real home page's content.
+  const resolveFirstPageId = async (projectId: string): Promise<string | null> => {
+    try {
+      const { token } = getUrlParams();
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE_URL}/getWebsitePages/${projectId}`, { method: 'GET', headers });
+      if (!res.ok) return null;
+      const body = await res.json().catch(() => ({}));
+      const serverPages = Array.isArray(body?.data) ? body.data : [];
+      if (!serverPages.length) return null;
+      // Prefer the home page (slug '/' or 'home'), else the first page.
+      const home = serverPages.find((sp: any) => {
+        const slug = String(sp.slug || '').replace(/^\//, '').toLowerCase();
+        const name = String(sp.name || sp.displayName || '').toLowerCase();
+        return slug === '' || slug === 'home' || name === 'home';
+      });
+      const chosen = home || serverPages[0];
+      return String(chosen.pageId || chosen._id || '') || null;
+    } catch {
+      return null;
+    }
+  };
 
   // Fetch the full WebsitePage list for the project and merge it into siteData.
   // Each page that already exists in local state keeps its sections; new
