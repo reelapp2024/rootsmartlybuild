@@ -1,0 +1,6 @@
+# Never commit the config with a real token baked in
+claude_desktop_config.snippet.json
+*.token
+token.txt
+__pycache__/
+*.pyc
