@@ -31,6 +31,7 @@ export const RowStylesBlock: React.FC<BlockProps> = ({ styles, onUpdate, onBatch
   const reset = () => {
     const patch: Record<string, any> = {
       columnCount: '', columnGap: '', columnRatios: '', verticalAlign: '', stackOnMobile: '',
+      layoutMode: '', flexDirection: '', justifyContent: '', flexWrap: '',
       backgroundColor: '', borderColor: '', borderWidth: '', borderRadius: '', padding: '', boxShadow: '',
     };
     if (onBatchUpdate) onBatchUpdate(patch);
@@ -43,26 +44,76 @@ export const RowStylesBlock: React.FC<BlockProps> = ({ styles, onUpdate, onBatch
 
       <AccordionGroup title="Columns" defaultOpen={true}>
         <div className="space-y-3">
-          <div>
-            <label className="block text-[10px] text-white/50 uppercase tracking-widest mb-1.5">Column Count</label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {[1, 2, 3, 4].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => onUpdate('columnCount', n)}
-                  className={`py-2 text-xs font-bold rounded border transition-all ${cols === n ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-[#151515] border-[#333] text-white/40 hover:border-[#444]'}`}
-                >{n}</button>
-              ))}
-            </div>
-          </div>
-          <TextInput
-            label="Column Ratios (optional)"
-            value={Array.isArray(styles.columnRatios) ? styles.columnRatios.join(' / ') : (styles.columnRatios || '')}
-            onChange={(v) => onUpdate('columnRatios', v)}
-            placeholder="e.g. 30 / 70  or  1 / 2"
+          {/* Layout mode: grid (equal/ratio columns) vs flex (Elementor Container) */}
+          <SelectInput
+            label="Layout Mode"
+            value={styles.layoutMode === 'flex' ? 'flex' : 'grid'}
+            options={[
+              { label: 'Grid (equal / ratio columns)', value: 'grid' },
+              { label: 'Flex (free direction / wrap)', value: 'flex' },
+            ]}
+            onChange={(v) => onUpdate('layoutMode', v === 'flex' ? 'flex' : '')}
           />
-          <p className="text-[9px] text-white/30 italic">Leave empty for equal columns. Use N values for N columns (asymmetric layouts).</p>
+          {styles.layoutMode === 'flex' ? (
+            <>
+              <SelectInput
+                label="Direction"
+                value={styles.flexDirection || 'row'}
+                options={[
+                  { label: 'Row →', value: 'row' },
+                  { label: 'Row Reverse ←', value: 'row-reverse' },
+                  { label: 'Column ↓', value: 'column' },
+                  { label: 'Column Reverse ↑', value: 'column-reverse' },
+                ]}
+                onChange={(v) => onUpdate('flexDirection', v)}
+              />
+              <SelectInput
+                label="Justify (main axis)"
+                value={styles.justifyContent || 'flex-start'}
+                options={[
+                  { label: 'Start', value: 'flex-start' },
+                  { label: 'Center', value: 'center' },
+                  { label: 'End', value: 'flex-end' },
+                  { label: 'Space Between', value: 'space-between' },
+                  { label: 'Space Around', value: 'space-around' },
+                  { label: 'Space Evenly', value: 'space-evenly' },
+                ]}
+                onChange={(v) => onUpdate('justifyContent', v)}
+              />
+              <SelectInput
+                label="Wrap"
+                value={styles.flexWrap || 'wrap'}
+                options={[
+                  { label: 'Wrap', value: 'wrap' },
+                  { label: 'No Wrap', value: 'nowrap' },
+                ]}
+                onChange={(v) => onUpdate('flexWrap', v)}
+              />
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="block text-[10px] text-white/50 uppercase tracking-widest mb-1.5">Column Count</label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[1, 2, 3, 4].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => onUpdate('columnCount', n)}
+                      className={`py-2 text-xs font-bold rounded border transition-all ${cols === n ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-[#151515] border-[#333] text-white/40 hover:border-[#444]'}`}
+                    >{n}</button>
+                  ))}
+                </div>
+              </div>
+              <TextInput
+                label="Column Ratios (optional)"
+                value={Array.isArray(styles.columnRatios) ? styles.columnRatios.join(' / ') : (styles.columnRatios || '')}
+                onChange={(v) => onUpdate('columnRatios', v)}
+                placeholder="e.g. 30 / 70  or  1 / 2"
+              />
+              <p className="text-[9px] text-white/30 italic">Leave empty for equal columns. Use N values for N columns (asymmetric layouts).</p>
+            </>
+          )}
           <NumericUnitInput label="Gap" value={styles.columnGap || ''} onChange={(v) => onUpdate('columnGap', v)} placeholder="1.5rem" units={['rem', 'px', 'em']} step={0.25} min={0} max={8} />
           <SelectInput
             label="Vertical Align"

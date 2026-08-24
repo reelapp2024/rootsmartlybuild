@@ -1173,8 +1173,34 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
       // the layout never squishes side-by-side content on small screens.
       const rowUid = `gbrow-${String(id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
       const stackOnMobile = cols > 1 && (rst.stackOnMobile ?? cc.stackOnMobile) !== false;
+      // Layout mode: 'grid' (default, equal/ratio columns) or 'flex' (Elementor
+      // Container flexbox — direction / justify / align / wrap).
+      const rowLayoutMode = rst.layoutMode === 'flex' ? 'flex' : 'grid';
       // Strip layout-only keys so they don't leak into the wrapper's inline CSS.
-      const { columnCount: _cc, columnGap: _cg, columnRatios: _cr, verticalAlign: _va, stackOnMobile: _sm, ...rowBoxStyle } = rst;
+      const { columnCount: _cc, columnGap: _cg, columnRatios: _cr, verticalAlign: _va, stackOnMobile: _sm, layoutMode: _lm, flexDirection: _fd, justifyContent: _jc, flexWrap: _fw, ...rowBoxStyle } = rst;
+
+      if (rowLayoutMode === 'flex') {
+        const flexStyle: React.CSSProperties = {
+          ...(rowBoxStyle as any),
+          display: 'flex',
+          flexDirection: (rst.flexDirection || 'row') as any,
+          justifyContent: rst.justifyContent || 'flex-start',
+          alignItems: align === 'stretch' ? 'stretch' : align,
+          flexWrap: (rst.flexWrap || 'wrap') as any,
+          gap,
+        };
+        return (
+          <div key={id} className={`gb-canvas-row ${rowUid}`} style={flexStyle}>
+            {stackOnMobile && (
+              <style>{`@media (max-width:767px){.${rowUid}{flex-direction:column !important;}}`}</style>
+            )}
+            {kids.map((child) => (
+              <div key={child.id} className="min-w-0">{renderElement(child)}</div>
+            ))}
+          </div>
+        );
+      }
+
       return (
         <div
           key={id}
