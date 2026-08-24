@@ -6,6 +6,12 @@ import { resolveSectionWrapperStyle, resolveSectionOverlay, sectionBgHasImage } 
 import { SectionEffectsLayer } from '../homepage/utils/SectionEffectsLayer';
 import { resolveBgPatternLayers } from '../homepage/utils/sectionBgPatterns';
 
+// Module-level clipboards so copy/paste works ACROSS sections (Elementor-style),
+// not just within one. `elementClipboard` holds a full element; `styleClipboard`
+// holds just a style object for "copy style → paste style".
+let elementClipboard: WebsiteElement | null = null;
+let styleClipboard: Record<string, any> | null = null;
+
 interface Props {
   section: Section;
   onTextEdit: (key: any, value: string) => void;
@@ -175,6 +181,44 @@ export const CanvasFreeform: React.FC<Props> = ({
     next.splice(index + 1, 0, clone);
     writeElements(next);
     onElementSelect?.(clone.id, clone);
+  };
+
+  // Fresh-id deep clone helper (shared by duplicate + paste).
+  const cloneWithNewIds = (el: WebsiteElement): WebsiteElement => {
+    const suffix = `-copy-${Math.floor(performance.now() % 100000)}`;
+    const clone: WebsiteElement = JSON.parse(JSON.stringify(el));
+    clone.id = `${el.id}${suffix}`;
+    const kids = (clone.content as any)?.children;
+    if (Array.isArray(kids)) {
+      (clone.content as any).children = kids.map((c: any, k: number) => ({ ...c, id: `${c.id || 'child'}${suffix}-${k}` }));
+    }
+    return clone;
+  };
+
+  // Copy an element to the cross-section clipboard.
+  const copyElement = (index: number) => {
+    const el = elements[index];
+    if (el) elementClipboard = JSON.parse(JSON.stringify(el));
+  };
+
+  // Paste the clipboard element after `index` (or at the end when index < 0).
+  const pasteElement = (index: number) => {
+    if (!elementClipboard) return;
+    const clone = cloneWithNewIds(elementClipboard);
+    const next = [...elements];
+    next.splice(index >= 0 ? index + 1 : next.length, 0, clone);
+    writeElements(next);
+    onElementSelect?.(clone.id, clone);
+  };
+
+  // Copy just an element's style, and paste it onto another element.
+  const copyStyle = (index: number) => {
+    const el = elements[index];
+    if (el) styleClipboard = { ...(el.style || {}) };
+  };
+  const pasteStyle = (id: string) => {
+    if (!styleClipboard) return;
+    writeElements(elements.map((e) => (e.id === id ? { ...e, style: { ...(e.style || {}), ...styleClipboard } } : e)));
   };
 
   // Hide / show an element (kept in the list but not rendered on the live site).
@@ -411,6 +455,33 @@ export const CanvasFreeform: React.FC<Props> = ({
                       className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs shadow"
                       style={{ backgroundColor: '#334155' }}>
                       <i className="fa-solid fa-clone" />
+                    </button>
+                    {/* Copy → clipboard (works across sections) */}
+                    <button type="button" title="Copy element" aria-label="Copy element"
+                      onClick={(e) => { e.stopPropagation(); copyElement(i); }}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs shadow"
+                      style={{ backgroundColor: '#334155' }}>
+                      <i className="fa-solid fa-copy" />
+                    </button>
+                    {/* Paste clipboard element after this one */}
+                    <button type="button" title="Paste element here" aria-label="Paste element"
+                      onClick={(e) => { e.stopPropagation(); pasteElement(i); }}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs shadow"
+                      style={{ backgroundColor: '#334155' }}>
+                      <i className="fa-solid fa-paste" />
+                    </button>
+                    {/* Copy style / Paste style */}
+                    <button type="button" title="Copy style" aria-label="Copy style"
+                      onClick={(e) => { e.stopPropagation(); copyStyle(i); }}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs shadow"
+                      style={{ backgroundColor: '#475569' }}>
+                      <i className="fa-solid fa-brush" />
+                    </button>
+                    <button type="button" title="Paste style" aria-label="Paste style"
+                      onClick={(e) => { e.stopPropagation(); pasteStyle(el.id); }}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs shadow"
+                      style={{ backgroundColor: '#475569' }}>
+                      <i className="fa-solid fa-fill-drip" />
                     </button>
                     <button type="button" title="Delete element" aria-label="Delete element"
                       onClick={(e) => { e.stopPropagation(); removeElement(el.id); }}
