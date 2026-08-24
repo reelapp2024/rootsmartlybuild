@@ -1,5 +1,5 @@
 import React from 'react';
-import { AccordionGroup, RangeInput, SelectInput, TextInput } from '../inputs';
+import { AccordionGroup, ColorInput, RangeInput, SelectInput, TextInput } from '../inputs';
 
 interface ElementAdvancedBlockProps {
   styles: any;
@@ -60,8 +60,62 @@ export const ElementAdvancedBlock: React.FC<ElementAdvancedBlockProps> = ({
   // Custom-CSS scope: prefer a set customId, else the element id.
   const scopeId = String(styles.customId || elementId || '').replace(/[^A-Za-z0-9_-]/g, '') || 'this-element';
 
+  const hoverEffect = styles.hoverMotion || 'none';
+
   return (
     <>
+      {/* ── HOVER EFFECT ──────────────────────────────────────────── */}
+      <AccordionGroup title="Hover Effect" defaultOpen={false}>
+        <div className="space-y-3">
+          <p className="text-[10px] text-white/40 leading-relaxed">
+            How this element reacts on hover — a motion effect plus optional colour changes.
+          </p>
+          <SelectInput
+            label="Motion"
+            value={hoverEffect}
+            options={[
+              { label: 'None', value: 'none' },
+              { label: 'Grow', value: 'grow' },
+              { label: 'Shrink', value: 'shrink' },
+              { label: 'Lift', value: 'lift' },
+              { label: 'Float', value: 'float' },
+              { label: 'Pulse', value: 'pulse' },
+            ]}
+            onChange={(v) => onUpdate('hoverMotion', v === 'none' ? '' : v)}
+          />
+          <ColorInput
+            label={styles.hoverColor ? 'Text Color (hover)' : 'Text Color (hover) — none'}
+            value={styles.hoverColor || ''}
+            onChange={(v) => onUpdate('hoverColor', v)}
+            onReset={() => onUpdate('hoverColor', '')}
+          />
+          <ColorInput
+            label={styles.hoverBackgroundColor ? 'Background (hover)' : 'Background (hover) — none'}
+            value={styles.hoverBackgroundColor || ''}
+            onChange={(v) => onUpdate('hoverBackgroundColor', v)}
+            onReset={() => onUpdate('hoverBackgroundColor', '')}
+          />
+          <ColorInput
+            label={styles.hoverBorderColor ? 'Border Color (hover)' : 'Border Color (hover) — none'}
+            value={styles.hoverBorderColor || ''}
+            onChange={(v) => onUpdate('hoverBorderColor', v)}
+            onReset={() => onUpdate('hoverBorderColor', '')}
+          />
+          <TextInput
+            label="Box Shadow (hover)"
+            value={styles.hoverBoxShadow || ''}
+            onChange={(v) => onUpdate('hoverBoxShadow', v)}
+            placeholder="0 12px 30px rgba(0,0,0,.2)"
+          />
+          <RangeInput
+            label="Transition (ms)"
+            value={parseInt(String(styles.hoverTransitionMs || '200'), 10) || 200}
+            min={0} max={800} step={50} unit="ms"
+            onChange={(v) => onUpdate('hoverTransitionMs', v)}
+          />
+        </div>
+      </AccordionGroup>
+
       {/* ── TRANSFORM ─────────────────────────────────────────────── */}
       <AccordionGroup title="Transform" defaultOpen={false}>
         <div className="space-y-3">

@@ -358,6 +358,15 @@ const getSafeStyle = (style: any): React.CSSProperties => {
   delete css.customClasses;
   delete css.customCss;
   delete css.entranceAnimation;
+  // hover-* keys are consumed by scoped :hover CSS (button + canvas element
+  // wrapper), never valid inline style — strip them. Cast because CSSProperties
+  // doesn't declare these custom keys.
+  delete (css as any).hoverMotion;
+  delete (css as any).hoverColor;
+  delete (css as any).hoverBackgroundColor;
+  delete (css as any).hoverBorderColor;
+  delete (css as any).hoverBoxShadow;
+  delete (css as any).hoverTransitionMs;
   
   // Remove fontFamily if it's undefined, null, or empty string (let CSS theme handle it)
   if (!css.fontFamily || css.fontFamily.trim() === '') {
@@ -1761,9 +1770,10 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const cbHoverId = `gb-cta-${id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
             // User hover overrides (sidebar Hover Colors) win over variant defaults.
-            const cbHoverBg     = safeStyle.hoverBackgroundColor || '';
-            const cbHoverColor  = safeStyle.hoverColor || '';
-            const cbHoverBorder = safeStyle.hoverBorderColor || '';
+            // Read from renderStyle (safeStyle strips these non-CSS hover keys).
+            const cbHoverBg     = (renderStyle as any).hoverBackgroundColor || '';
+            const cbHoverColor  = (renderStyle as any).hoverColor || '';
+            const cbHoverBorder = (renderStyle as any).hoverBorderColor || '';
             const cbHoverCss = (() => {
               let css = '';
               if (cbHoverBg)     css += `background-color:${cbHoverBg} !important;`;

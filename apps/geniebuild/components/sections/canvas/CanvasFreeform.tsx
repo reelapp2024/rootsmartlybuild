@@ -282,6 +282,9 @@ export const CanvasFreeform: React.FC<Props> = ({
         @keyframes cvAnimSlideRight { from{opacity:0;transform:translateX(-40px);} to{opacity:1;transform:none;} }
         @keyframes cvAnimZoomIn   { from{opacity:0;transform:scale(.9);} to{opacity:1;transform:none;} }
         @media (prefers-reduced-motion: reduce) { .${uid} .cv-anim { animation:none; } }
+        /* Hover motion keyframes (float / pulse) */
+        @keyframes cvHoverFloat { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-6px);} }
+        @keyframes cvHoverPulse { 0%,100%{transform:scale(1);} 50%{transform:scale(1.04);} }
       `}</style>
 
       {/* Image-only background overlay */}
@@ -328,6 +331,24 @@ export const CanvasFreeform: React.FC<Props> = ({
             const elScopedCss = typeof est.customCss === 'string' && est.customCss.trim()
               ? est.customCss.replace(/selector/g, `#${elCssScope}, .${elCssScope}`)
               : '';
+            // Hover state (Advanced tab): colour + motion changes on hover, built
+            // as scoped CSS so it works on any element type.
+            const hoverMs = parseInt(String(est.hoverTransitionMs || '200'), 10) || 200;
+            const hoverDecls: string[] = [];
+            if (est.hoverColor) hoverDecls.push(`color:${est.hoverColor} !important`);
+            if (est.hoverBackgroundColor) hoverDecls.push(`background-color:${est.hoverBackgroundColor} !important`);
+            if (est.hoverBorderColor) hoverDecls.push(`border-color:${est.hoverBorderColor} !important`);
+            if (est.hoverBoxShadow) hoverDecls.push(`box-shadow:${est.hoverBoxShadow}`);
+            const hoverMotion = est.hoverMotion || '';
+            if (hoverMotion === 'grow') hoverDecls.push('transform:scale(1.04)');
+            else if (hoverMotion === 'shrink') hoverDecls.push('transform:scale(0.97)');
+            else if (hoverMotion === 'lift') hoverDecls.push('transform:translateY(-6px)');
+            const hoverCss = (hoverDecls.length || hoverMotion === 'float' || hoverMotion === 'pulse')
+              ? `#${elCssScope}, .${elCssScope}{transition:all ${hoverMs}ms cubic-bezier(.22,.61,.36,1);}`
+                + (hoverDecls.length ? ` #${elCssScope}:hover, .${elCssScope}:hover{${hoverDecls.join(';')};}` : '')
+                + (hoverMotion === 'float' ? ` .${elCssScope}:hover{animation:cvHoverFloat 1.2s ease-in-out infinite;}` : '')
+                + (hoverMotion === 'pulse' ? ` .${elCssScope}:hover{animation:cvHoverPulse 1s ease-in-out infinite;}` : '')
+              : '';
             return (
               <div
                 key={el.id}
@@ -342,7 +363,7 @@ export const CanvasFreeform: React.FC<Props> = ({
                   ...(isOver ? { boxShadow: `0 -3px 0 0 ${accent}` } : {}),
                 }}
               >
-                {elScopedCss && <style>{elScopedCss}</style>}
+                {(elScopedCss || hoverCss) && <style>{`${hoverCss}${elScopedCss}`}</style>}
                 {showItemTools && (
                   <div className="cv-tools absolute -top-3 right-0 z-20 flex items-center gap-1">
                     {/* Drag handle — reorder by dragging (Elementor-style) */}
