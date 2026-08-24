@@ -39,6 +39,7 @@ export const PALETTE_ELEMENTS: PaletteItem[] = [
   { type: 'image-box',     label: 'Image Box',    icon: 'fa-panorama',       group: 'Media' },
   { type: 'logo-cloud',    label: 'Logo Cloud',   icon: 'fa-icons',          group: 'Media' },
   { type: 'gallery',       label: 'Gallery',      icon: 'fa-images',         group: 'Media' },
+  { type: 'social-icons',  label: 'Social Icons', icon: 'fa-share-nodes',    group: 'Media' },
   // Layout
   { type: 'row' as any,    label: 'Row (2 cols)', icon: 'fa-table-columns',  group: 'Content' },
   { type: 'column' as any, label: 'Column',       icon: 'fa-grip-lines-vertical', group: 'Content' },
@@ -107,6 +108,17 @@ function defaultForType(type: WebsiteElement['type']): { content: any; style: an
         ],
       },
       style: { galleryLayout: 'grid', columns: 3, imageGap: '0.75rem', imageRadius: '0.75rem', imageAspectRatio: '1/1' },
+    };
+    case 'social-icons' as any: return {
+      content: {
+        items: [
+          { network: 'facebook',  icon: 'fa-brands fa-facebook-f',  url: '#' },
+          { network: 'instagram', icon: 'fa-brands fa-instagram',   url: '#' },
+          { network: 'twitter',   icon: 'fa-brands fa-x-twitter',   url: '#' },
+          { network: 'linkedin',  icon: 'fa-brands fa-linkedin-in', url: '#' },
+        ],
+      },
+      style: { socialShape: 'circle', socialSize: '2.5rem', socialGap: '0.6rem', textAlign: 'left' },
     };
     case 'icon-box':       return { content: { icon: 'fa-check-circle', text: 'Icon box title', subText: 'Describe this point briefly.', iconPosition: 'top' }, style: { textAlign: 'center' } };
     case 'feature-box':    return { content: { icon: 'fa-star', text: 'Feature title', subText: 'Explain this feature in one line.', iconPosition: 'left' }, style: { padding: '1.1rem', borderWidth: '1px', borderStyle: 'solid', borderRadius: '1rem' } };

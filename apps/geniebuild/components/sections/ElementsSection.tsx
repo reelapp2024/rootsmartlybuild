@@ -5497,6 +5497,41 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             );
         }
         
+        case 'social-icons' as any: {
+            const si = renderStyle as any;
+            const siItems: any[] = Array.isArray(content?.items) ? content.items : [];
+            const siShape: string = si.socialShape || 'circle';
+            const siSize = si.socialSize || '2.5rem';
+            const siGap = si.socialGap || '0.6rem';
+            const siColor = si.socialIconColor || '#FFFFFF';
+            const siBg = si.socialBackgroundColor || theme?.accentColor || '#6366f1';
+            const siRadius = siShape === 'circle' ? '50%' : siShape === 'rounded' ? '0.5rem' : '0';
+            const siAlign = resolveTextAlign(renderStyle);
+            return (
+                <div key={id} className={`flex ${siAlign.justifyClass} ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={{ ...safeStyle, gap: siGap }}>
+                    {siItems.map((it: any, i: number) => (
+                        <a
+                            key={i}
+                            href={readOnly ? (it.url || '#') : undefined}
+                            target={readOnly ? '_blank' : undefined}
+                            rel="noopener noreferrer"
+                            aria-label={it.network || `social-${i}`}
+                            className="inline-flex items-center justify-center transition-transform hover:scale-110"
+                            style={{
+                                width: siSize, height: siSize, borderRadius: siRadius,
+                                backgroundColor: siShape === 'plain' ? 'transparent' : siBg,
+                                color: siShape === 'plain' ? siBg : siColor,
+                                fontSize: si.socialIconSize || `calc(${siSize} * 0.45)`,
+                            }}
+                            onClick={!readOnly ? (e) => e.preventDefault() : undefined}
+                        >
+                            <i className={it.icon || 'fa-solid fa-link'} />
+                        </a>
+                    ))}
+                </div>
+            );
+        }
+
         case 'gallery' as any: {
             return (
                 <div key={id} className={selectedClass} onClick={(e) => handleClick(e, el)} style={safeStyle}>

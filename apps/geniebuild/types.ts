@@ -16,6 +16,7 @@ export type ElementType =
   | 'form'
   // Media
   | 'gallery'
+  | 'social-icons'
   // Basic
   | 'card'
   | 'heading'
