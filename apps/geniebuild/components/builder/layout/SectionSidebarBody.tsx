@@ -30,6 +30,7 @@ interface Props {
   onResetElementToDefault: () => void;
   onCleanElementStyle: () => void;
   onRefreshVariant: () => void;
+  onSelectVariant?: (variant: string) => void;
   onRestoreSectionElements: (sectionId: string) => void;
   onResetSectionStyles: (sectionId: string) => void;
   onTriggerUpload: (sectionId: string, field: string, elementId?: string) => void;
@@ -72,6 +73,7 @@ export const SectionSidebarBody: React.FC<Props> = ({
   onResetElementToDefault,
   onCleanElementStyle,
   onRefreshVariant,
+  onSelectVariant,
   onRestoreSectionElements,
   onResetSectionStyles,
   onTriggerUpload,
@@ -227,6 +229,7 @@ export const SectionSidebarBody: React.FC<Props> = ({
             <VariantInfoCard
               selectedSection={selectedSection}
               onRefreshVariant={onRefreshVariant}
+              onSelectVariant={onSelectVariant}
             />
             <AdvancedActionsAccordion
               onRestoreElements={() => onRestoreSectionElements(selectedSection.id)}

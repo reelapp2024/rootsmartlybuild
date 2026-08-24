@@ -1133,7 +1133,24 @@ const AppContent: React.FC = () => {
     
     toast.success(`Variant changed to ${formatVariantName(nextVariant, sectionType) || nextVariant}`);
   };
-  
+
+  // Jump straight to a chosen variant (gallery pick) instead of blind-cycling.
+  const handleSelectVariant = (nextVariant: string) => {
+    if (!selectedSectionId || !selectedSection) return;
+    const sectionType = selectedSection.type;
+    const currentVariant = selectedSection.styles?.variant || getDefaultVariant(sectionType);
+    if (nextVariant === currentVariant) return;
+    const activeGlobalTheme = getActiveGlobalTheme();
+    setSiteData(prev => applyVariantRefresh(prev, {
+      sectionId: selectedSectionId,
+      sectionType,
+      currentVariant,
+      nextVariant,
+      activeGlobalTheme,
+    }));
+    toast.success(`Layout: ${formatVariantName(nextVariant, sectionType) || nextVariant}`);
+  };
+
   const updateGlobalColor = (key: keyof typeof siteData.globalStyles.colors, value: string) => {
       setSiteData(prev => ({
           ...prev,
@@ -2398,6 +2415,7 @@ const AppContent: React.FC = () => {
                             onPatchElementStyle={patchElementStyleForBreakpoint}
                             editBreakpoint={editBreakpoint}
                             onRefreshVariant={handleRefreshVariant}
+                            onSelectVariant={handleSelectVariant}
                             onRestoreSectionElements={restoreSectionElements}
                             onResetSectionStyles={resetSectionStyles}
                             onTriggerUpload={triggerUpload}

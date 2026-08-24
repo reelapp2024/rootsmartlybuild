@@ -51,35 +51,62 @@ export const DirectEditingCard: React.FC<DirectEditingCardProps> = ({ selectedSe
 interface VariantInfoCardProps {
   selectedSection: Section;
   onRefreshVariant: () => void;
+  /** Jump directly to a chosen variant (gallery pick). Falls back to cycle if absent. */
+  onSelectVariant?: (variant: string) => void;
 }
 
-/** Shows current variant name + refresh button (when section has >1 variant available). */
-export const VariantInfoCard: React.FC<VariantInfoCardProps> = ({ selectedSection, onRefreshVariant }) => {
+/** Current variant + a VISUAL GALLERY of every available layout for this section
+ *  type — click any to switch instantly (was a blind "next" cycle button). */
+export const VariantInfoCard: React.FC<VariantInfoCardProps> = ({ selectedSection, onRefreshVariant, onSelectVariant }) => {
   const variant = selectedSection.styles?.variant || getDefaultVariant(selectedSection.type);
   const formattedVariant = formatVariantName(variant || undefined, selectedSection.type);
   const availableVariants = getVariantsForSection(selectedSection.type);
   const hasMultipleVariants = availableVariants.length > 1;
+  const [open, setOpen] = React.useState(false);
 
   return (
-    <div className="space-y-4 pb-4 border-b border-white/10">
+    <div className="space-y-3 pb-4 border-b border-white/10">
       <div className="flex items-center justify-between">
         <div>
-          <label className="text-[10px] font-bold text-white/40 capitalize mb-1 block">Current Variant</label>
+          <label className="text-[10px] font-bold text-white/40 capitalize mb-1 block">Layout Variant</label>
           <div className="text-sm font-bold text-white">
             {formattedVariant || variant || 'Default'}
           </div>
         </div>
         {hasMultipleVariants && (
           <button
-            onClick={onRefreshVariant}
-            className="px-3 py-1.5 text-[10px] font-medium rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 border border-blue-600/30 hover:border-blue-600/50 transition-all flex items-center gap-1.5"
-            title="Refresh Variant - Change to next available variant"
+            onClick={() => setOpen(o => !o)}
+            className="px-3 py-1.5 text-[10px] font-bold rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-600/40 transition-all flex items-center gap-1.5"
+            title="Choose a layout"
           >
-            <i className="fa-solid fa-rotate text-[9px]"></i>
-            <span>Refresh</span>
+            <i className="fa-solid fa-table-cells text-[9px]"></i>
+            <span>{open ? 'Hide' : `Change (${availableVariants.length})`}</span>
           </button>
         )}
       </div>
+      {hasMultipleVariants && open && (
+        <div className="grid grid-cols-2 gap-1.5">
+          {availableVariants.map((v, i) => {
+            const active = v === variant;
+            const label = formatVariantName(v, selectedSection.type) || v;
+            return (
+              <button
+                key={v}
+                onClick={() => { onSelectVariant ? onSelectVariant(v) : onRefreshVariant(); }}
+                className={`text-left px-2.5 py-2 rounded border text-[10px] font-semibold transition-all flex items-center gap-2 ${
+                  active
+                    ? 'bg-blue-500/20 border-blue-500 text-blue-300'
+                    : 'bg-[#151515] border-[#333] text-white/60 hover:border-[#555] hover:text-white'
+                }`}
+                title={label}
+              >
+                <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] shrink-0 ${active ? 'bg-blue-500 text-white' : 'bg-white/10 text-white/50'}`}>{i + 1}</span>
+                <span className="truncate">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

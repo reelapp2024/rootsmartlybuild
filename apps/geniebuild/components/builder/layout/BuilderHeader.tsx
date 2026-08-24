@@ -207,11 +207,12 @@ export const BuilderHeader: React.FC<BuilderHeaderProps> = ({
         {onAddCanvasSection && (
           <button
             onClick={onAddCanvasSection}
-            className="w-8 h-8 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            title="Add Canvas Section (add any element)"
+            className="h-8 px-3 rounded flex items-center gap-1.5 text-[11px] font-bold text-blue-300 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            title="Add a blank section — start from scratch with any elements"
             aria-label="Add a blank canvas section you can fill with any elements"
           >
-            <i className="fa-solid fa-shapes text-xs" aria-hidden="true"></i>
+            <i className="fa-solid fa-plus text-[10px]" aria-hidden="true"></i>
+            <span>Add Blank Section</span>
           </button>
         )}
         <div className="h-4 w-px bg-white/10 mx-1" aria-hidden="true"></div>
