@@ -1371,8 +1371,23 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             let highlightedText = c.highlightedText || '';
             let textAfter = c.textAfter || '';
 
-            // Always last-word highlight when parts are missing/empty.
-            if (!hasPartValues) {
+            // Auto last-word highlight is now OPT-IN, not forced. It only runs when
+            // the author actually asked for a highlight colour (via content
+            // highlightColor, an element secondaryHeadingColor, or a global heading
+            // highlight). Previously EVERY heading had its last word recoloured —
+            // which, when the resolved accent came out dark, painted the last word
+            // black on a white/light title and looked broken ("...rely ON." in
+            // black). Now a plain title stays one solid colour unless highlight is
+            // explicitly wanted.
+            const _ne = (v: any) => typeof v === 'string' && v.trim() !== '';
+            const wantsHighlight = !!(
+              _ne((c as any).highlightColor) ||
+              _ne((renderStyle as any).secondaryHeadingColor) ||
+              _ne((gHead as any).highlightColor) ||
+              (c as any).highlightMode === 'background' ||
+              (c as any).highlightMode === 'underline'
+            );
+            if (!hasPartValues && wantsHighlight) {
               const split = splitHeadingToHighlightParts(
                 String(c.text || '').replace(/<[^>]*>/g, ' ')
               );
