@@ -38,6 +38,7 @@ export const PALETTE_ELEMENTS: PaletteItem[] = [
   { type: 'video',         label: 'Video',        icon: 'fa-video',          group: 'Media' },
   { type: 'image-box',     label: 'Image Box',    icon: 'fa-panorama',       group: 'Media' },
   { type: 'logo-cloud',    label: 'Logo Cloud',   icon: 'fa-icons',          group: 'Media' },
+  { type: 'gallery',       label: 'Gallery',      icon: 'fa-images',         group: 'Media' },
   // Layout
   { type: 'row' as any,    label: 'Row (2 cols)', icon: 'fa-table-columns',  group: 'Content' },
   { type: 'column' as any, label: 'Column',       icon: 'fa-grip-lines-vertical', group: 'Content' },
@@ -97,6 +98,16 @@ function defaultForType(type: WebsiteElement['type']): { content: any; style: an
     case 'video':          return { content: { videoUrl: '', videoTitle: 'Video' }, style: { width: '100%', maxWidth: '640px', borderRadius: '12px' } };
     case 'image-box':      return { content: { imageUrl: '', title: 'Image box title', description: 'Short description under the image.' }, style: { borderRadius: '12px' } };
     case 'logo-cloud':     return { content: { logos: [{ src: '' }, { src: '' }, { src: '' }, { src: '' }] }, style: {} };
+    case 'gallery' as any: return {
+      content: {
+        images: [
+          { src: '', alt: 'Image 1' }, { src: '', alt: 'Image 2' },
+          { src: '', alt: 'Image 3' }, { src: '', alt: 'Image 4' },
+          { src: '', alt: 'Image 5' }, { src: '', alt: 'Image 6' },
+        ],
+      },
+      style: { galleryLayout: 'grid', columns: 3, imageGap: '0.75rem', imageRadius: '0.75rem', imageAspectRatio: '1/1' },
+    };
     case 'icon-box':       return { content: { icon: 'fa-check-circle', text: 'Icon box title', subText: 'Describe this point briefly.', iconPosition: 'top' }, style: { textAlign: 'center' } };
     case 'feature-box':    return { content: { icon: 'fa-star', text: 'Feature title', subText: 'Explain this feature in one line.', iconPosition: 'left' }, style: { padding: '1.1rem', borderWidth: '1px', borderStyle: 'solid', borderRadius: '1rem' } };
     case 'list':           return { content: { items: [{ title: 'First item' }, { title: 'Second item' }, { title: 'Third item' }], listType: 'check' }, style: { itemGap: '0.75rem' } };

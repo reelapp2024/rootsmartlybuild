@@ -32,6 +32,7 @@ import { ELEMENT_DEFAULTS, IMAGE_BOX_DEFAULT_TITLE_HEADING, PRESET_THEMES } from
 import * as LucideIcons from 'lucide-react';
 import { StatCardValue } from './StatCardValue';
 import { CanvasFormElement } from './CanvasFormElement';
+import { CanvasGalleryElement } from './CanvasGalleryElement';
 import { resolveElementBackground } from '../builder/style-editor/ElementBackgroundBlock';
 import {
   resolveSectionImageUrl,
@@ -5496,6 +5497,21 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             );
         }
         
+        case 'gallery' as any: {
+            return (
+                <div key={id} className={selectedClass} onClick={(e) => handleClick(e, el)} style={safeStyle}>
+                    <CanvasGalleryElement
+                        content={content}
+                        style={renderStyle}
+                        theme={theme}
+                        readOnly={!!readOnly}
+                        resolveImg={toDisplayImageUrl}
+                        placeholder={SECTION_IMAGE_PLACEHOLDER}
+                    />
+                </div>
+            );
+        }
+
         case 'form' as any: {
             const formChrome: React.CSSProperties = {
                 ...safeStyle,

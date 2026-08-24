@@ -14,6 +14,8 @@ export type ElementType =
   | 'column'
   // Interactive
   | 'form'
+  // Media
+  | 'gallery'
   // Basic
   | 'card'
   | 'heading'

@@ -6,6 +6,7 @@ export { StatCardStylesBlock } from './StatCardStylesBlock';
 export { StarRatingStylesBlock } from './StarRatingStylesBlock';
 export { RowStylesBlock, ColumnStylesBlock } from './RowColumnStylesBlock';
 export { ElementAdvancedBlock } from './ElementAdvancedBlock';
+export { GalleryStylesBlock } from './GalleryStylesBlock';
 export { TestimonialCardStylesBlock } from './TestimonialCardStylesBlock';
 export { TrustStripStylesBlock } from './TrustStripStylesBlock';
 export { ListStylesBlock } from './ListStylesBlock';
