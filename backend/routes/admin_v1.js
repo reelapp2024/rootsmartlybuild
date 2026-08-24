@@ -464,11 +464,13 @@ router.delete('/:pageUrl', AdminController.deleteSeoSettings);
 router.post('/addHosting', authentication, AdminController.addHosting);
 router.put('/updateHosting/:id', authentication, AdminController.updateHosting);
 router.delete('/deleteHosting/:id', authentication, AdminController.deleteHosting);
+router.post('/verifyHosting/:id', authentication, AdminController.verifyHosting);
+router.post('/verifyHosting', authentication, AdminController.verifyHosting);
 
 router.get('/getMyHostings', authentication, AdminController.getMyHostings);
-router.post('/setCurrentHostingForProject', AdminController.setCurrentHostingForProject);
-router.post('/getCurrentHostingForProject', AdminController.getCurrentHostingForProject);
-router.post('/getProjectConfiguration', AdminController.getProjectConfiguration);
+router.post('/setCurrentHostingForProject', authentication, AdminController.setCurrentHostingForProject);
+router.post('/getCurrentHostingForProject', authentication, AdminController.getCurrentHostingForProject);
+router.post('/getProjectConfiguration', authentication, AdminController.getProjectConfiguration);
 
 router.post('/browseHostingDirectories', authentication, AdminController.browseHostingDirectories);
 router.post('/linkProjectToHosting', authentication, AdminController.linkProjectToHosting);
@@ -478,11 +480,11 @@ router.get('/getLinkedHostings/:projectId', authentication, AdminController.getL
 router.put('/updateLinkedHosting/:id', authentication, AdminController.updateLinkedHosting);
 router.delete('/deleteLinkedHosting/:id', authentication, AdminController.deleteLinkedHosting);
 router.post('/uploadToHosting', authentication, AdminController.uploadToHosting);
-router.post('/updateHostingSitemap', AdminController.updateHostingSitemap);
+router.post('/updateHostingSitemap', authentication, AdminController.updateHostingSitemap);
 
 router.post('/buildStaticSite', authentication, AdminController.buildStaticSite);
 router.get('/getStaticBuildStatus', authentication, AdminController.getStaticBuildStatus);
-router.post('/uploadToHostingFromBuild', AdminController.uploadToHostingFromBuild);
+router.post('/uploadToHostingFromBuild', authentication, AdminController.uploadToHostingFromBuild);
 router.post('/generateSitemap', AdminController.generateSitemap);
 router.post('/updateProjectDomain', AdminController.updateProjectDomain);
 router.post('/connectDomain', authentication, VpsController.connectDomain);
@@ -490,7 +492,7 @@ router.post('/unlinkDomain', authentication, VpsController.unlinkDomain);
 router.post('/getOurHostedDetails', AdminController.getOurHostedDetails);
 
 router.post('/getDeployInfo', AdminController.getDeployInfo);
-router.post('/checkDomain', AdminController.checkDomain);
+router.post('/checkDomain', authentication, AdminController.checkDomain);
 // AI service names preview (no DB writes)
 router.post('/genrateAiProjectServices', authentication, AdminController.genrateAiProjectServices);
 router.post("/getLocalAreasWithPincodes", authentication, AdminController.getLocalAreasWithPincodes);

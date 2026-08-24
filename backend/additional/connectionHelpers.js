@@ -6,86 +6,406 @@ const path = require('path');
 const FormData = require('form-data'); // ✅ Must be this package
 
 
+/** Strip protocol / path / whitespace from hostnames users often paste. */
+function sanitizeHost(host) {
+  return String(host || '')
+    .trim()
+    .replace(/^(ftp|ftps|sftp|http|https):\/\//i, '')
+    .replace(/\/.*$/, '')
+    .replace(/:\d+$/, '') // port handled separately
+    .trim();
+}
+
+function friendlyConnectionError(kind, host, port, err) {
+  const msg = String(err?.message || err || '');
+  const h = host || 'host';
+  const p = port != null ? String(port) : '';
+
+  if (/ENOTFOUND|getaddrinfo/i.test(msg)) {
+    return (
+      `${kind} host not found (${h}). ` +
+      `Tip: use the exact hostname from your host panel (often ftp.yourdomain.com or the server IP) — not the website URL.`
+    );
+  }
+  if (/ETIMEDOUT|ECONNREFUSED|Timed out|handshake/i.test(msg)) {
+    return (
+      `${kind} could not reach ${h}${p ? `:${p}` : ''}. ` +
+      `Tip: check host, port, firewall, and whether FTPS/SSH is enabled. Ask your host to whitelist this server IP if needed.`
+    );
+  }
+  if (/530|login|auth|password|credential|permission denied|All configured authentication methods failed/i.test(msg)) {
+    return (
+      `${kind} login failed for ${h}. ` +
+      `Tip: double-check username and password (or API token / SSH key). cPanel FTP users are often full emails like user@domain.com.`
+    );
+  }
+  if (/certificate|SSL|TLS|secure/i.test(msg)) {
+    return (
+      `${kind} secure connection failed for ${h}. ` +
+      `Tip: try toggling FTPS (secure) on/off, or use the host/IP your panel lists for FTP.`
+    );
+  }
+  return `${kind} connection failed: ${msg}`;
+}
+
+/** Build SFTP connect options from stored hosting config (password and/or private key). */
+function buildSshConnectOptions(config) {
+  if (!config?.host || !config?.username) {
+    throw new Error('SSH/SFTP requires host and username');
+  }
+  const opts = {
+    host: sanitizeHost(config.host),
+    port: Number(config.port) || 22,
+    username: String(config.username).trim(),
+    readyTimeout: 12000,
+  };
+  if (!opts.host) {
+    throw new Error('SSH/SFTP requires a valid host or IP');
+  }
+  const privateKey = (config.privateKey || '').trim();
+  if (privateKey) {
+    opts.privateKey = privateKey;
+    if (config.passphrase) opts.passphrase = config.passphrase;
+  } else if (config.password) {
+    opts.password = config.password;
+  } else {
+    throw new Error('SSH/SFTP requires a password or private key');
+  }
+  return opts;
+}
+
+/**
+ * Normalize cPanel config: accept host/domain and build testUrl when missing.
+ */
+function normalizeCpanelConfig(config) {
+  const next = { ...(config || {}) };
+  const username = (next.username || next.cpanelUsername || '').trim();
+  const token = (next.token || next.cpanelToken || '').trim();
+  let host = sanitizeHost(next.host || next.cpanelDomain || next.domain || '');
+  let testUrl = (next.testUrl || '').trim();
+
+  if (!host && testUrl) {
+    try {
+      host = sanitizeHost(new URL(testUrl).hostname);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!testUrl && host) {
+    testUrl = `https://${host}:2083/execute/Version/get`;
+  }
+
+  next.username = username;
+  next.token = token;
+  next.host = host;
+  next.cpanelDomain = host;
+  next.testUrl = testUrl;
+  return next;
+}
+
 /**
  * Test FTP connection
  */
 async function testFTPConnection(config) {
+  if (!config?.host || !config?.username || !config?.password) {
+    throw new Error('FTP requires host, username, and password');
+  }
 
-  console.log(config,"config of test ftp connection")
+  const host = sanitizeHost(config.host);
+  const port = Number(config.port) || 21;
+  if (!host) {
+    throw new Error('FTP requires a valid host (e.g. ftp.yourdomain.com)');
+  }
+  // Persist cleaned host back so future connects work.
+  config.host = host;
+  config.port = port;
+
   const client = new ftp.Client();
-  client.ftp.verbose = true; // Log internal FTP steps
+  client.ftp.verbose = false;
 
   try {
-    console.log('Attempting FTP connection to:', config.host);
     await client.access({
-      host: config.host,
-      user: config.username,
+      host,
+      user: String(config.username).trim(),
       password: config.password,
-      secure: config.secure || false,
-      port: config.port || 21
+      secure: Boolean(config.secure),
+      port,
     });
-    await client.list('/');
+    try {
+      await client.list();
+    } catch {
+      await client.pwd();
+    }
   } catch (err) {
-    console.error('FTP connection failed:', err);
-    throw new Error('FTP connection failed: ' + err.message);
+    throw new Error(friendlyConnectionError('FTP', host, port, err));
   } finally {
     client.close();
   }
 }
-
 
 /**
  * Test SSH/SFTP connection
  */
 async function testSSHConnection(config) {
   const sftp = new SftpClient();
+  let host = sanitizeHost(config?.host);
+  const port = Number(config?.port) || 22;
+  if (config && host) {
+    config.host = host;
+    config.port = port;
+  }
 
   try {
-    await sftp.connect({
-      host: config.host,
-      port: config.port || 22,
-      username: config.username,
-      password: config.password,
-      // Optional for key-based:
-      // privateKey: fs.readFileSync(config.privateKeyPath),
-    });
-
-    // Optional: list root dir
-    await sftp.list('/');
+    await sftp.connect(buildSshConnectOptions(config));
+    try {
+      await sftp.list('.');
+    } catch {
+      await sftp.list('/');
+    }
   } catch (err) {
-    throw new Error('SSH/SFTP connection failed: ' + err.message);
+    throw new Error(friendlyConnectionError('SSH/SFTP', host || config?.host, port, err));
   } finally {
-    await sftp.end();
+    try {
+      await sftp.end();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
 /**
  * Test cPanel connection
  */
-async function testCpanelConnection(config) {
+async function testCpanelConnection(rawConfig) {
+  const config = normalizeCpanelConfig(rawConfig);
   if (!config.testUrl || !config.username || !config.token) {
-    throw new Error('Missing testUrl, username or token for cPanel connection');
+    throw new Error(
+      'cPanel requires host (or domain), username, and API token. Tip: create a token in cPanel → Security → Manage API Tokens.'
+    );
   }
-
-  console.log(config,"config data inside the funtion!!")
 
   try {
     const response = await axios.get(config.testUrl, {
       headers: {
-        Authorization: `cpanel ${config.username}:${config.token}`
+        Authorization: `cpanel ${config.username}:${config.token}`,
       },
-      validateStatus: false // allow non-200 responses
+      timeout: 20000,
+      validateStatus: false,
     });
 
     if (response.status !== 200) {
-      console.log(response,"error response")
-      throw new Error(`cPanel responded with status code ${response.status}`);
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(
+          'cPanel login failed. Tip: check username and API token. Token must belong to this cPanel account.'
+        );
+      }
+      throw new Error(
+        `cPanel responded with status ${response.status}. Tip: confirm host supports https://HOST:2083 and API tokens.`
+      );
     }
 
     return response.data;
   } catch (err) {
-    console.log(err)
-    throw new Error('cPanel connection failed: ' + err.message);
+    if (err.message && /cPanel/i.test(err.message)) throw err;
+    throw new Error(friendlyConnectionError('cPanel', config.host, 2083, err));
+  }
+}
+
+/**
+ * Merge incoming config with stored secrets when password/token/key left blank (edit flow).
+ */
+function mergeHostingConfig(existingConfigStr, incoming, connectionType) {
+  let existing = {};
+  try {
+    existing = JSON.parse(existingConfigStr || '{}') || {};
+  } catch {
+    existing = {};
+  }
+  const next = { ...existing, ...(incoming || {}) };
+  const type = String(connectionType || '').toLowerCase();
+
+  if (type === 'ftp' || type === 'ssh' || type === 'vps') {
+    if (!String(incoming?.password || '').trim() && existing.password) {
+      next.password = existing.password;
+    }
+    if (!String(incoming?.privateKey || '').trim() && existing.privateKey) {
+      next.privateKey = existing.privateKey;
+    }
+    if (incoming?.host) next.host = sanitizeHost(incoming.host);
+  }
+  if (type === 'cpanel') {
+    if (!String(incoming?.token || '').trim() && existing.token) {
+      next.token = existing.token;
+    }
+  }
+  return next;
+}
+
+/**
+ * Stable identity for a hosting connection (ignores password/token differences).
+ * Used to prevent duplicate rows for the same host+user.
+ */
+function hostingIdentityKey(connectionType, connectionConfig) {
+  const type = String(connectionType || '').toLowerCase().trim();
+  let config = connectionConfig;
+  if (typeof config === 'string') {
+    try {
+      config = JSON.parse(config);
+    } catch {
+      config = {};
+    }
+  }
+  config = config || {};
+
+  if (type === 'cpanel') {
+    const normalized = normalizeCpanelConfig(config);
+    const host = String(normalized.host || normalized.cpanelDomain || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/.*$/, '')
+      .replace(/^www\./, '');
+    const username = String(normalized.username || '').trim().toLowerCase();
+    return `cpanel|${host}|${username}`;
+  }
+
+  const host = String(config.host || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+    .replace(/^www\./, '');
+  const username = String(config.username || '').trim().toLowerCase();
+  const defaultPort = type === 'ftp' ? 21 : 22;
+  const port = Number(config.port) || defaultPort;
+  // Treat ssh and vps as the same endpoint identity so the same server isn't listed twice.
+  const family = type === 'vps' || type === 'ssh' ? 'ssh' : type;
+  return `${family}|${host}|${username}|${port}`;
+}
+
+/** Prefer isOur, then success, then newest updatedAt/createdAt. */
+function pickPreferredHosting(a, b) {
+  const score = (h) => {
+    let s = 0;
+    if (h.isOur) s += 100;
+    if (h.status === 'success') s += 10;
+    const t = new Date(h.updatedAt || h.createdAt || 0).getTime();
+    return s * 1e15 + t;
+  };
+  return score(a) >= score(b) ? a : b;
+}
+
+/**
+ * Deduplicate a list of hosting docs by identity key. Optionally delete losers from DB.
+ * @returns {{ unique: object[], removedIds: string[] }}
+ */
+async function dedupeHostingConnections(hostings, { persist = false } = {}) {
+  const list = Array.isArray(hostings) ? hostings : [];
+  const byKey = new Map();
+  /** @type {Array<{ winnerId: string, loserId: string }>} */
+  const remaps = [];
+
+  for (const doc of list) {
+    const plain = typeof doc.toObject === 'function' ? doc.toObject() : doc;
+    let key;
+    try {
+      key = hostingIdentityKey(plain.connectionType, plain.connectionConfig);
+    } catch {
+      key = String(plain._id);
+    }
+    if (!byKey.has(key)) {
+      byKey.set(key, plain);
+      continue;
+    }
+    const current = byKey.get(key);
+    const winner = pickPreferredHosting(current, plain);
+    const loser = winner === current ? plain : current;
+    byKey.set(key, winner);
+    if (loser?._id && winner?._id && String(loser._id) !== String(winner._id)) {
+      remaps.push({ winnerId: String(winner._id), loserId: String(loser._id) });
+    }
+  }
+
+  const removedIds = remaps.map((r) => r.loserId);
+
+  if (persist && removedIds.length) {
+    const Model = getHostingConnectionModel();
+    try {
+      const ProjectDeployment = require('../models/ProjectDeployment');
+      const UserProject = require('../models/userProjects');
+      for (const { winnerId, loserId } of remaps) {
+        await ProjectDeployment.updateMany(
+          { hostingId: loserId },
+          { $set: { hostingId: winnerId } }
+        ).catch(() => {});
+        await UserProject.updateMany(
+          { hostingId: loserId },
+          { $set: { hostingId: winnerId } }
+        ).catch(() => {});
+      }
+    } catch {
+      /* models optional during isolated require */
+    }
+    await Model.deleteMany({ _id: { $in: removedIds } }).catch(() => {});
+  }
+
+  return { unique: Array.from(byKey.values()), removedIds };
+}
+
+// Lazy require to avoid circular deps if HostingConnection ever imports helpers
+let HostingConnectionModel;
+function getHostingConnectionModel() {
+  if (!HostingConnectionModel) {
+    HostingConnectionModel = require('../models/HostingConnection');
+  }
+  return HostingConnectionModel;
+}
+
+async function findExistingHostingByIdentity(userId, connectionType, connectionConfig) {
+  const Model = getHostingConnectionModel();
+  const key = hostingIdentityKey(connectionType, connectionConfig);
+  const family =
+    connectionType === 'ssh' || connectionType === 'vps'
+      ? ['ssh', 'vps']
+      : [String(connectionType).toLowerCase()];
+
+  const candidates = await Model.find({
+    userId,
+    connectionType: { $in: family },
+  }).sort({ updatedAt: -1 });
+
+  for (const doc of candidates) {
+    try {
+      if (hostingIdentityKey(doc.connectionType, doc.connectionConfig) === key) {
+        return doc;
+      }
+    } catch {
+      /* ignore bad config */
+    }
+  }
+  return null;
+}
+
+/**
+ * Run the correct connection test for a hosting type. Mutates/normalizes config in place for cPanel.
+ */
+async function testHostingConnection(connectionType, connectionConfig) {
+  const type = String(connectionType || '').toLowerCase();
+  switch (type) {
+    case 'ftp':
+      await testFTPConnection(connectionConfig);
+      return connectionConfig;
+    case 'ssh':
+    case 'vps':
+      await testSSHConnection(connectionConfig);
+      return connectionConfig;
+    case 'cpanel': {
+      const normalized = normalizeCpanelConfig(connectionConfig);
+      await testCpanelConnection(normalized);
+      return normalized;
+    }
+    default:
+      throw new Error('Invalid connectionType. Use ftp, cpanel, ssh, or vps.');
   }
 }
 
@@ -377,13 +697,7 @@ async function uploadZipSFTP(sftpConfig, localZipPath, remoteZipPath) {
     const sftp = new SftpClient(); // <-- instantiate inside
 
     try {
-        await sftp.connect({
-            host: sftpConfig.host,
-            port: sftpConfig.port || 22,
-            username: sftpConfig.username,
-            password: sftpConfig.password,
-            privateKey: sftpConfig.privateKey || undefined
-        });
+        await sftp.connect(buildSshConnectOptions(sftpConfig));
 
         await sftp.fastPut(localZipPath, remoteZipPath);
         console.log(`✅ Uploaded ZIP to SFTP: ${remoteZipPath}`);
@@ -398,14 +712,23 @@ async function uploadZipSFTP(sftpConfig, localZipPath, remoteZipPath) {
 
 
 module.exports = {
+  sanitizeHost,
+  friendlyConnectionError,
+  buildSshConnectOptions,
+  normalizeCpanelConfig,
+  mergeHostingConfig,
+  hostingIdentityKey,
+  findExistingHostingByIdentity,
+  dedupeHostingConnections,
   testFTPConnection,
   testSSHConnection,
   testCpanelConnection,
+  testHostingConnection,
   uploadFolderFTP,
   uploadFolderSFTP,
+  uploadFolderCPanel,
   uploadToCPanel,
   uploadFileCPanel,
   uploadZipSFTP,
-  uploadZipFTP
-
+  uploadZipFTP,
 };

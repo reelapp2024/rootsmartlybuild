@@ -6,6 +6,12 @@ const HostingConnectionSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  /** Optional nickname shown in the UI, e.g. "Client A – cPanel" */
+  label: {
+    type: String,
+    trim: true,
+    default: '',
+  },
   connectionType: {
     type: String,
     enum: ['ftp', 'ssh', 'cpanel', 'vps'],
@@ -22,9 +28,18 @@ const HostingConnectionSchema = new mongoose.Schema({
     type: String,
     enum: ['success', 'failed'],
     default: 'failed'
-  }
+  },
+  /** Last connection error message (cleared on successful verify). */
+  lastError: {
+    type: String,
+    default: '',
+  },
+  lastVerifiedAt: {
+    type: Date,
+    default: null,
+  },
 }, {
-  timestamps: true // Automatically adds createdAt and updatedAt fields
+  timestamps: true
 });
 
 module.exports = mongoose.model('HostingConnection', HostingConnectionSchema);

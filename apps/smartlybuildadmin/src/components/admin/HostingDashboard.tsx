@@ -1,9 +1,7 @@
-
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
-import { RefreshCw, Server } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { HostingConnection, getMyHostings } from "@/api/newHostingApi";
 import { HostingList } from "./HostingList";
 import { AddHostingDialog } from "./AddHostingDialog";
@@ -17,11 +15,11 @@ export function HostingDashboard() {
     try {
       const data = await getMyHostings();
       setHostings(data);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: `Failed to fetch hosting connections: ${error}`,
-        variant: "destructive"
+        description: error?.message || `Failed to fetch hosting connections`,
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -32,17 +30,15 @@ export function HostingDashboard() {
     fetchHostings();
   }, []);
 
-  const handleHostingAdded = () => {
-    fetchHostings();
-  };
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold">Hosting Management</h1>
-          <p className="text-gray-600 mt-2">
-            Manage your hosting connections and credentials
+          <p className="text-gray-600 mt-2 max-w-2xl">
+            Connect any hosting you have — <strong>Standard</strong> (FTP / cPanel) for shared
+            hosting, or <strong>Advanced</strong> (SSH / VPS) for your own server. Edit, test, and
+            fix credentials anytime.
           </p>
         </div>
         <div className="flex gap-2">
@@ -52,14 +48,14 @@ export function HostingDashboard() {
             disabled={isLoading}
             className="flex items-center gap-2"
           >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
-          <AddHostingDialog onHostingAdded={handleHostingAdded} />
+          <AddHostingDialog onHostingAdded={fetchHostings} />
         </div>
       </div>
 
-      <HostingList hostings={hostings} />
+      <HostingList hostings={hostings} onChanged={fetchHostings} />
     </div>
   );
 }

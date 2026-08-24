@@ -107,6 +107,7 @@ const { trackCreditsUsage } = require("../additional/openaiHelpers");
 const SectionContent = require("../models/SectionContent");
 const secretKey = process.env.JWT_SECRET
 const HostingConnection = require('../models/HostingConnection');
+const Domain = require('../models/domains');
 const ProjectCategory = require("../models/ProjectCategory");
 const SubCategory = require("../models/SubCategory");
 const MicroCategory = require("../models/MicroCategory");
@@ -293,12 +294,16 @@ const {
     testFTPConnection,
     testSSHConnection,
     testCpanelConnection,
+    testHostingConnection,
+    buildSshConnectOptions,
+    findExistingHostingByIdentity,
+    dedupeHostingConnections,
+    mergeHostingConfig,
     uploadFolderFTP,
     uploadFolderSFTP,
-    uploadToCPanel,
     uploadFolderCPanel,
-    uploadFileCPanel
-
+    uploadToCPanel,
+    uploadFileCPanel,
 } = require('../additional/connectionHelpers');
 
 
@@ -11325,77 +11330,79 @@ Example format:
     // ALL HOsting APIs
     addHosting: async (req, res) => {
         try {
-            let { connectionType, connectionConfig } = req.body;
+            let { connectionType, connectionConfig, label } = req.body;
 
-            // Validate the input fields
             if (!connectionType || !connectionConfig) {
                 return res.status(400).json({ message: 'Missing required fields.' });
             }
 
-            // If connectionConfig is a string, parse it to JSON
             if (typeof connectionConfig === 'string') {
-                connectionConfig = JSON.parse(connectionConfig);
+                try {
+                    connectionConfig = JSON.parse(connectionConfig);
+                } catch {
+                    return res.status(400).json({ message: 'Invalid connectionConfig JSON.' });
+                }
             }
 
-            // Test the connection based on the type
-            switch (connectionType) {
-                case 'ftp':
-                    await testFTPConnection(connectionConfig);
-                    break;
-                case 'ssh':
-                    await testSSHConnection(connectionConfig); // Test SSH for both SSH and VPS
-                    break;
-                case 'cpanel':
-                    await testCpanelConnection(connectionConfig);
-                    break;
-                case 'vps': // Use SSH test for VPS
-                    await testSSHConnection(connectionConfig);  // Use the same function for VPS
-                    break;
-                default:
-                    return res.status(400).json({ message: 'Invalid connectionType' });
+            const type = String(connectionType).toLowerCase().trim();
+            if (!['ftp', 'ssh', 'cpanel', 'vps'].includes(type)) {
+                return res.status(400).json({ message: 'Invalid connectionType. Use ftp, cpanel, ssh, or vps.' });
             }
+
+            const nickname = String(label || '').trim().slice(0, 80);
+
+            // Live-verify before saving; never persist failed attempts.
+            connectionConfig = await testHostingConnection(type, connectionConfig);
 
             const userId = req.user.userId;
             const configString = JSON.stringify(connectionConfig);
 
-            // Check for an existing connection in the database
-            const existing = await HostingConnection.findOne({
-                userId,
-                connectionType,
-                connectionConfig: configString
-            });
+            // Match same host+user (even if password/token JSON differs slightly).
+            const existing = await findExistingHostingByIdentity(userId, type, connectionConfig);
 
             if (existing) {
-                // If the connection already exists, update its status and updatedAt fields
+                existing.connectionType = type;
+                existing.connectionConfig = configString;
                 existing.status = 'success';
+                existing.lastError = '';
+                existing.lastVerifiedAt = new Date();
+                if (nickname) existing.label = nickname;
                 existing.updatedAt = new Date();
                 await existing.save();
 
+                const siblings = await HostingConnection.find({
+                    userId,
+                    connectionType: type === 'ssh' || type === 'vps' ? { $in: ['ssh', 'vps'] } : type,
+                    _id: { $ne: existing._id },
+                });
+                await dedupeHostingConnections([existing, ...siblings], { persist: true });
+
                 return res.status(200).json({
-                    message: 'Connection already exists. Timestamp and status updated.',
-                    data: existing
+                    message: 'Connection already exists. Verified and updated.',
+                    data: existing,
                 });
             }
 
-            // If the connection does not exist, create a new entry
             const saved = await HostingConnection.create({
                 userId,
-                connectionType,
+                connectionType: type,
                 connectionConfig: configString,
-                status: 'success'
+                label: nickname,
+                status: 'success',
+                lastError: '',
+                lastVerifiedAt: new Date(),
             });
 
-            // Create notification for super admins (only for own server types: vps, ssh, ftp, sftp)
             try {
-                const ownServerTypes = ['vps', 'ssh', 'ftp', 'sftp'];
-                if (ownServerTypes.includes(connectionType)) {
+                const ownServerTypes = ['vps', 'ssh', 'ftp'];
+                if (ownServerTypes.includes(type)) {
                     const user = await Users.findById(userId).select('email username').lean();
                     await Notification.create({
                         userFromId: userId,
                         isSuperAdminNotification: true,
-                        message: `${user?.username || user?.email || 'User'} registered new ${connectionType.toUpperCase()} hosting on their own server`,
+                        message: `${user?.username || user?.email || 'User'} registered new ${type.toUpperCase()} hosting on their own server`,
                         type: 'hosting_added',
-                        relatedId: saved._id
+                        relatedId: saved._id,
                     });
                 }
             } catch (notifError) {
@@ -11404,29 +11411,13 @@ Example format:
 
             return res.status(200).json({
                 message: 'Hosting connection added successfully.',
-                data: saved
+                data: saved,
             });
-
         } catch (error) {
             console.error('Connection failed:', error);
-
-            try {
-                // Only log the failure without using 'unknown' or any extra fields
-                await HostingConnection.create({
-                    userId: req.user?.userId || null,
-                    connectionType: req.body.connectionType, // Use the provided connectionType from the request
-                    connectionConfig: typeof req.body.connectionConfig === 'string'
-                        ? req.body.connectionConfig
-                        : JSON.stringify(req.body.connectionConfig),
-                    status: 'failed'
-                });
-            } catch (logError) {
-                console.error('Failed to log failed hosting:', logError.message);
-            }
-
-            return res.status(500).json({
-                message: 'Failed to add hosting connection.',
-                error: error.message
+            return res.status(400).json({
+                message: error.message || 'Failed to add hosting connection.',
+                error: error.message,
             });
         }
     },
@@ -11434,71 +11425,168 @@ Example format:
     getMyHostings: async (req, res) => {
         try {
             const hostings = await HostingConnection.find({
-                userId: req.user.userId
-            }).sort({ createdAt: -1 });
+                userId: req.user.userId,
+            }).sort({ updatedAt: -1, createdAt: -1 });
 
-            console.log(hostings, "hostings")
+            // Collapse duplicates (same host+user) and delete extras from DB.
+            const { unique } = await dedupeHostingConnections(hostings, { persist: true });
 
             return res.status(200).json({
                 message: 'Hosting connections fetched.',
-                data: hostings
+                data: unique,
             });
         } catch (error) {
             console.error('Error in getMyHostings:', error);
             return res.status(500).json({ message: 'Failed to fetch hostings.', error: error.message });
         }
-    }
-    ,
+    },
+
+    verifyHosting: async (req, res) => {
+        try {
+            const id = req.params.id || req.body?.id || req.body?.hostingId;
+            if (!id) {
+                return res.status(400).json({ message: 'Hosting id is required.' });
+            }
+
+            const hosting = await HostingConnection.findOne({ _id: id, userId: req.user.userId });
+            if (!hosting) {
+                return res.status(404).json({ message: 'Hosting not found.' });
+            }
+
+            let config;
+            try {
+                config = JSON.parse(hosting.connectionConfig);
+            } catch {
+                return res.status(400).json({ message: 'Stored connection config is invalid.' });
+            }
+
+            config = await testHostingConnection(hosting.connectionType, config);
+            hosting.connectionConfig = JSON.stringify(config);
+            hosting.status = 'success';
+            hosting.lastError = '';
+            hosting.lastVerifiedAt = new Date();
+            hosting.updatedAt = new Date();
+            await hosting.save();
+
+            return res.status(200).json({
+                message: 'Hosting connection verified successfully.',
+                data: hosting,
+            });
+        } catch (error) {
+            console.error('Error in verifyHosting:', error);
+            const id = req.params.id || req.body?.id || req.body?.hostingId;
+            let failedHosting = null;
+            try {
+                if (id) {
+                    failedHosting = await HostingConnection.findOneAndUpdate(
+                        { _id: id, userId: req.user.userId },
+                        {
+                            status: 'failed',
+                            lastError: String(error.message || 'Verification failed').slice(0, 500),
+                            updatedAt: new Date(),
+                        },
+                        { new: true }
+                    );
+                }
+            } catch (_) { /* ignore */ }
+
+            return res.status(400).json({
+                message: error.message || 'Hosting verification failed.',
+                error: error.message,
+                data: failedHosting,
+            });
+        }
+    },
 
     updateHosting: async (req, res) => {
         try {
             const { id } = req.params;
-            let { connectionType, connectionConfig } = req.body;
+            let { connectionType, connectionConfig, label } = req.body;
 
-            if (typeof connectionConfig === 'string') {
-                connectionConfig = JSON.parse(connectionConfig);
-            }
-
-            const updateFields = {
-                ...(connectionType && { connectionType }),
-                ...(connectionConfig && { connectionConfig: JSON.stringify(connectionConfig) })
-            };
-
-            const updated = await HostingConnection.findByIdAndUpdate(id, updateFields, { new: true });
-
-            if (!updated) {
+            const hosting = await HostingConnection.findOne({ _id: id, userId: req.user.userId });
+            if (!hosting) {
                 return res.status(404).json({ message: 'Hosting not found.' });
             }
 
-            return res.status(200).json({
-                message: 'Hosting connection updated successfully.',
-                data: updated
-            });
+            if (typeof connectionConfig === 'string') {
+                try {
+                    connectionConfig = JSON.parse(connectionConfig);
+                } catch {
+                    return res.status(400).json({ message: 'Invalid connectionConfig JSON.' });
+                }
+            }
 
+            const type = String(connectionType || hosting.connectionType).toLowerCase().trim();
+            if (!['ftp', 'ssh', 'cpanel', 'vps'].includes(type)) {
+                return res.status(400).json({ message: 'Invalid connectionType.' });
+            }
+
+            if (!connectionConfig) {
+                try {
+                    connectionConfig = JSON.parse(hosting.connectionConfig);
+                } catch {
+                    return res.status(400).json({ message: 'No connection config provided.' });
+                }
+            } else {
+                connectionConfig = mergeHostingConfig(hosting.connectionConfig, connectionConfig, type);
+            }
+
+            try {
+                connectionConfig = await testHostingConnection(type, connectionConfig);
+                hosting.connectionType = type;
+                hosting.connectionConfig = JSON.stringify(connectionConfig);
+                hosting.status = 'success';
+                hosting.lastError = '';
+                hosting.lastVerifiedAt = new Date();
+                if (label !== undefined) {
+                    hosting.label = String(label || '').trim().slice(0, 80);
+                }
+                hosting.updatedAt = new Date();
+                await hosting.save();
+
+                return res.status(200).json({
+                    message: 'Hosting connection updated and verified successfully.',
+                    data: hosting,
+                });
+            } catch (testErr) {
+                hosting.status = 'failed';
+                hosting.lastError = String(testErr.message || 'Update verification failed').slice(0, 500);
+                if (label !== undefined) {
+                    hosting.label = String(label || '').trim().slice(0, 80);
+                }
+                // Still save non-secret field updates when user only changes label? Prefer not saving bad credentials.
+                hosting.updatedAt = new Date();
+                await hosting.save();
+                throw testErr;
+            }
         } catch (error) {
             console.error('Error in updateHosting:', error);
-            return res.status(500).json({ message: 'Failed to update hosting.', error: error.message });
+            return res.status(400).json({
+                message: error.message || 'Failed to update hosting.',
+                error: error.message,
+            });
         }
-    }
-    ,
+    },
+
     deleteHosting: async (req, res) => {
         try {
             const { id } = req.params;
 
-            const deleted = await HostingConnection.findByIdAndDelete(id);
+            const deleted = await HostingConnection.findOneAndDelete({
+                _id: id,
+                userId: req.user.userId,
+            });
 
             if (!deleted) {
                 return res.status(404).json({ message: 'Hosting not found.' });
             }
 
             return res.status(200).json({ message: 'Hosting connection deleted successfully.' });
-
         } catch (error) {
             console.error('Error in deleteHosting:', error);
             return res.status(500).json({ message: 'Failed to delete hosting.', error: error.message });
         }
-    }
-    ,
+    },
 
     setCurrentHostingForProject: async (req, res) => {
         try {
@@ -11809,14 +11897,9 @@ Example format:
                 await uploadFolderFTP(client, extractDir, rootPath);
                 client.close();
 
-            } else if (hosting.connectionType === 'ssh') {
+            } else if (hosting.connectionType === 'ssh' || hosting.connectionType === 'vps') {
                 const sftp = new SftpClient();
-                await sftp.connect({
-                    host: config.host,
-                    port: config.port || 22,
-                    username: config.username,
-                    password: config.password
-                });
+                await sftp.connect(buildSshConnectOptions(config));
                 await uploadFolderSFTP(sftp, extractDir, rootPath);
                 await sftp.end();
 
@@ -11826,7 +11909,7 @@ Example format:
 
 
             } else {
-                return res.status(400).json({ message: 'Only FTP, SSH and cPanel are supported for upload.' });
+                return res.status(400).json({ message: 'Only FTP, SSH/VPS and cPanel are supported for upload.' });
             }
 
             fs.unlinkSync(tempZipPath);
@@ -11843,86 +11926,116 @@ Example format:
     browseHostingDirectories: async (req, res) => {
         let { hostingId, path: browsePath } = req.body;
 
-        // Handle empty path or "/"
-        if (browsePath === "" || browsePath === "/") {
-            browsePath = undefined; // Set path to undefined or omit it from the operations
+        if (browsePath === '' || browsePath === '/') {
+            browsePath = undefined;
         }
-
-        console.log(browsePath);
-
-        console.log(req.body, "browseHostingDirectories console");
 
         if (!hostingId) {
             return res.status(400).json({ message: 'Missing hostingId.' });
         }
 
         try {
-            const hosting = await HostingConnection.findById(hostingId);
+            const hosting = await HostingConnection.findOne({
+                _id: hostingId,
+                userId: req.user.userId,
+            });
             if (!hosting) {
                 return res.status(404).json({ message: 'Hosting not found.' });
             }
 
-            const config = JSON.parse(hosting.connectionConfig);
+            let config;
+            try {
+                config = JSON.parse(hosting.connectionConfig);
+            } catch {
+                return res.status(400).json({ message: 'Stored connection config is invalid.' });
+            }
 
             if (hosting.connectionType === 'ftp') {
                 const client = new ftp.Client();
-                await client.access({
-                    host: config.host,
-                    user: config.username,
-                    password: config.password,
-                    port: config.port || 21,
-                    secure: config.secure || false
-                });
+                try {
+                    await client.access({
+                        host: config.host,
+                        user: config.username,
+                        password: config.password,
+                        port: config.port || 21,
+                        secure: Boolean(config.secure),
+                    });
 
-                // If browsePath is undefined, use the default root path
-                browsePath = browsePath || '/';
-                const list = await client.list(browsePath);
-                const directories = list.filter(item => item.isDirectory).map(dir => ({
-                    name: dir.name,
-                    fullPath: path.posix.join(browsePath, dir.name) // Using path.posix
-                }));
+                    browsePath = browsePath || '/';
+                    let list;
+                    try {
+                        list = await client.list(browsePath);
+                    } catch (listErr) {
+                        if (!browsePath || browsePath === '/') {
+                            list = await client.list();
+                            browsePath = (await client.pwd()) || '/';
+                        } else {
+                            throw listErr;
+                        }
+                    }
 
-                client.close();
+                    const directories = list
+                        .filter((item) => item.isDirectory)
+                        .map((dir) => ({
+                            name: dir.name,
+                            fullPath: path.posix.join(browsePath, dir.name),
+                        }));
 
-                return res.status(200).json({
-                    message: 'Directories fetched successfully.',
-                    data: directories
-                });
-
-            } else if (hosting.connectionType === 'ssh' || hosting.connectionType === "vps") {
-                const sftp = new SftpClient();
-                await sftp.connect({
-                    host: config.host,
-                    port: config.port || 22,
-                    username: config.username,
-                    password: config.password,
-                    privateKey: config.privateKey // optional if provided
-                });
-
-                // If browsePath is undefined, use the default root path
-                browsePath = browsePath || '/';
-                const list = await sftp.list(browsePath);
-                const directories = list.filter(item => item.type === 'd').map(dir => ({
-                    name: dir.name,
-                    fullPath: path.posix.join(browsePath, dir.name) // Using path.posix
-                }));
-
-                await sftp.end();
-
-                return res.status(200).json({
-                    message: 'Directories fetched successfully.',
-                    data: directories
-                });
-
-            } else {
-                return res.status(400).json({ message: 'Directory browsing is supported only for FTP and SSH.' });
+                    return res.status(200).json({
+                        message: 'Directories fetched successfully.',
+                        data: directories,
+                    });
+                } finally {
+                    client.close();
+                }
             }
 
+            if (hosting.connectionType === 'ssh' || hosting.connectionType === 'vps') {
+                const sftp = new SftpClient();
+                try {
+                    await sftp.connect(buildSshConnectOptions(config));
+
+                    browsePath = browsePath || '/';
+                    let list;
+                    try {
+                        list = await sftp.list(browsePath);
+                    } catch (listErr) {
+                        if (!browsePath || browsePath === '/') {
+                            list = await sftp.list('.');
+                            browsePath = '/';
+                        } else {
+                            throw listErr;
+                        }
+                    }
+
+                    const directories = list
+                        .filter((item) => item.type === 'd')
+                        .map((dir) => ({
+                            name: dir.name,
+                            fullPath: path.posix.join(browsePath, dir.name),
+                        }));
+
+                    return res.status(200).json({
+                        message: 'Directories fetched successfully.',
+                        data: directories,
+                    });
+                } finally {
+                    try {
+                        await sftp.end();
+                    } catch {
+                        /* ignore */
+                    }
+                }
+            }
+
+            return res.status(400).json({
+                message: 'Directory browsing is supported for FTP and SSH/VPS. For cPanel, enter the path manually (e.g. /public_html).',
+            });
         } catch (error) {
             console.error('Error in browseHostingDirectories:', error);
             return res.status(500).json({
                 message: 'Failed to browse directories.',
-                error: error.message
+                error: error.message,
             });
         }
     },
@@ -12162,12 +12275,7 @@ Example format:
                     } else if (hosting.connectionType === 'ssh' || hosting.connectionType === 'vps') {
                         const sftp = new SftpClient();
                         try {
-                            await sftp.connect({
-                                host: config.host,
-                                port: config.port || 22,
-                                username: config.username,
-                                password: config.password
-                            });
+                            await sftp.connect(buildSshConnectOptions(config));
                             console.log("SFTP connection established.");
                             await uploadFolderSFTP(sftp, distPath, rootPath);
                             console.log("SFTP upload complete.");
@@ -12408,12 +12516,7 @@ Example format:
                 } else if (hosting.connectionType === 'ssh' || hosting.connectionType === 'vps') {
                     const sftp = new SftpClient();
                     try {
-                        await sftp.connect({
-                            host: config.host,
-                            port: config.port || 22,
-                            username: config.username,
-                            password: config.password
-                        });
+                        await sftp.connect(buildSshConnectOptions(config));
                         await sftp.put(sitemapLocalPath, remoteSitemapPath);
                         console.log("SFTP upload complete.");
                     } catch (sftpErr) {
@@ -12790,56 +12893,140 @@ Example format:
     },
     checkDomain: async (req, res) => {
         try {
+            const { domainName, projectId } = req.body || {};
+            const clean = String(domainName || '')
+                .trim()
+                .toLowerCase()
+                .replace(/^(https?:\/\/)/i, '')
+                .replace(/\/.*$/, '')
+                .replace(/^www\./, '');
 
-            const { domainName } = req.body;
-
-
-
-
-            // Get the latest deployment for this project (optionally per environment)
-            const deployment = await ProjectDeployment.findOne({
-                domainName: domainName.trim(),
-            }).populate('projectId', 'projectName').lean();
-
-            if (!deployment) {
-                return res.status(200).json({ message: 'This domain is available to use' });
+            if (!clean) {
+                return res.status(400).json({ ok: false, error: 'domainName is required' });
             }
 
-            // Domain exists in another project - return conflict with options
-            const conflictingProjectId = deployment.projectId?._id || deployment.projectId;
-            const existingProjectName = deployment.projectId?.projectName || 'Unknown Project';
+            const currentProjectId = projectId ? String(projectId) : null;
 
-            // Convert to string if it's an ObjectId
-            const existingProjectIdString = String(conflictingProjectId);
+            // 1) ProjectDeployment conflict
+            const deployment = await ProjectDeployment.findOne({
+                $or: [{ domainName: clean }, { domainName: `www.${clean}` }],
+            })
+                .populate('projectId', 'projectName')
+                .lean();
 
-            return res.status(409).json({
-                ok: false,
-                error: 'Domain already exists in another project',
-                domain: domainName.trim(),
-                existingProject: {
-                    projectId: existingProjectIdString,
-                    projectName: existingProjectName
-                },
-                options: {
-                    unlink: {
-                        action: 'unlink',
-                        message: 'Unlink this domain from the other project and connect it here',
-                        api: '/admin/v1/unlinkDomain',
-                        requiredParams: { projectId: existingProjectIdString, domainName: domainName.trim() }
-                    },
-                    useAnother: {
-                        action: 'useAnother',
-                        message: 'Use a different domain for this project'
-                    }
+            if (deployment) {
+                const conflictingProjectId = String(
+                    deployment.projectId?._id || deployment.projectId || ''
+                );
+                if (!currentProjectId || conflictingProjectId !== currentProjectId) {
+                    const existingProjectName =
+                        deployment.projectId?.projectName || 'Unknown Project';
+                    return res.status(409).json({
+                        ok: false,
+                        error: 'Domain already linked to another project',
+                        domain: clean,
+                        existingProject: {
+                            projectId: conflictingProjectId,
+                            projectName: existingProjectName,
+                        },
+                        options: {
+                            unlink: {
+                                action: 'unlink',
+                                message:
+                                    'Unlink this domain from the other project and connect it here',
+                                api: '/admin/v1/unlinkDomain',
+                                requiredParams: {
+                                    projectId: conflictingProjectId,
+                                    domainName: clean,
+                                },
+                            },
+                            useAnother: {
+                                action: 'useAnother',
+                                message: 'Use a different domain for this project',
+                            },
+                        },
+                    });
                 }
+            }
+
+            // 2) UserProject.domainName conflict (project has this domain set)
+            const projectWithDomain = await UserProject.findOne({
+                $or: [{ domainName: clean }, { domainName: `www.${clean}` }],
+            })
+                .select('_id projectName')
+                .lean();
+
+            if (projectWithDomain) {
+                const pid = String(projectWithDomain._id);
+                if (!currentProjectId || pid !== currentProjectId) {
+                    return res.status(409).json({
+                        ok: false,
+                        error: 'Domain already used by another project',
+                        domain: clean,
+                        existingProject: {
+                            projectId: pid,
+                            projectName: projectWithDomain.projectName || 'Unknown Project',
+                        },
+                        options: {
+                            unlink: {
+                                action: 'unlink',
+                                message:
+                                    'Unlink this domain from the other project and use it here',
+                                api: '/admin/v1/unlinkDomain',
+                                requiredParams: { projectId: pid, domainName: clean },
+                            },
+                            useAnother: {
+                                action: 'useAnother',
+                                message: 'Use a different domain for this project',
+                            },
+                        },
+                    });
+                }
+            }
+
+            // 3) Domain collection projectId (optional link)
+            const domainDoc = await Domain.findOne({
+                $or: [{ domain: clean }, { domain: `www.${clean}` }],
+                projectId: { $ne: null },
+            })
+                .populate('projectId', 'projectName')
+                .lean();
+
+            if (domainDoc?.projectId) {
+                const pid = String(domainDoc.projectId._id || domainDoc.projectId);
+                if (!currentProjectId || pid !== currentProjectId) {
+                    return res.status(409).json({
+                        ok: false,
+                        error: 'Domain is assigned to another project',
+                        domain: clean,
+                        existingProject: {
+                            projectId: pid,
+                            projectName: domainDoc.projectId?.projectName || 'Unknown Project',
+                        },
+                        options: {
+                            unlink: {
+                                action: 'unlink',
+                                message: 'Unlink from the other project and use here',
+                                api: '/admin/v1/unlinkDomain',
+                                requiredParams: { projectId: pid, domainName: clean },
+                            },
+                            useAnother: {
+                                action: 'useAnother',
+                                message: 'Use a different domain for this project',
+                            },
+                        },
+                    });
+                }
+            }
+
+            return res.status(200).json({
+                ok: true,
+                message: 'This domain is available to use',
+                domain: clean,
             });
-
-
-
         } catch (error) {
-            console.log(error, "hey error!!")
+            console.error('checkDomain error', error);
             return res.status(500).json({ error: 'Server error' });
-
         }
     },
 

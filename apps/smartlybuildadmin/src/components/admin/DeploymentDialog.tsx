@@ -20,6 +20,10 @@ import {
   linkProjectToHosting,
   HostingConnection,
   setCurrentHostingForProject,
+  canBrowseHosting,
+  defaultRootPathForHosting,
+  formatHostingSummary,
+  hostingTypeLabel,
 } from "@/api/newHostingApi";
 import { httpFile } from "@/config";
 import socket from "@/socket";
@@ -239,11 +243,11 @@ export function DeploymentDialog({
     try {
       const { data, status } = await httpFile.post(
         "/checkDomain",
-        { domainName: cleanDomain },
+        { domainName: cleanDomain, projectId },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      if (status === 200 && data.message === "This domain is available to use") {
+      if (status === 200 && (data.ok === true || data.message === "This domain is available to use")) {
         return { isAvailable: true, message: data.message };
       } else {
         return { isAvailable: false, message: data.error || "Domain unavailable" };
@@ -364,10 +368,10 @@ export function DeploymentDialog({
       if (preSelected) {
         setSelectedHosting(preSelected);
         setStep(2);
-        if (preSelected.connectionType === "ftp" || preSelected.connectionType === "ssh" || preSelected.connectionType === "vps") {
+        if (canBrowseHosting(preSelected.connectionType)) {
           browseDirectories(preSelected._id, "");
         } else {
-          setRootPath("/public_html");
+          setRootPath(defaultRootPathForHosting(preSelected.connectionType));
         }
       }
     }
@@ -379,10 +383,10 @@ export function DeploymentDialog({
       if (preSelected) {
         setSelectedHosting(preSelected);
         setStep(2);
-        if (preSelected.connectionType === "ftp" || preSelected.connectionType === "ssh" || preSelected.connectionType === "vps") {
+        if (canBrowseHosting(preSelected.connectionType)) {
           browseDirectories(preSelected._id, "");
         } else {
-          setRootPath("/public_html");
+          setRootPath(defaultRootPathForHosting(preSelected.connectionType));
         }
 
         fetchProjectDeploymentConfig(projectId, preSelected._id).then((config) => {
@@ -444,7 +448,7 @@ export function DeploymentDialog({
   const fetchHostings = async (): Promise<HostingConnection[]> => {
     try {
       setIsLoading(true);
-      const hostingList = await getMyHostings();
+      const hostingList = await getMyHostings({ verifiedOnly: true });
       setHostings(hostingList);
 
       const currentHostingId = await fetchCurrentHostingForProject();
@@ -453,10 +457,10 @@ export function DeploymentDialog({
         if (currentHosting) {
           setSelectedHosting(currentHosting);
           setStep(2);
-          if (currentHosting.connectionType === "ftp" || currentHosting.connectionType === "ssh" || currentHosting.connectionType === "vps") {
+          if (canBrowseHosting(currentHosting.connectionType)) {
             browseDirectories(currentHosting._id, "");
           } else {
-            setRootPath("/public_html");
+            setRootPath(defaultRootPathForHosting(currentHosting.connectionType));
           }
         }
       }
@@ -492,10 +496,10 @@ export function DeploymentDialog({
       return;
     }
 
-    if (hosting.connectionType === "ftp" || hosting.connectionType === "ssh" || hosting.connectionType === "vps") {
+    if (canBrowseHosting(hosting.connectionType)) {
       browseDirectories(hosting._id, "");
     } else {
-      setRootPath("/public_html");
+      setRootPath(defaultRootPathForHosting(hosting.connectionType));
     }
 
     // If domain is already set, create/link ProjectDeployment immediately
@@ -634,9 +638,10 @@ export function DeploymentDialog({
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No auth token found");
 
-      // per your curl, it’s GET /admin/v1//domains/list (double slash OK with your server)
+      // Prefer listDomains helper (same as Domains page) when available via shared API shape
       const { data } = await httpFile.get("/domains/list", {
         headers: { Authorization: `Bearer ${token}` },
+        params: { limit: 100 },
       });
 
       const domains: string[] = Array.isArray(data?.domains) ? data.domains : [];
@@ -970,7 +975,7 @@ export function DeploymentDialog({
 
       if (isOur) {
         if (!effectiveHosting) {
-          const list = hostings.length ? hostings : await getMyHostings();
+          const list = hostings.length ? hostings : await getMyHostings({ verifiedOnly: true });
           effectiveHosting = findOurHosting(list);
           if (effectiveHosting) setSelectedHosting(effectiveHosting);
         }
@@ -979,7 +984,9 @@ export function DeploymentDialog({
           setRootPath(effectiveRoot);
         }
       } else if (!effectiveRoot) {
-        effectiveRoot = "/public_html";
+        effectiveRoot = selectedHosting
+          ? defaultRootPathForHosting(selectedHosting.connectionType)
+          : "/public_html";
         setRootPath(effectiveRoot);
       }
 
@@ -1294,8 +1301,11 @@ export function DeploymentDialog({
               ) : (
                 <div className="space-y-3">
                   {hostings.map((hosting) => {
-                    const config = JSON.parse(hosting.connectionConfig);
                     const isSelected = selectedHosting?._id === hosting._id;
+                    const summary = formatHostingSummary(
+                      hosting.connectionConfig,
+                      hosting.connectionType
+                    );
                     return (
                       <div
                         key={hosting._id}
@@ -1314,13 +1324,13 @@ export function DeploymentDialog({
                               {React.createElement(Server as any, { className: `h-5 w-5 ${isSelected ? "text-white" : "text-gray-600"}` })}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-gray-900 mb-1.5 text-base">{config.host}</h4>
+                              <h4 className="font-semibold text-gray-900 mb-1.5 text-base font-mono truncate">
+                                {summary}
+                              </h4>
                               <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 mb-2">
                                 <span className="px-2 py-0.5 bg-gray-100 rounded font-medium">
-                                  {hosting.connectionType.toUpperCase()}
+                                  {hostingTypeLabel(hosting.connectionType)}
                                 </span>
-                                <span className="text-gray-400">•</span>
-                                <span>User: {config.username}</span>
                               </div>
                               {isSelected && (
                                 <div className="flex items-center gap-1.5 mt-2 text-xs text-blue-600 font-medium">
