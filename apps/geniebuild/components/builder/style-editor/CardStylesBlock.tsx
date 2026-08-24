@@ -48,6 +48,7 @@ export const CardStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, onUpda
     Object.keys(styles || {}).forEach((k) => {
       if (k.startsWith('title') || k.startsWith('description') || k.startsWith('badge') ||
           k.startsWith('link') || k.startsWith('image') || k.startsWith('hover') ||
+          k.startsWith('icon') || k.startsWith('overlay') || k === 'cardLayout' || k === 'accentColor' ||
           k === 'contentGap' || k === 'backgroundColor' || k === 'borderColor' ||
           k === 'borderWidth' || k === 'borderRadius' || k === 'padding' || k === 'boxShadow') {
         patch[k] = '';
@@ -60,6 +61,41 @@ export const CardStylesBlock: React.FC<CardStylesBlockProps> = ({ styles, onUpda
   return (
     <>
       <ResetRow onReset={reset} />
+
+      {/* LAYOUT — one card, many looks (Elementor-style). */}
+      <AccordionGroup title="Layout" defaultOpen={true}>
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-white/50 uppercase tracking-widest mb-1">Card Layout</label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {[
+              { value: 'image-top',   label: 'Image Top',   icon: 'fa-window-maximize' },
+              { value: 'image-left',  label: 'Image Left',  icon: 'fa-table-columns' },
+              { value: 'image-right', label: 'Image Right', icon: 'fa-table-columns' },
+              { value: 'overlay',     label: 'Overlay',     icon: 'fa-image' },
+              { value: 'icon-top',    label: 'Icon Top',    icon: 'fa-star' },
+              { value: 'no-image',    label: 'Text Only',   icon: 'fa-align-left' },
+            ].map(opt => {
+              const active = (styles.cardLayout || 'image-top') === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onUpdate('cardLayout', opt.value)}
+                  className={`py-2 text-[9px] font-bold uppercase tracking-wide rounded border transition-all flex flex-col items-center gap-1 ${
+                    active ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-[#151515] border-[#333] text-white/40 hover:border-[#444]'
+                  }`}
+                >
+                  <i className={`fa-solid ${opt.icon} text-sm`} />
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[9px] text-white/30 italic pt-1">
+            Overlay uses the image as a full background. Icon Top shows an icon instead of an image (set icon in Content).
+          </p>
+        </div>
+      </AccordionGroup>
 
       {/* CARD BOX */}
       <AccordionGroup title="Card Box" defaultOpen={true}>

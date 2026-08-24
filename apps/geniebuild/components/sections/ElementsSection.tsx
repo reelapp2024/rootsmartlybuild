@@ -1403,13 +1403,15 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 <>
                     {hasKicker && (
                         <span
-                            className="block mb-3 outline-none"
+                            className="block outline-none"
                             style={{
                                 color: renderStyle.kickerColor || accentCol,
                                 fontSize: renderStyle.kickerFontSize || '0.75rem',
                                 fontWeight: 800,
                                 letterSpacing: renderStyle.kickerLetterSpacing || '0.18em',
                                 textTransform: 'uppercase',
+                                // Overridable gap between kicker and heading (default 0.75rem = mb-3)
+                                marginBottom: (renderStyle as any).kickerBottomSpace || '0.75rem',
                             }}
                             ref={bindHtml(`${id}::kicker`, kickerText)}
                             contentEditable={!readOnly}
@@ -1953,7 +1955,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 borderColor: btnBorderColor,
                 borderWidth: btnBorderWidth || (btnBorderColor && btnBorderColor !== 'transparent' ? '1px' : undefined),
                 borderStyle: btnBorderStyle || (btnBorderColor && btnBorderColor !== 'transparent' ? 'solid' : undefined),
-                textAlign: 'center' as const,
+                textAlign: ((renderStyle.textAlign as any) || 'center'),
                 fontWeight: renderStyle.fontWeight || 'bold',
                 fontSize: renderStyle.fontSize || sizeDef.fontSize,
                 padding: safeStyle.padding || sizeDef.padding,
@@ -2150,7 +2152,8 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     <div style={widthMode === 'full' ? { width: '100%' } : undefined}>
                         {buttonWithLink}
                         {type === 'call-to-action' && c.subText && (
-                            <p className="mt-2 text-sm opacity-70"
+                            <p className="text-sm opacity-70"
+                               style={{ marginTop: (renderStyle as any).subTextTopSpace || '0.5rem' }}
                                ref={bindHtml(id, c.subText || '')}
                                contentEditable={!readOnly}
                                {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))} />
@@ -2336,14 +2339,16 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 </div>
             );
 
-            // Caption shown below the image
+            // Caption shown below the image — alignment + gap overridable
+            const captionAlign = resolveTextAlign(renderStyle);
             const captionEl = hasCaption ? (
                 <p
-                    className="mt-2 text-sm text-center outline-none"
+                    className={`text-sm outline-none ${renderStyle?.textAlign ? captionAlign.textAlignClass : 'text-center'}`}
                     style={{
                         color: theme?.textColor || '#9CA3AF',
                         opacity: 0.85,
                         fontStyle: 'italic',
+                        marginTop: (renderStyle as any).captionTopSpace || '0.5rem',
                     }}
                     ref={bindHtml(id, caption)}
                     contentEditable={!readOnly}
@@ -2658,17 +2663,18 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         }}>
                          <IconRenderer icon={content.icon || 'fa-layer-group'} size={renderStyle.iconSize || '1.5rem'} style={{ color: iconBoxColor }} />
                     </div>
-                    <div>
-                        <h3 className="font-bold mb-1 outline-none" 
-                            style={{ 
+                    <div style={{ textAlign: (renderStyle.textAlign as any) || undefined }}>
+                        <h3 className="font-bold outline-none"
+                            style={{
                                 color: renderStyle.titleColor || theme?.titleColor || '#0F172A',
                                 fontSize: renderStyle.titleFontSize || '1.125rem',
                                 fontWeight: renderStyle.titleFontWeight || '700',
                                 textTransform: (renderStyle.titleTextTransform || renderStyle.textTransform) as any || 'none',
                                 fontStyle: renderStyle.titleFontStyle || 'normal',
                                 letterSpacing: renderStyle.titleLetterSpacing || 'normal',
-                                fontFamily: renderStyle.titleFontFamily || renderStyle.fontFamily || theme?.titleFontFamily
-                            }} 
+                                fontFamily: renderStyle.titleFontFamily || renderStyle.fontFamily || theme?.titleFontFamily,
+                                marginBottom: ibs.titleBottomSpace || '0.25rem',
+                            }}
                             ref={bindHtml(ibTitleId, content.text || 'Icon Box Title')} 
                             contentEditable={!readOnly} 
                             {...editHandlers(ibTitleId, (html) => handleContentUpdate(id, 'text', html))} 
@@ -3028,8 +3034,15 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             );
 
             // Text alignment inside the card (left/center/right) — applies to all variants.
+            // content.cardTextAlign wins; else honor the style-panel textAlign; else left.
+            const cardTextAlignRaw =
+                (c.cardTextAlign === 'center' || c.cardTextAlign === 'right' || c.cardTextAlign === 'left')
+                    ? c.cardTextAlign
+                    : (renderStyle.textAlign as string);
             const cardTextAlign: 'left' | 'center' | 'right' =
-                (c.cardTextAlign === 'center' || c.cardTextAlign === 'right') ? c.cardTextAlign : 'left';
+                (cardTextAlignRaw === 'center' || cardTextAlignRaw === 'right') ? cardTextAlignRaw : 'left';
+            // Overridable gap between the card's stacked sub-parts (title/desc/cta).
+            const fbContentGap = fbx.contentGap || '0.375rem';
             const textAlignClass =
                 cardTextAlign === 'center' ? 'text-center' :
                 cardTextAlign === 'right'  ? 'text-right'  : 'text-left';
@@ -3060,7 +3073,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 inner = (
                     <div className="flex items-start gap-4">
                         {renderIconBox()}
-                        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                        <div className="flex-1 min-w-0 flex flex-col" style={{ gap: fbContentGap }}>
                             {hasBadge && <div>{renderBadge()}</div>}
                             {renderTitle()}
                             {renderDescription()}
@@ -3072,7 +3085,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 inner = (
                     <div className="flex items-start gap-4">
                         {renderNumberBadge()}
-                        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                        <div className="flex-1 min-w-0 flex flex-col" style={{ gap: fbContentGap }}>
                             {hasBadge && <div>{renderBadge()}</div>}
                             {renderTitle()}
                             {renderDescription()}
@@ -3082,7 +3095,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 );
             } else if (isStat) {
                 inner = (
-                    <div className={`flex flex-col gap-1.5 ${itemsAlignClass}`}>
+                    <div className={`flex flex-col ${itemsAlignClass}`} style={{ gap: fbContentGap }}>
                         {hasBadge && <div className="mb-1">{renderBadge()}</div>}
                         {renderStatValue()}
                         {renderTitle()}
@@ -3103,7 +3116,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         >
                             {hasIcon ? renderIconBox('3rem') : renderNumberBadge('2.75rem')}
                         </div>
-                        <div className="flex-1 p-5 flex flex-col gap-1.5">
+                        <div className="flex-1 p-5 flex flex-col" style={{ gap: fbContentGap }}>
                             {hasBadge && <div>{renderBadge()}</div>}
                             {renderTitle()}
                             {renderDescription()}
@@ -3121,7 +3134,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 inner = (
                     <div className={`flex ${flexDir} gap-4 ${outerAlign}`}>
                         {renderIconBox()}
-                        <div className={`flex-1 flex flex-col gap-1.5 ${isTop && hasIcon ? 'mt-1' : ''} ${isTop ? itemsAlignClass : ''}`}>
+                        <div className={`flex-1 flex flex-col ${isTop && hasIcon ? 'mt-1' : ''} ${isTop ? itemsAlignClass : ''}`} style={{ gap: fbContentGap }}>
                             {hasBadge && <div>{renderBadge()}</div>}
                             {renderTitle()}
                             {renderDescription()}
@@ -4799,11 +4812,15 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                 modeClass = bqMode === 'center' ? 'text-center' : '';
                 modeStyle.padding = safeStyle.padding || (bqMode === 'center' ? '1rem 0' : '0.5rem 0');
             } else { /* minimal */ modeStyle.padding = safeStyle.padding || '0.5rem 0'; }
+            // Explicit style-panel textAlign wins over the per-mode default.
+            if (renderStyle.textAlign) modeStyle.textAlign = renderStyle.textAlign as any;
 
             const bqQuoteSize = bq.quoteFontSize || (bqMode === 'center' ? '1.125rem' : undefined);
             const bqAuthorSize = bq.authorFontSize || '0.875rem';
             const bqAuthorWeight = bq.authorFontWeight || 700;
             const bqAuthorOpacity = bq.authorOpacity !== undefined ? bq.authorOpacity : 0.7;
+            // Overridable gap between the quote text and the author line.
+            const bqQuoteBottomSpace = bq.quoteBottomSpace || (bqMode === 'center' ? '0.75rem' : '0.5rem');
 
             return (
                 <blockquote key={id} className={`${modeClass} ${selectedClass}`} style={modeStyle} onClick={!readOnly ? (e) => handleClick(e, el) : undefined}>
@@ -4818,18 +4835,17 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     )}
                     <div className={bqResolvedBg.overlay ? 'relative' : ''} style={bqResolvedBg.overlay ? { zIndex: 1 } : undefined}>
                         {bqMode === 'large-quote' && (
-                            <div aria-hidden className="leading-none mb-2" style={{ color: accentCol, fontStyle: 'normal', fontSize: bq.quoteMarkSize || '3rem', opacity: bq.quoteMarkOpacity !== undefined ? bq.quoteMarkOpacity : 0.5 }}>❝</div>
+                            <div aria-hidden className="leading-none" style={{ color: accentCol, fontStyle: 'normal', fontSize: bq.quoteMarkSize || '3rem', opacity: bq.quoteMarkOpacity !== undefined ? bq.quoteMarkOpacity : 0.5, marginBottom: bq.quoteMarkBottomSpace || '0.5rem' }}>❝</div>
                         )}
                         {bqMode === 'center' ? (
                             <p
-                              className="mb-3"
-                              style={{ fontSize: bqQuoteSize }}
+                              style={{ fontSize: bqQuoteSize, marginBottom: bqQuoteBottomSpace }}
                               ref={bindHtml(id, `“${quoteText}”`)}
                               contentEditable={!readOnly}
                               {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))}
                             />
                         ) : (
-                            <p className="mb-2" style={bqQuoteSize ? { fontSize: bqQuoteSize } : undefined} ref={bindHtml(id, quoteText)} contentEditable={!readOnly} {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))} />
+                            <p style={{ ...(bqQuoteSize ? { fontSize: bqQuoteSize } : {}), marginBottom: bqQuoteBottomSpace }} ref={bindHtml(id, quoteText)} contentEditable={!readOnly} {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))} />
                         )}
                         <cite
                             className="not-italic outline-none"
@@ -5420,7 +5436,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         color: labelColor,
                         fontSize: labelFontSize,
                         opacity: theme?.subheadingColor ? 1 : 0.7,
-                        marginTop: counterMode === 'inline' ? 0 : '0.5rem',
+                        marginTop: counterMode === 'inline' ? 0 : ((renderStyle as any).labelTopSpace || '0.5rem'),
                     }}
                     contentEditable={!readOnly}
                     suppressContentEditableWarning={!readOnly}
@@ -5507,8 +5523,8 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                             />
                         </div>
                     )}
-                    <div className="relative flex-1 min-w-0" style={{ zIndex: 1, color: textCol }}>
-                        <strong className="block font-bold mb-1" ref={bindHtml(id, content.text || 'Alert Title')} contentEditable={!readOnly} {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))} />
+                    <div className="relative flex-1 min-w-0" style={{ zIndex: 1, color: textCol, textAlign: (renderStyle.textAlign as any) || undefined }}>
+                        <strong className="block font-bold" style={{ marginBottom: (renderStyle as any).titleBottomSpace || '0.25rem' }} ref={bindHtml(id, content.text || 'Alert Title')} contentEditable={!readOnly} {...editHandlers(id, (html) => handleContentUpdate(id, 'text', html))} />
                         <p className="text-sm opacity-80" ref={bindHtml(id, content.subText || 'Alert description.')} contentEditable={!readOnly} {...editHandlers(id, (html) => handleContentUpdate(id, 'subText', html))} />
                     </div>
                     {dismissible && (
@@ -6198,9 +6214,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                     key={id}
                     className={`transition-all duration-300 group ${selectedClass}`}
                     onClick={(e) => handleClick(e, el)}
-                    style={statCardStyle}
+                    style={{ ...statCardStyle, textAlign: (renderStyle.textAlign as any) || (statCardStyle as any).textAlign }}
                 >
-                    <div className="flex items-center" style={{ gap: statWrapGap, marginBottom: statHeadGap }}>
+                    <div className="flex items-center" style={{ gap: statWrapGap, marginBottom: statHeadGap, justifyContent: renderStyle.textAlign === 'center' ? 'center' : renderStyle.textAlign === 'right' ? 'flex-end' : undefined }}>
                         {content.icon && (
                             <div className="flex items-center justify-center group-hover:scale-110 transition-transform shrink-0"
                                 style={{
@@ -6237,8 +6253,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                         />
                     </div>
                     <div
-                        className="mb-1 outline-none"
+                        className="outline-none"
                         style={{
+                            marginBottom: sc.labelBottomSpace || '0.25rem',
                             fontSize: sc.labelFontSize || '0.875rem',
                             fontWeight: sc.labelFontWeight || 600,
                             textTransform: sc.labelTextTransform || 'uppercase',
@@ -6733,38 +6750,99 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const cardHoverShadow = cs.hoverBoxShadow || '0 20px 40px -12px rgba(0,0,0,0.25)';
             const cardLift = cs.hoverLiftDistance || '-4px';
             const cardHoverCls = `cv-card-${(id || '').replace(/[^a-zA-Z0-9_-]/g, '')}`;
+            // LAYOUT VARIANT (Elementor-style): one card element, many looks.
+            //   image-top (default) | image-left | image-right | overlay | no-image | icon-top
+            const cardLayout: string = cs.cardLayout || 'image-top';
+            const cardIcon = content.icon || cs.cardIcon;
+            const isHorizontal = cardLayout === 'image-left' || cardLayout === 'image-right';
+            const isOverlay = cardLayout === 'overlay';
+            const isIconTop = cardLayout === 'icon-top';
+            const showImage = resolvedCardImg && cardLayout !== 'no-image' && !isIconTop;
+            const cardAccent = cs.accentColor || theme?.accentColor || '#6366f1';
+
+            // The media block (image), reused across layouts.
+            const mediaBlock = showImage ? (
+                <div
+                    className="overflow-hidden shrink-0"
+                    style={
+                        isHorizontal
+                            ? { width: cs.imageWidth || '40%', alignSelf: 'stretch' }
+                            : { aspectRatio: cardImgRatio, width: '100%' }
+                    }
+                >
+                    <img
+                        src={resolvedCardImg!}
+                        alt={content.text || 'Card image'}
+                        className="w-full h-full"
+                        style={{ objectFit: cardImgFit as any, minHeight: isHorizontal ? '100%' : undefined }}
+                        referrerPolicy="no-referrer"
+                        onError={(e) => { (e.target as HTMLImageElement).src = SECTION_IMAGE_PLACEHOLDER; }}
+                    />
+                </div>
+            ) : null;
+
+            // Icon-top layout renders an icon chip instead of an image.
+            const iconBlock = isIconTop ? (
+                <div
+                    className="flex items-center justify-center shrink-0"
+                    style={{
+                        width: cs.iconContainerSize || '3.5rem',
+                        height: cs.iconContainerSize || '3.5rem',
+                        borderRadius: cs.iconRadius || '0.875rem',
+                        backgroundColor: cs.iconBackgroundColor || `${cardAccent}1A`,
+                        color: cardAccent,
+                        marginBottom: '0.25rem',
+                    }}
+                >
+                    <IconRenderer icon={cardIcon || 'fa-star'} size={cs.iconSize || '1.5rem'} style={{ color: cardAccent }} />
+                </div>
+            ) : null;
+
+            // Overlay layout: image is the background, content sits on top with a scrim.
+            const outerFlexClass = isHorizontal ? 'flex-row' : 'flex-col';
+            const bodyPad = cardPad;
             return (
                 <div
                     key={id}
-                    className={`overflow-hidden flex flex-col transition-all duration-300 ${cardHover ? cardHoverCls : ''} ${selectedClass}`}
+                    className={`overflow-hidden flex ${outerFlexClass} transition-all duration-300 relative ${cardHover ? cardHoverCls : ''} ${selectedClass}`}
                     style={{
                         ...safeStyle,
-                        backgroundColor: cardBg,
+                        backgroundColor: isOverlay ? '#000' : cardBg,
                         borderColor: cardBorder,
                         borderWidth: safeStyle.borderWidth || '1px',
                         borderStyle: safeStyle.borderStyle || 'solid',
                         borderRadius: cardRadius,
                         boxShadow: safeStyle.boxShadow || undefined,
                         padding: 0,
+                        minHeight: isOverlay ? (cs.overlayMinHeight || '320px') : undefined,
                     }}
                     onClick={(e) => handleClick(e, el)}
                 >
                     {cardHover && (
                         <style>{`.${cardHoverCls}:hover{transform:translateY(${cardLift});box-shadow:${cardHoverShadow};}`}</style>
                     )}
-                    {resolvedCardImg && (
-                        <div className="overflow-hidden" style={{ aspectRatio: cardImgRatio }}>
+                    {/* Overlay: full-bleed image + scrim behind the content */}
+                    {isOverlay && resolvedCardImg && (
+                        <>
                             <img
                                 src={resolvedCardImg}
                                 alt={content.text || 'Card image'}
-                                className="w-full h-full"
-                                style={{ objectFit: cardImgFit as any }}
+                                className="absolute inset-0 w-full h-full"
+                                style={{ objectFit: 'cover', zIndex: 0 }}
                                 referrerPolicy="no-referrer"
                                 onError={(e) => { (e.target as HTMLImageElement).src = SECTION_IMAGE_PLACEHOLDER; }}
                             />
-                        </div>
+                            <div className="absolute inset-0" style={{ background: cs.overlayScrim || 'linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.8) 100%)', zIndex: 1 }} />
+                        </>
                     )}
-                    <div className="flex flex-col flex-1" style={{ padding: cardPad, gap: cardGap }}>
+                    {/* image-left: media first; image-right: media after body (order swap) */}
+                    {cardLayout === 'image-left' && mediaBlock}
+                    {!isHorizontal && !isOverlay && mediaBlock}
+                    <div
+                        className={`flex flex-col flex-1 ${isOverlay ? 'justify-end relative' : ''}`}
+                        style={{ padding: bodyPad, gap: cardGap, zIndex: isOverlay ? 2 : undefined, justifyContent: isHorizontal ? 'center' : undefined, textAlign: (renderStyle.textAlign as any) || undefined, alignItems: renderStyle.textAlign === 'center' ? 'center' : renderStyle.textAlign === 'right' ? 'flex-end' : undefined }}
+                    >
+                        {iconBlock}
                         {(content.badge || content.badgeText) && (
                             <span
                                 className="self-start font-bold rounded-full"
@@ -6788,7 +6866,7 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                 lineHeight: cs.titleLineHeight || 1.35,
                                 letterSpacing: cs.titleLetterSpacing,
                                 textTransform: cs.titleTextTransform,
-                                color: cs.titleColor || theme?.titleColor || '#111827',
+                                color: cs.titleColor || (isOverlay ? '#FFFFFF' : (theme?.titleColor || '#111827')),
                             }}
                             ref={bindHtml(id, content.text || 'Card Title')}
                             contentEditable={!readOnly}
@@ -6801,8 +6879,8 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                     fontSize: cs.descriptionFontSize || '0.875rem',
                                     fontWeight: cs.descriptionFontWeight,
                                     lineHeight: cs.descriptionLineHeight || 1.625,
-                                    opacity: cs.descriptionOpacity !== undefined ? cs.descriptionOpacity : 0.8,
-                                    color: cs.descriptionColor || safeStyle.color || theme?.textColor || '#4B5563',
+                                    opacity: cs.descriptionOpacity !== undefined ? cs.descriptionOpacity : (isOverlay ? 0.9 : 0.8),
+                                    color: cs.descriptionColor || (isOverlay ? '#E5E7EB' : (safeStyle.color || theme?.textColor || '#4B5563')),
                                 }}
                                 ref={bindHtml(`${id}-card-desc`, content.subText || content.description || '')}
                                 contentEditable={!readOnly}
@@ -6817,13 +6895,15 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
                                 className="mt-auto inline-flex items-center gap-1 font-semibold"
                                 style={{
                                     fontSize: cs.linkFontSize || '0.875rem',
-                                    color: cs.linkColor || theme?.accentColor || theme?.secondaryHeadingColor || '#6366f1',
+                                    color: cs.linkColor || (isOverlay ? '#FFFFFF' : (theme?.accentColor || theme?.secondaryHeadingColor || '#6366f1')),
                                 }}
                             >
                                 {content.linkText || 'Learn more'} <i className="fa-solid fa-arrow-right" style={{ fontSize: '0.8em' }}></i>
                             </a>
                         )}
                     </div>
+                    {/* image-right: media after the body */}
+                    {cardLayout === 'image-right' && mediaBlock}
                 </div>
             );
         }

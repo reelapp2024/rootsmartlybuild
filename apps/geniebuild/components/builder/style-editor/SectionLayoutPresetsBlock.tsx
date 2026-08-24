@@ -141,6 +141,39 @@ export const SectionLayoutPresetsBlock: React.FC<SectionLayoutPresetsBlockProps>
         </div>
       </AccordionGroup>
 
+      {/* ─────────── CONTENT ALIGNMENT ─────────── (Elementor "content position") */}
+      <AccordionGroup title="Content Alignment" defaultOpen={true}>
+        <div className="space-y-2">
+          <p className="text-[10px] text-white/40 leading-relaxed">
+            Where the section's content sits horizontally — left, centered, or right.
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {([
+              { key: 'left',   label: 'Left',   icon: 'fa-align-left' },
+              { key: 'center', label: 'Center', icon: 'fa-align-center' },
+              { key: 'right',  label: 'Right',  icon: 'fa-align-right' },
+            ] as const).map(a => {
+              const active = String((styles as any).contentAlignH || 'center') === a.key;
+              return (
+                <button
+                  key={a.key}
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUpdate('contentAlignH', a.key); }}
+                  className={`py-2.5 text-[9px] font-bold uppercase tracking-widest rounded border transition-all flex flex-col items-center gap-1 ${
+                    active
+                      ? 'bg-blue-500/20 border-blue-500 text-blue-400'
+                      : 'bg-[#151515] border-[#333] text-white/40 hover:border-[#444]'
+                  }`}
+                >
+                  <i className={`fa-solid ${a.icon} text-sm`} />
+                  {a.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </AccordionGroup>
+
       {/* ─────────── RESPONSIVE VISIBILITY ─────────── */}
       <AccordionGroup title="Responsive Visibility" defaultOpen={false}>
         <div className="space-y-3">

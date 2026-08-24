@@ -87,6 +87,15 @@ export const CanvasFreeform: React.FC<Props> = ({
   // (pairs with Minimum Height). 'flex-start' | 'center' | 'flex-end'.
   const contentAlign = String(s.contentAlign || 'flex-start');
   const hasMinHeight = typeof s.minHeight === 'string' && s.minHeight.trim() && s.minHeight !== '0';
+  // Horizontal content alignment for the element stack (Elementor "content
+  // position"). Stored on the section as `contentAlignH` = left | center | right.
+  // Default 'center' so canvas sections read as intentional, centered layouts
+  // instead of everything hugging the left edge.
+  const _alignH = String((s as any).contentAlignH || 'center');
+  const cvContentAlign =
+    _alignH === 'left' ? 'flex-start' :
+    _alignH === 'right' ? 'flex-end' : 'center';
+  const cvContentTextAlign = _alignH === 'left' ? 'left' : _alignH === 'right' ? 'right' : 'center';
   const innerStyle: React.CSSProperties = {
     maxWidth: maxW,
     width: '100%',
@@ -279,8 +288,16 @@ export const CanvasFreeform: React.FC<Props> = ({
           <div className="text-center py-10 text-sm" style={{ color: textMuted }}>Blank section</div>
         )}
 
-        {/* Element stack — each element in array order, with hover tools */}
-        <div className="flex flex-col gap-6">
+        {/* Element stack — each element in array order, with hover tools.
+            Horizontal content alignment (Elementor Section "content position"):
+            the whole stack aligns left / center / right inside the container.
+            Default is center — the natural look for hero / CTA / most sections —
+            so content no longer sticks to the left edge. Per-element text-align
+            still wins for the text inside each element. */}
+        <div
+          className="flex flex-col gap-6"
+          style={{ alignItems: cvContentAlign, textAlign: cvContentTextAlign as any }}
+        >
           {elements.map((el, i) => {
             const active = selectedElementId === el.id;
             const isHidden = !!(el.settings as any)?.hidden;
