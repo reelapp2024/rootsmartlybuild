@@ -124,6 +124,37 @@ export const GlobalThemePanel: React.FC<GlobalThemePanelProps> = ({
       <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar pb-20">
         {globalTab === 'typography' && (
           <div className="space-y-6">
+            {/* GLOBAL COLORS — change once, applies site-wide (Elementor-style).
+                Elements that read theme colors (accent/title/text/etc.) update
+                everywhere when these change. */}
+            <AccordionGroup title="Global Colors" defaultOpen={true}>
+              <div className="space-y-3">
+                <p className="text-[10px] text-white/40 leading-relaxed">
+                  These are your site's core colors. Change one here and every
+                  element using it updates across the whole site.
+                </p>
+                {([
+                  { key: 'accentColor',          label: 'Accent / Primary' },
+                  { key: 'backgroundColor',      label: 'Page Background' },
+                  { key: 'titleColor',           label: 'Headings' },
+                  { key: 'textColor',            label: 'Body Text' },
+                  { key: 'subheadingColor',      label: 'Sub-headings' },
+                  { key: 'buttonBackgroundColor',label: 'Button Background' },
+                  { key: 'buttonTextColor',      label: 'Button Text' },
+                  { key: 'linkColor',            label: 'Links' },
+                  { key: 'cardBackgroundColor',  label: 'Card Background' },
+                  { key: 'cardBorderColor',      label: 'Card Border' },
+                ] as { key: GlobalColorKey; label: string }[]).map(({ key, label }) => (
+                  <ColorInput
+                    key={key}
+                    label={label}
+                    value={(globalColors as any)[key] || ''}
+                    onChange={(v) => onGlobalColorChange(key, v)}
+                    onReset={() => onGlobalColorChange(key, '')}
+                  />
+                ))}
+              </div>
+            </AccordionGroup>
             <AccordionGroup title="Default Fonts" defaultOpen={true}>
               <div className="space-y-4">
                 <SelectInput
