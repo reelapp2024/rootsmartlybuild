@@ -90,28 +90,37 @@ export const applyThemeToSiteData = (
       updatedBg.image = { ...updatedBg.image, overlay: { ...updatedBg.overlay } };
     }
 
+    // A section's OWN explicit colour always wins — the theme only FILLS IN
+    // colours the section left empty. Previously the theme overwrote every
+    // section colour, flattening every page to one identical look and ignoring
+    // any per-section/per-element colour the user (or AI) chose. `keep(key,val)`
+    // returns the section's existing value when set, else the theme value.
+    const cur = section.styles as any;
+    const has = (k: string) => cur[k] !== undefined && cur[k] !== null && String(cur[k]).trim() !== '';
+    const keep = (k: string, themed: any) => (has(k) ? cur[k] : themed);
+
     return {
       ...section,
       styles: {
         ...section.styles,
-        backgroundColor: activeSurface,
-        textColor: activeDesc,
-        titleColor: activeHeading,
-        subtitleColor: activeDesc,
-        accordionQuestionColor: activeAccordionQuestion,
-        accordionAnswerColor: activeAccordionAnswer,
-        cardBackgroundColor: colorToHex(isLight ? (colors.light?.surface || '#FFFFFF') : (colors.surface || '#0E1214')) || (isLight ? (colors.light?.surface || '#FFFFFF') : (colors.surface || '#0E1214')),
-        cardBorderColor: colorToHex(activeBorder) || activeBorder,
-        accordionBackgroundColor: colorToHex(isLight ? (colors.light?.surface || '#FFFFFF') : (colors.surface || '#0E1214')) || (isLight ? (colors.light?.surface || '#FFFFFF') : (colors.surface || '#0E1214')),
-        accordionBorderColor: colorToHex(activeBorder) || activeBorder,
-        accentColor: colors.accent,
-        buttonBackgroundColor: colors.primaryButton?.bg,
-        buttonTextColor: colors.primaryButton?.text,
-        borderColor: activeBorder,
-        iconColor: isLight ? (colors.light?.icon || colors.icon) : colors.icon,
-        iconBgColor: isLight ? (colors.light?.iconBg || colors.iconBg) : colors.iconBg,
-        secondaryHeadingColor: isLight ? (colors.light?.secondaryHeading || colors.secondaryHeading) : colors.secondaryHeading,
-        subheadingColor: isLight ? (colors.light?.subheading || colors.subheading) : colors.subheading,
+        backgroundColor: keep('backgroundColor', activeSurface),
+        textColor: keep('textColor', activeDesc),
+        titleColor: keep('titleColor', activeHeading),
+        subtitleColor: keep('subtitleColor', activeDesc),
+        accordionQuestionColor: keep('accordionQuestionColor', activeAccordionQuestion),
+        accordionAnswerColor: keep('accordionAnswerColor', activeAccordionAnswer),
+        cardBackgroundColor: keep('cardBackgroundColor', colorToHex(isLight ? (colors.light?.surface || '#FFFFFF') : (colors.surface || '#0E1214')) || (isLight ? (colors.light?.surface || '#FFFFFF') : (colors.surface || '#0E1214'))),
+        cardBorderColor: keep('cardBorderColor', colorToHex(activeBorder) || activeBorder),
+        accordionBackgroundColor: keep('accordionBackgroundColor', colorToHex(isLight ? (colors.light?.surface || '#FFFFFF') : (colors.surface || '#0E1214')) || (isLight ? (colors.light?.surface || '#FFFFFF') : (colors.surface || '#0E1214'))),
+        accordionBorderColor: keep('accordionBorderColor', colorToHex(activeBorder) || activeBorder),
+        accentColor: keep('accentColor', colors.accent),
+        buttonBackgroundColor: keep('buttonBackgroundColor', colors.primaryButton?.bg),
+        buttonTextColor: keep('buttonTextColor', colors.primaryButton?.text),
+        borderColor: keep('borderColor', activeBorder),
+        iconColor: keep('iconColor', isLight ? (colors.light?.icon || colors.icon) : colors.icon),
+        iconBgColor: keep('iconBgColor', isLight ? (colors.light?.iconBg || colors.iconBg) : colors.iconBg),
+        secondaryHeadingColor: keep('secondaryHeadingColor', isLight ? (colors.light?.secondaryHeading || colors.secondaryHeading) : colors.secondaryHeading),
+        subheadingColor: keep('subheadingColor', isLight ? (colors.light?.subheading || colors.subheading) : colors.subheading),
         background: updatedBg,
         overlayColor: activeOverlayHex,
         overlayOpacityValue: activeOverlayOpacity.toString(),

@@ -72,19 +72,24 @@ export function applyCustomColorsToSiteData(prev: WebsiteData, customColors: any
     const isLight = isTemplateLight;
     const isWhite = isLight;
 
+    // The section's OWN explicit colour always wins; customColors only fill in
+    // what the section left blank. (Was the reverse — customColors overwrote the
+    // section, flattening every page to one look.)
+    const scur = section.styles as any;
+    const sHas = (k: string) => scur[k] !== undefined && scur[k] !== null && String(scur[k]).trim() !== '';
+    const sKeep = (k: string, themed: any) => (sHas(k) ? scur[k] : themed);
     return {
       ...section,
       styles: {
         ...section.styles,
-        backgroundColor: isLight
-          ? (isWhite ? '#FFFFFF' : section.styles.backgroundColor)
-          : (customColors.surface || section.styles.backgroundColor),
-        textColor: isLight ? section.styles.textColor : (customColors.description || section.styles.textColor),
-        titleColor: isLight ? section.styles.titleColor : (customColors.heading || section.styles.titleColor),
-        subtitleColor: isLight ? section.styles.subtitleColor : (customColors.description || section.styles.subtitleColor),
-        accentColor: customColors.accent || section.styles.accentColor,
-        buttonBackgroundColor: customColors.primaryButton?.bg || section.styles.buttonBackgroundColor,
-        buttonTextColor: customColors.primaryButton?.text || section.styles.buttonTextColor,
+        backgroundColor: sHas('backgroundColor') ? scur.backgroundColor
+          : (isLight ? (isWhite ? '#FFFFFF' : section.styles.backgroundColor) : (customColors.surface || section.styles.backgroundColor)),
+        textColor: sKeep('textColor', isLight ? section.styles.textColor : (customColors.description || section.styles.textColor)),
+        titleColor: sKeep('titleColor', isLight ? section.styles.titleColor : (customColors.heading || section.styles.titleColor)),
+        subtitleColor: sKeep('subtitleColor', isLight ? section.styles.subtitleColor : (customColors.description || section.styles.subtitleColor)),
+        accentColor: sKeep('accentColor', customColors.accent),
+        buttonBackgroundColor: sKeep('buttonBackgroundColor', customColors.primaryButton?.bg),
+        buttonTextColor: sKeep('buttonTextColor', customColors.primaryButton?.text),
       },
     };
   });

@@ -1294,7 +1294,9 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const titleCol = resolveElementColor({
               elementStyle: safeStyle,
               colorKey: 'color',
-              themeFallback: gHeadColor || theme?.titleColor || renderStyle.color,
+              // Also honour an explicit `titleColor` (many blocks/AI write that
+              // key on a heading) before falling back to theme / mode defaults.
+              themeFallback: (safeStyle as any).titleColor || gHeadColor || theme?.titleColor || renderStyle.color,
               isLightMode,
               lightFallback: '#111827',
               darkFallback: '#F8FAFC',
