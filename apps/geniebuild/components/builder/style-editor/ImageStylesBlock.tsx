@@ -1,5 +1,5 @@
 import React from 'react';
-import { AccordionGroup, ColorInput, RangeInput, SelectInput } from '../inputs';
+import { AccordionGroup, ColorInput, NumericUnitInput, RangeInput, SelectInput } from '../inputs';
 
 interface BlockProps {
   styles: any;
@@ -513,6 +513,25 @@ export const ImageElementStylesBlock: React.FC<BlockProps> = ({
             value={styles.backgroundColor || ''}
             onChange={(v: string) => onUpdate('backgroundColor', v)}
             onReset={() => onUpdate('backgroundColor', '')}
+          />
+        </div>
+      </ImgSection>
+
+      {/* ─────────── CAPTION ─────────── */}
+      <ImgSection title="Caption" defaultOpen={false}>
+        <div className="space-y-3">
+          <p className="text-[10px] text-white/40 leading-relaxed">
+            Gap between the image and its caption. Set the caption text in the Content tab.
+          </p>
+          <NumericUnitInput
+            label="Caption Gap"
+            value={styles.captionTopSpace || ''}
+            onChange={(v: string) => onUpdate('captionTopSpace', v)}
+            placeholder="0.5rem"
+            units={['rem', 'px', 'em']}
+            step={0.125}
+            min={0}
+            max={4}
           />
         </div>
       </ImgSection>

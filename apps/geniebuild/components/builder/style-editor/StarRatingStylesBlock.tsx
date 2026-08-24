@@ -77,8 +77,8 @@ export const StarRatingStylesBlock: React.FC<StarRatingStylesBlockProps> = ({
               value={styles.unmarkedStyle || 'solid'}
               onChange={(v: string) => onUpdate('unmarkedStyle', v)}
               options={[
-                { value: 'solid', label: 'Solid' },
-                { value: 'outline', label: 'Outline' },
+                { value: 'solid', label: 'Solid', icon: 'fa-star' },
+                { value: 'outline', label: 'Outline', icon: 'fa-star-half-stroke' },
               ]}
             />
           </div>

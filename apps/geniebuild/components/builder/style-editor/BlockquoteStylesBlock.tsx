@@ -32,6 +32,7 @@ export const BlockquoteStylesBlock: React.FC<BlockquoteStylesBlockProps> = ({
       fontFamily: '', fontSize: '', fontWeight: '', fontStyle: '',
       lineHeight: '', letterSpacing: '',
       padding: '', textAlign: '',
+      quoteBottomSpace: '', quoteMarkBottomSpace: '',
     };
     if (onBatchUpdate) onBatchUpdate(patch);
     else Object.entries(patch).forEach(([k, v]) => onUpdate(k, v));
@@ -216,6 +217,28 @@ export const BlockquoteStylesBlock: React.FC<BlockquoteStylesBlockProps> = ({
               step={1}
               min={0}
               max={20}
+            />
+          )}
+          <NumericUnitInput
+            label="Quote ↔ Author Gap"
+            value={styles.quoteBottomSpace || ''}
+            onChange={(v) => onUpdate('quoteBottomSpace', v)}
+            placeholder="0.5rem"
+            units={['rem', 'px', 'em']}
+            step={0.125}
+            min={0}
+            max={4}
+          />
+          {mode === 'large-quote' && (
+            <NumericUnitInput
+              label="Quote Mark ↔ Text Gap"
+              value={styles.quoteMarkBottomSpace || ''}
+              onChange={(v) => onUpdate('quoteMarkBottomSpace', v)}
+              placeholder="0.5rem"
+              units={['rem', 'px', 'em']}
+              step={0.125}
+              min={0}
+              max={4}
             />
           )}
           <div className="space-y-1.5">

@@ -88,7 +88,7 @@ import { GlobalThemePanel } from './components/builder/layout/GlobalThemePanel';
 import { SectionSidebarHeader } from './components/builder/layout/SectionSidebarHeader';
 import { SectionSidebarBody } from './components/builder/layout/SectionSidebarBody';
 import { formatVariantName } from './components/builder/state/variantNameFormatter';
-import { BadgeStylesBlock, CardStylesBlock, AccordionStylesBlock, ButtonStylesBlock, FeatureBoxStylesBlock, StatCardStylesBlock, StarRatingStylesBlock, RowStylesBlock, ColumnStylesBlock, TestimonialCardStylesBlock, TrustStripStylesBlock, ListStylesBlock, NavMenuStylesBlock, AlertBoxStylesBlock, DividerStylesBlock, IconStylesBlock, HighlightTextStylesBlock, BlockquoteStylesBlock, CounterStylesBlock, ProgressBarStylesBlock, CountdownTimerStylesBlock, ToggleStylesBlock, TabsStylesBlock, PricingTableStylesBlock, PricingItemStylesBlock, FlipBoxStylesBlock, VideoStylesBlock, ImageBoxStylesBlock, LogoCloudStylesBlock, UserAvatarsStylesBlock, ReviewCarouselStylesBlock, HeadingStylesBlock, TextStylesBlock, TypographyBlock, LayoutSpacingBlock, BorderBlock, SectionImageSettingsBlock, ElementBackgroundOverlayBlock, ImageElementStylesBlock, SectionBackgroundBlock, BulkElementStylesBlock, ElementBackgroundBlock, SectionLayoutPresetsBlock, SectionDesignExtrasBlock } from './components/builder/style-editor';
+import { BadgeStylesBlock, CardStylesBlock, AccordionStylesBlock, ButtonStylesBlock, FeatureBoxStylesBlock, StatCardStylesBlock, StarRatingStylesBlock, RowStylesBlock, ColumnStylesBlock, TestimonialCardStylesBlock, TrustStripStylesBlock, ListStylesBlock, NavMenuStylesBlock, AlertBoxStylesBlock, DividerStylesBlock, IconStylesBlock, HighlightTextStylesBlock, BlockquoteStylesBlock, CounterStylesBlock, ProgressBarStylesBlock, CountdownTimerStylesBlock, ToggleStylesBlock, TabsStylesBlock, PricingTableStylesBlock, PricingItemStylesBlock, FlipBoxStylesBlock, VideoStylesBlock, ImageBoxStylesBlock, LogoCloudStylesBlock, UserAvatarsStylesBlock, ReviewCarouselStylesBlock, HeadingStylesBlock, TextStylesBlock, TypographyBlock, LayoutSpacingBlock, BorderBlock, SectionImageSettingsBlock, ElementBackgroundOverlayBlock, ImageElementStylesBlock, SectionBackgroundBlock, BulkElementStylesBlock, ElementBackgroundBlock, SectionLayoutPresetsBlock, SectionDesignExtrasBlock, SectionDividersBlock } from './components/builder/style-editor';
 
 import {
   resolveClientProjectId,
@@ -2164,11 +2164,13 @@ const AppContent: React.FC = () => {
                           getActiveGlobalTheme={getActiveGlobalTheme}
                           getThemeOverlayDefaults={getThemeOverlayDefaults}
                       />
-                      {/* BackgroundEffectsBlock (shapes/geometry) + SectionDividers removed —
-                          decorative extras that cluttered the Design panel. */}
                       {(styles.background?.type === 'image' || styles.backgroundImage) && (
                           <SectionImageSettingsBlock styles={styles} onUpdate={onUpdate} />
                       )}
+                      {/* Shape Dividers (Elementor-style top/bottom SVG shapes) — the
+                          block + renderer already existed; re-exposed here in a
+                          collapsed accordion so it doesn't clutter the panel. */}
+                      <SectionDividersBlock styles={styles} onUpdate={onUpdate} />
                       <SectionDesignExtrasBlock styles={styles} onUpdate={onUpdate} onBatchUpdate={onBatchUpdate} />
                   </>
               )}

@@ -554,6 +554,16 @@ export const FeatureBoxStylesBlock: React.FC<FeatureBoxStylesBlockProps> = ({ st
               min={0}
               max={80}
             />
+            <NumericUnitInput
+              label="Title ↔ Description Gap"
+              value={styles.titleBottomSpace || ''}
+              onChange={(v) => onUpdate('titleBottomSpace', v)}
+              placeholder="0.25rem"
+              units={['rem', 'px', 'em']}
+              step={0.125}
+              min={0}
+              max={4}
+            />
             <RangeInput
               label="Description Opacity"
               value={styles.descriptionOpacity !== undefined && styles.descriptionOpacity !== '' ? Math.round(Number(styles.descriptionOpacity) * 100) : 70}

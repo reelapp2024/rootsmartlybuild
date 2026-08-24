@@ -75,7 +75,7 @@ export const HeadingStylesBlock: React.FC<HeadingStylesBlockProps> = ({
       textAlign: '', fontFamily: '', fontSize: '', fontWeight: '', fontStyle: '',
       textTransform: '', textDecoration: '', lineHeight: '', letterSpacing: '',
       color: '', secondaryHeadingColor: '', gradientFrom: '', gradientTo: '',
-      textShadow: '', kickerColor: '', kickerFontSize: '', kickerLetterSpacing: '',
+      textShadow: '', kickerColor: '', kickerFontSize: '', kickerLetterSpacing: '', kickerBottomSpace: '',
     };
     if (onBatchUpdate) onBatchUpdate(patch);
     else Object.entries(patch).forEach(([k, v]) => onUpdate(k, v));
@@ -284,6 +284,16 @@ export const HeadingStylesBlock: React.FC<HeadingStylesBlockProps> = ({
             step={0.01}
             min={-0.5}
             max={1}
+          />
+          <NumericUnitInput
+            label="Space Below Kicker"
+            value={styles.kickerBottomSpace || ''}
+            onChange={(v) => onUpdate('kickerBottomSpace', v)}
+            placeholder="0.75rem"
+            units={['rem', 'px', 'em']}
+            step={0.125}
+            min={0}
+            max={4}
           />
         </div>
       </AccordionGroup>

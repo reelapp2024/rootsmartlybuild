@@ -27,7 +27,7 @@ export const CounterStylesBlock: React.FC<CounterStylesBlockProps> = ({
     const patch: Record<string, any> = {
       counterMode: '', labelPosition: '',
       numberColor: '', subheadingColor: '', labelColor: '', color: '',
-      numberFontSize: '', labelFontSize: '',
+      numberFontSize: '', labelFontSize: '', labelTopSpace: '',
       numberFontWeight: '',
       backgroundColor: '', borderColor: '', borderWidth: '', borderRadius: '', padding: '',
       textAlign: '',
@@ -156,6 +156,16 @@ export const CounterStylesBlock: React.FC<CounterStylesBlockProps> = ({
             value={styles.labelFontSize || ''}
             onChange={(v) => onUpdate('labelFontSize', v)}
             placeholder="0.875rem"
+          />
+          <NumericUnitInput
+            label="Number ↔ Label Gap"
+            value={styles.labelTopSpace || ''}
+            onChange={(v) => onUpdate('labelTopSpace', v)}
+            placeholder="0.5rem"
+            units={['rem', 'px', 'em']}
+            step={0.125}
+            min={0}
+            max={4}
           />
         </div>
       </AccordionGroup>

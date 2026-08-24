@@ -124,10 +124,10 @@ export const ColumnStylesBlock: React.FC<BlockProps> = ({ styles, onUpdate, onBa
             <ButtonGroup
               value={styles.alignItems || 'flex-start'}
               options={[
-                { value: 'flex-start', label: 'Left' },
-                { value: 'center', label: 'Center' },
-                { value: 'flex-end', label: 'Right' },
-                { value: 'stretch', label: 'Stretch' },
+                { value: 'flex-start', label: 'Left', icon: 'fa-align-left' },
+                { value: 'center', label: 'Center', icon: 'fa-align-center' },
+                { value: 'flex-end', label: 'Right', icon: 'fa-align-right' },
+                { value: 'stretch', label: 'Stretch', icon: 'fa-arrows-left-right' },
               ]}
               onChange={(v) => onUpdate('alignItems', v)}
             />

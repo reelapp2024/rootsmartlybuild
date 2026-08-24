@@ -34,7 +34,7 @@ export const AlertBoxStylesBlock: React.FC<AlertBoxStylesBlockProps> = ({
       borderWidth: '', borderStyle: '', borderRadius: '',
       borderLeftWidth: '', borderLeftStyle: '', borderLeftColor: '',
       borderTopWidth: '', borderTopStyle: '', borderTopColor: '',
-      iconSize: '', padding: '',
+      iconSize: '', padding: '', titleBottomSpace: '',
     };
     if (onBatchUpdate) onBatchUpdate(patch);
     else Object.entries(patch).forEach(([k, v]) => onUpdate(k, v));
@@ -158,6 +158,16 @@ export const AlertBoxStylesBlock: React.FC<AlertBoxStylesBlockProps> = ({
             onChange={(v) => onUpdate('borderRadius', v)}
             placeholder="0.5rem"
             units={['rem', 'px', 'em', '%']}
+            step={0.125}
+            min={0}
+            max={4}
+          />
+          <NumericUnitInput
+            label="Title ↔ Description Gap"
+            value={styles.titleBottomSpace || ''}
+            onChange={(v) => onUpdate('titleBottomSpace', v)}
+            placeholder="0.25rem"
+            units={['rem', 'px', 'em']}
             step={0.125}
             min={0}
             max={4}

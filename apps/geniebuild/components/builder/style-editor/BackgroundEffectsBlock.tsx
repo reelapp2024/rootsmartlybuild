@@ -1,5 +1,5 @@
 import React from 'react';
-import { ColorInput, RangeInput, SelectInput } from '../inputs';
+import { AccordionGroup, ColorInput, RangeInput, SelectInput } from '../inputs';
 
 interface BackgroundEffectsBlockProps {
   styles: any;
@@ -66,10 +66,10 @@ export const BackgroundEffectsBlock: React.FC<BackgroundEffectsBlockProps> = ({ 
 };
 
 export const SectionDividersBlock: React.FC<BackgroundEffectsBlockProps> = ({ styles, onUpdate }) => {
+  const hasDivider = (styles.topDividerShape && styles.topDividerShape !== 'none')
+    || (styles.bottomDividerShape && styles.bottomDividerShape !== 'none');
   return (
-    <div className="space-y-4 pt-4 border-t border-white/10">
-      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Section Dividers</h4>
-
+    <AccordionGroup title="Shape Dividers" defaultOpen={!!hasDivider}>
       <div className="space-y-4">
         <h5 className="text-[9px] font-bold text-white/30 uppercase tracking-wider">Top Divider</h5>
         <SelectInput
@@ -131,6 +131,6 @@ export const SectionDividersBlock: React.FC<BackgroundEffectsBlockProps> = ({ st
           </>
         )}
       </div>
-    </div>
+    </AccordionGroup>
   );
 };

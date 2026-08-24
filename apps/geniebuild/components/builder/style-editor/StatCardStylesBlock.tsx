@@ -112,6 +112,7 @@ export const StatCardStylesBlock: React.FC<StatCardStylesBlockProps> = ({
         <div className="space-y-3">
           <NumericUnitInput label="Icon ↔ Value Gap" value={styles.iconGap || ''} onChange={(v) => onUpdate('iconGap', v)} placeholder="1rem" units={['rem', 'px', 'em']} step={1} min={0} max={80} />
           <NumericUnitInput label="Value ↔ Label Spacing" value={styles.valueBottomSpace || ''} onChange={(v) => onUpdate('valueBottomSpace', v)} placeholder="0.75rem" units={['rem', 'px', 'em']} step={1} min={0} max={80} />
+          <NumericUnitInput label="Label ↔ Sub-text Spacing" value={styles.labelBottomSpace || ''} onChange={(v) => onUpdate('labelBottomSpace', v)} placeholder="0.25rem" units={['rem', 'px', 'em']} step={0.125} min={0} max={4} />
           <TextInput label="Card Padding" value={styles.padding || ''} onChange={(v) => onUpdate('padding', v)} placeholder="1.5rem" />
           <ColorInput label={styles.backgroundColor ? 'Background' : 'Background (Inherited)'} value={styles.backgroundColor || ''} onChange={(v) => onUpdate('backgroundColor', v)} onReset={() => onUpdate('backgroundColor', '')} />
           <ColorInput label={styles.borderColor ? 'Border Color' : 'Border Color (Inherited)'} value={styles.borderColor || ''} onChange={(v) => onUpdate('borderColor', v)} onReset={() => onUpdate('borderColor', '')} />

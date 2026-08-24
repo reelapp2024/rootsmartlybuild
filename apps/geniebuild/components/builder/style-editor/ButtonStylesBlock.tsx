@@ -1,5 +1,5 @@
 import React from 'react';
-import { AccordionGroup, ColorInput, RangeInput, SelectInput, TextInput } from '../inputs';
+import { AccordionGroup, ColorInput, NumericUnitInput, RangeInput, SelectInput, TextInput } from '../inputs';
 import { TypographyControls } from './TypographyControls';
 
 interface ButtonStylesBlockProps {
@@ -28,12 +28,13 @@ export const ButtonStylesBlock: React.FC<ButtonStylesBlockProps> = ({ styles, on
               e.preventDefault();
               e.stopPropagation();
               if (onBatchUpdate) {
-                onBatchUpdate({ backgroundColor: '', color: '', padding: undefined, buttonVariant: undefined });
+                onBatchUpdate({ backgroundColor: '', color: '', padding: undefined, buttonVariant: undefined, subTextTopSpace: '' });
               } else {
                 onUpdate('backgroundColor', '');
                 onUpdate('color', '');
                 onUpdate('padding', undefined);
                 onUpdate('buttonVariant', undefined);
+                onUpdate('subTextTopSpace', '');
               }
             }}
             className="w-full px-3 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-600/40 text-blue-400 rounded text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer"
@@ -225,6 +226,16 @@ export const ButtonStylesBlock: React.FC<ButtonStylesBlockProps> = ({ styles, on
             value={typeof styles.padding === 'string' ? styles.padding : ''}
             onChange={(v) => onUpdate('padding', v)}
             placeholder="12px 24px"
+          />
+          <NumericUnitInput
+            label="Sub-text Gap (Call to Action)"
+            value={styles.subTextTopSpace || ''}
+            onChange={(v) => onUpdate('subTextTopSpace', v)}
+            placeholder="0.5rem"
+            units={['rem', 'px', 'em']}
+            step={0.125}
+            min={0}
+            max={4}
           />
         </div>
       </AccordionGroup>
