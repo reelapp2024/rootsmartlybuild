@@ -43,6 +43,34 @@ EP_SAVE_DESIGN = f"{API_BASE}/admin/v1/saveWebsiteDesignData"  # SAVE the page/s
 EP_THEME = f"{API_BASE}/admin/v1/updateProjectTheme"          # SAVE the colour theme (this is what the site actually renders)
 EP_LIST = f"{API_BASE}/admin/v1/getUserProjects"             # list my sites
 EP_PROGRESS = f"{API_BASE}/admin/v1/getProjectsSectionGenerationProgress"  # build status
+EP_IMAGES = f"{API_BASE}/admin/v1/generateUnsplashImages"   # real per-niche stock images (Unsplash)
+
+# --- hosting + domain endpoints (all under /admin/v1) ---
+# These wrap the SAME flow the admin panel uses to host a finished site and
+# connect a custom domain. No backend code is changed — the MCP only calls them.
+EP_ADD_HOSTING = f"{API_BASE}/admin/v1/addHosting"                 # add an FTP/cPanel/SSH/VPS connection
+EP_VERIFY_HOSTING = f"{API_BASE}/admin/v1/verifyHosting"          # test a saved hosting connection works
+EP_MY_HOSTINGS = f"{API_BASE}/admin/v1/getMyHostings"             # list my hosting connections
+EP_DEL_HOSTING = f"{API_BASE}/admin/v1/deleteHosting"            # delete one (/:id)
+EP_BROWSE_DIRS = f"{API_BASE}/admin/v1/browseHostingDirectories"  # list folders on the host
+EP_LINK_HOSTING = f"{API_BASE}/admin/v1/linkProjectToHosting"    # link project+domain+rootPath to a host
+EP_LINKED_HOSTINGS = f"{API_BASE}/admin/v1/getLinkedHostings"    # linked hostings for a project (/:projectId)
+EP_BUILD_STATIC = f"{API_BASE}/admin/v1/buildStaticSite"          # build the static site for a project
+EP_BUILD_STATUS = f"{API_BASE}/admin/v1/getStaticBuildStatus"    # poll the static build status
+EP_UPLOAD_BUILD = f"{API_BASE}/admin/v1/uploadToHostingFromBuild"  # push the built site to the host
+EP_DEPLOY_INFO = f"{API_BASE}/admin/v1/getDeployInfo"            # deployment info for a project
+EP_CONNECT_DOMAIN = f"{API_BASE}/admin/v1/connectDomain"        # connect a custom domain (VPS/our hosting)
+EP_UNLINK_DOMAIN = f"{API_BASE}/admin/v1/unlinkDomain"          # disconnect a domain
+EP_CHECK_DOMAIN = f"{API_BASE}/admin/v1/checkDomain"            # check a domain's status
+EP_UPDATE_DOMAIN = f"{API_BASE}/admin/v1/updateProjectDomain"    # set/update the project's domain
+EP_DOMAINS_ADD = f"{API_BASE}/admin/v1/domains"                  # add a domain record
+EP_DOMAINS_LIST = f"{API_BASE}/admin/v1/domains/list"           # list domain records
+EP_DOMAIN_VERIFY = f"{API_BASE}/admin/v1/domains/verify"        # verify a domain (dns/file/meta)
+
+# --- sub-admin (team) endpoints ---
+# Same flow the admin panel's "Sub Admin" page uses to add team members.
+EP_CREATE_USER = f"{API_BASE}/admin/v1/create_user"             # create a sub-admin / user
+EP_FETCH_USERS = f"{API_BASE}/admin/v1/fetch_users"            # list sub-admins / users (paged)
 
 CREATE_ENDPOINT = EP_BUSINESS  # kept for backwards-compat
 
@@ -67,6 +95,64 @@ async def _post(url: str, payload: dict) -> tuple[int, dict | str]:
         return resp.status_code, resp.json()
     except Exception:
         return resp.status_code, resp.text
+
+
+def _auth_headers_noct() -> dict:
+    """Auth headers WITHOUT a forced Content-Type — for multipart/form posts
+    (httpx sets the multipart boundary itself)."""
+    h = {}
+    if API_TOKEN:
+        token = API_TOKEN if API_TOKEN.lower().startswith("bearer ") else f"Bearer {API_TOKEN}"
+        h["Authorization"] = token
+    return h
+
+
+async def _post_form(url: str, fields: dict) -> tuple[int, dict | str]:
+    """POST as multipart/form-data → (status, json_or_text). The hosting/domain
+    endpoints use FormData (like the admin panel), not JSON."""
+    data = {k: ("" if v is None else str(v)) for k, v in fields.items()}
+    async with httpx.AsyncClient(timeout=150) as client:
+        # httpx `data=` with `files={}` forces multipart encoding + boundary.
+        resp = await client.post(url, data=data, files={"_": ("", "")}, headers=_auth_headers_noct())
+    try:
+        return resp.status_code, resp.json()
+    except Exception:
+        return resp.status_code, resp.text
+
+
+async def _get(url: str) -> tuple[int, dict | str]:
+    """GET helper → (status_code, parsed_json_or_text)."""
+    async with httpx.AsyncClient(timeout=150) as client:
+        resp = await client.get(url, headers=_auth_headers())
+    try:
+        return resp.status_code, resp.json()
+    except Exception:
+        return resp.status_code, resp.text
+
+
+async def _fetch_images(query: str, n: int = 6) -> list[str]:
+    """Fetch real Unsplash image URLs for a niche/query via the backend. Returns
+    up to `n` urls; empty list on any failure (caller falls back to placeholders).
+    This is why MCP-built sites get varied, on-topic photos instead of one repeated
+    stock image."""
+    q = (query or "").strip()
+    if not q:
+        return []
+    try:
+        code, data = await _post(EP_IMAGES, {"query": q})
+    except Exception:
+        return []
+    if code >= 400 or not isinstance(data, dict):
+        return []
+    imgs = data.get("images") or []
+    urls: list[str] = []
+    for it in imgs:
+        u = (it.get("url") if isinstance(it, dict) else None) or (it if isinstance(it, str) else None)
+        if isinstance(u, str) and u.strip():
+            urls.append(u.strip())
+        if len(urls) >= n:
+            break
+    return urls
 
 
 def _build_create_payload(business_name, business_type, services, location, focus_keyword, keywords, with_images):
@@ -377,9 +463,19 @@ async def builder_create_website(
         if isinstance(c, dict) and c.get("name"):
             page_id_by_name[str(c["name"]).lower()] = c.get("pageId")
 
+    # 2.5) Fetch REAL, on-topic images for this business so the site doesn't fall
+    #      back to the one repeated placeholder photo. We pull a small pool from the
+    #      niche and drop them into image-bearing sections' content.images[].
+    img_query = " ".join(x for x in [business_name.strip(), business_type.strip()] if x) or business_type.strip()
+    niche_images = await _fetch_images(img_query or "business service", 8)
+    # sections that visually want a photo
+    IMG_SECTIONS = {"hero", "about", "abouthero", "services", "servicedetailhero",
+                    "serviceslisthero", "whychooseus", "cta", "features", "gallery"}
+
     # 3) Save the AI-written content per page (this is what skips OpenAI).
     saved_sections = 0
     save_errors = []
+    img_i = 0
     for pg in pages:
         pname = str(pg.get("name") or pg.get("id") or "").strip().lower()
         page_id = page_id_by_name.get(pname)
@@ -390,7 +486,16 @@ async def builder_create_website(
             sid = str(sec.get("section_id") or sec.get("sectionId") or "").strip().lower()
             if not sid:
                 continue
-            sections.append({"sectionId": sid, "content": sec.get("content") or {}})
+            content = dict(sec.get("content") or {})
+            # Inject a real image if this section wants one and the author didn't
+            # already provide images / imageUrl.
+            if (niche_images and sid in IMG_SECTIONS
+                    and not content.get("images") and not content.get("imageUrl")):
+                url = niche_images[img_i % len(niche_images)]
+                img_i += 1
+                content["images"] = [{"url": url}]
+                content["imageUrl"] = url
+            sections.append({"sectionId": sid, "content": content})
         if not sections:
             continue
         codeS, dataS = await _post(EP_SAVE_CONTENT, {"projectId": project_id, "pageId": page_id, "sections": sections})
@@ -704,6 +809,314 @@ async def builder_arrange_section(
         return f"[ERROR] Save failed ({codeD}): {str(dataD)[:300]}"
     return (f"[OK] Arranged a freeform Canvas section on '{page}' with {len(canvas_elements)} top-level "
             f"elements. Fully editable in the builder.")
+
+
+# ===========================================================================
+# HOSTING + DOMAIN
+# ---------------------------------------------------------------------------
+# These tools take a site you built with builder_create_website and (1) connect
+# a hosting account, (2) build + deploy the site to it, and (3) connect a custom
+# domain. They call the exact endpoints the admin panel uses — nothing new on
+# the backend. Typical order:
+#   list_hostings → add_hosting (if none) → deploy_site → connect_domain
+# ===========================================================================
+
+@mcp.tool()
+async def builder_list_hostings() -> str:
+    """List the user's saved hosting connections (FTP / cPanel / SSH / VPS).
+    Use this before deploying to see what hosts are available and their ids."""
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    code, data = await _get(EP_MY_HOSTINGS)
+    if code == 401:
+        return "[ERROR] Auth failed (401). Refresh BUILDER_API_TOKEN."
+    if code >= 400:
+        return f"[ERROR] Could not list hostings ({code}): {str(data)[:300]}"
+    rows = (data.get("data") if isinstance(data, dict) else data) or []
+    if not rows:
+        return "No hosting connections yet. Add one with builder_add_hosting."
+    out = [f"{len(rows)} hosting connection(s):"]
+    for h in rows:
+        out.append(
+            f"  • id={h.get('_id')} | type={h.get('connectionType')} | "
+            f"status={h.get('status')} | ours={h.get('isOur')}"
+        )
+    return "\n".join(out)
+
+
+@mcp.tool()
+async def builder_add_hosting(connection_type: str, connection_config: str) -> str:
+    """Add a hosting connection so a site can be deployed to it.
+
+    Args:
+        connection_type: one of 'ftp', 'cpanel', 'ssh', 'vps'.
+        connection_config: the connection details as a JSON string. Shape depends
+            on the type, e.g. FTP:
+              '{"host":"ftp.example.com","port":21,"user":"u","password":"p"}'
+            cPanel: '{"host":"...","username":"...","apiToken":"..."}'
+            SSH/VPS: '{"host":"...","port":22,"user":"...","password":"..."}'
+    """
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    ct = (connection_type or "").strip().lower()
+    if ct not in ("ftp", "cpanel", "ssh", "vps"):
+        return "[ERROR] connection_type must be ftp | cpanel | ssh | vps."
+    if not connection_config.strip():
+        return "[ERROR] connection_config (JSON string) is required."
+    code, data = await _post_form(EP_ADD_HOSTING, {
+        "connectionType": ct,
+        "connectionConfig": connection_config.strip(),
+    })
+    if code == 401:
+        return "[ERROR] Auth failed (401). Refresh BUILDER_API_TOKEN."
+    if code >= 400:
+        return f"[ERROR] Add hosting failed ({code}): {str(data)[:300]}"
+    return f"[OK] Hosting connection added ({ct}). Use builder_list_hostings to get its id."
+
+
+@mcp.tool()
+async def builder_verify_hosting(hosting_id: str) -> str:
+    """Test that a saved hosting connection actually works (connects to the
+    FTP/cPanel/SSH server). Run this after builder_add_hosting, before deploying.
+
+    Args:
+        hosting_id: the hosting connection id (from builder_list_hostings).
+    """
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    if not hosting_id.strip():
+        return "[ERROR] hosting_id is required."
+    code, data = await _post(EP_VERIFY_HOSTING, {"hostingId": hosting_id.strip()})
+    if code == 401:
+        return "[ERROR] Auth failed (401). Refresh BUILDER_API_TOKEN."
+    if code == 404:
+        return "[ERROR] Hosting not found. Check the id with builder_list_hostings."
+    if code >= 400:
+        msg = data.get("message") if isinstance(data, dict) else str(data)
+        return f"[FAILED] Connection test failed: {str(msg)[:300]}"
+    return "[OK] Hosting connection verified — it connects. Ready to deploy."
+
+
+@mcp.tool()
+async def builder_deploy_site(project_id: str, hosting_id: str = "", domain_name: str = "", root_path: str = "") -> str:
+    """Build the site and deploy it to a hosting connection.
+
+    Runs the same 3-step flow as the admin panel: build the static site, then
+    push the build to the host. If hosting_id + root_path are given, the project
+    is linked to that host first.
+
+    Args:
+        project_id: the site's projectId (from builder_create_website / builder_list_websites).
+        hosting_id: the target hosting connection id (from builder_list_hostings). Optional
+            if the project is already linked to a host.
+        domain_name: the domain the site will serve on (e.g. "example.com"). Optional.
+        root_path: the folder on the host to deploy into (e.g. "/public_html"). Optional.
+    """
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    if not project_id.strip():
+        return "[ERROR] project_id is required."
+    steps = []
+
+    # 1) link project → hosting (only if a host + path were provided)
+    if hosting_id.strip() and root_path.strip():
+        codeL, dataL = await _post_form(EP_LINK_HOSTING, {
+            "hostingId": hosting_id.strip(),
+            "projectId": project_id.strip(),
+            "domainName": domain_name.strip(),
+            "rootPath": root_path.strip(),
+        })
+        if codeL >= 400:
+            return f"[ERROR] Link project→hosting failed ({codeL}): {str(dataL)[:300]}"
+        steps.append("linked project to hosting")
+
+    # 2) build the static site
+    codeB, dataB = await _post(EP_BUILD_STATIC, {"projectId": project_id.strip()})
+    if codeB >= 400:
+        return f"[ERROR] Build static site failed ({codeB}): {str(dataB)[:300]}"
+    steps.append("build started")
+
+    # 3) push the build to the host
+    codeU, dataU = await _post(EP_UPLOAD_BUILD, {"projectId": project_id.strip()})
+    if codeU >= 400:
+        return (f"[PARTIAL] {', '.join(steps)}. Upload to host failed ({codeU}): "
+                f"{str(dataU)[:250]}. Check build status with builder_deploy_status.")
+    steps.append("uploaded to host")
+    return f"[OK] Deploy flow: {', '.join(steps)}. Check builder_deploy_status('{project_id}')."
+
+
+@mcp.tool()
+async def builder_deploy_status(project_id: str) -> str:
+    """Check the build / deployment status for a project after builder_deploy_site."""
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    if not project_id.strip():
+        return "[ERROR] project_id is required."
+    code, data = await _post(EP_DEPLOY_INFO, {"projectId": project_id.strip()})
+    if code >= 400:
+        # fall back to the static build status endpoint
+        code2, data2 = await _get(f"{EP_BUILD_STATUS}?projectId={project_id.strip()}")
+        if code2 >= 400:
+            return f"[ERROR] Could not read deploy status ({code}/{code2})."
+        return f"Build status: {str(data2)[:400]}"
+    return f"Deploy info: {str(data)[:500]}"
+
+
+@mcp.tool()
+async def builder_connect_domain(project_id: str, domain: str) -> str:
+    """Connect a custom domain to a deployed site.
+
+    Args:
+        project_id: the site's projectId.
+        domain: the domain to connect, e.g. "example.com".
+    """
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    if not project_id.strip() or not domain.strip():
+        return "[ERROR] project_id and domain are required."
+    dom = domain.strip().lower().replace("https://", "").replace("http://", "").strip("/")
+    # record the domain on the project, then connect it
+    await _post(EP_UPDATE_DOMAIN, {"projectId": project_id.strip(), "domain": dom})
+    code, data = await _post(EP_CONNECT_DOMAIN, {"projectId": project_id.strip(), "domain": dom})
+    if code == 401:
+        return "[ERROR] Auth failed (401). Refresh BUILDER_API_TOKEN."
+    if code >= 400:
+        return f"[ERROR] Connect domain failed ({code}): {str(data)[:300]}"
+    return (f"[OK] Domain '{dom}' connected to project {project_id}. "
+            f"If DNS isn't pointed yet, verify with builder_verify_domain.")
+
+
+@mcp.tool()
+async def builder_verify_domain(domain: str, method: str = "dns") -> str:
+    """Verify domain ownership / DNS pointing.
+
+    Args:
+        domain: the domain to verify, e.g. "example.com".
+        method: 'dns' (default), 'file', or 'meta'.
+    """
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    if not domain.strip():
+        return "[ERROR] domain is required."
+    m = (method or "dns").strip().lower()
+    if m not in ("dns", "file", "meta"):
+        return "[ERROR] method must be dns | file | meta."
+    code, data = await _post(EP_DOMAIN_VERIFY, {"domain": domain.strip().lower(), "method": m})
+    if code >= 400:
+        # fall back to checkDomain
+        code2, data2 = await _post(EP_CHECK_DOMAIN, {"domain": domain.strip().lower()})
+        return f"Domain check: {str(data2)[:400]}" if code2 < 400 else f"[ERROR] Verify failed ({code})."
+    ok = isinstance(data, dict) and (data.get("success") or data.get("found"))
+    return f"[{'OK' if ok else 'PENDING'}] {domain} ({m}): {str(data)[:300]}"
+
+
+@mcp.tool()
+async def builder_list_domains() -> str:
+    """List the user's domain records."""
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    code, data = await _get(EP_DOMAINS_LIST)
+    if code >= 400:
+        return f"[ERROR] Could not list domains ({code}): {str(data)[:300]}"
+    rows = (data.get("data") if isinstance(data, dict) else data) or []
+    if not rows:
+        return "No domains yet."
+    out = [f"{len(rows)} domain(s):"]
+    for d in rows:
+        out.append(f"  • {d.get('domain') or d.get('name')} | status={d.get('status')} | id={d.get('_id')}")
+    return "\n".join(out)
+
+
+# ===========================================================================
+# SUB-ADMIN (team members)
+# ---------------------------------------------------------------------------
+# Wraps the admin panel's "Sub Admin" page: add team members and list them.
+# ===========================================================================
+
+@mcp.tool()
+async def builder_list_subadmins(page: int = 1, limit: int = 20) -> str:
+    """List sub-admins / team members (paged).
+
+    Args:
+        page: page number (1-based).
+        limit: rows per page.
+    """
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    p = max(1, int(page or 1))
+    lim = max(1, min(int(limit or 20), 100))
+    code, data = await _get(f"{EP_FETCH_USERS}?page={p}&limit={lim}")
+    if code == 401:
+        return "[ERROR] Auth failed (401). Refresh BUILDER_API_TOKEN."
+    if code >= 400:
+        return f"[ERROR] Could not list sub-admins ({code}): {str(data)[:300]}"
+    rows = (data.get("data") if isinstance(data, dict) else data) or []
+    if isinstance(rows, dict):
+        rows = rows.get("users") or rows.get("rows") or []
+    if not rows:
+        return "No sub-admins yet. Add one with builder_add_subadmin."
+    out = [f"Sub-admins (page {p}):"]
+    for u in rows:
+        out.append(f"  • {u.get('fullName') or u.get('name')} | {u.get('email')} | "
+                   f"{u.get('phone','')} | id={u.get('_id')}")
+    return "\n".join(out)
+
+
+@mcp.tool()
+async def builder_add_subadmin(full_name: str, email: str, phone: str, password: str, address: str) -> str:
+    """Add a sub-admin / team member.
+
+    Args:
+        full_name: the person's name.
+        email: their login email (must be unique).
+        phone: their phone (must be unique).
+        password: an initial password for the account.
+        address: their address (required by the backend).
+    """
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    missing = [n for n, v in (
+        ("full_name", full_name), ("email", email), ("phone", phone),
+        ("password", password), ("address", address)) if not str(v).strip()]
+    if missing:
+        return f"[ERROR] Missing required field(s): {', '.join(missing)}."
+    code, data = await _post(EP_CREATE_USER, {
+        "fullName": full_name.strip(),
+        "email": email.strip(),
+        "phone": phone.strip(),
+        "password": password,
+        "address": address.strip(),
+        "type": 0,  # 0 = SubAdmin (same as the admin panel)
+    })
+    if code == 401:
+        return "[ERROR] Auth failed (401). Refresh BUILDER_API_TOKEN."
+    if code >= 400:
+        msg = data.get("message") if isinstance(data, dict) else str(data)
+        return f"[ERROR] Add sub-admin failed ({code}): {str(msg)[:300]}"
+    return f"[OK] Sub-admin '{full_name.strip()}' ({email.strip()}) created."
+
+
+@mcp.tool()
+async def builder_get_images(query: str, count: int = 6) -> str:
+    """Fetch real stock photo URLs (Unsplash) for a topic — use these in element
+    image fields so a site gets varied, on-topic photos instead of the repeated
+    placeholder. e.g. query="modern plumbing bathroom" or "gym workout".
+
+    Args:
+        query: what the photos should be of (business/niche/scene).
+        count: how many URLs to return (max 10).
+    """
+    if not API_TOKEN:
+        return "[ERROR] Not configured: set BUILDER_API_TOKEN."
+    if not query.strip():
+        return "[ERROR] query is required (e.g. 'plumbing service van')."
+    urls = await _fetch_images(query.strip(), max(1, min(int(count or 6), 10)))
+    if not urls:
+        return ("[none] No images returned (check UNSPLASH_ACCESS_KEY on the backend). "
+                "Use your own image URLs, or the builder will show a varied placeholder.")
+    out = [f"{len(urls)} image URL(s) for '{query.strip()}':"]
+    out.extend(f"  {i+1}. {u}" for i, u in enumerate(urls))
+    return "\n".join(out)
 
 
 @mcp.tool()
