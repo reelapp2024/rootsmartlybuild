@@ -352,6 +352,12 @@ const getSafeStyle = (style: any): React.CSSProperties => {
   delete css.hiddenOnDesktop;
   delete css.hiddenOnTablet;
   delete css.hiddenOnMobile;
+  // Advanced-tab meta keys — applied on the wrapper (id/class/scoped CSS/anim),
+  // not valid inline CSS, so strip them from the element's inline style.
+  delete css.customId;
+  delete css.customClasses;
+  delete css.customCss;
+  delete css.entranceAnimation;
   
   // Remove fontFamily if it's undefined, null, or empty string (let CSS theme handle it)
   if (!css.fontFamily || css.fontFamily.trim() === '') {

@@ -269,6 +269,19 @@ export const CanvasFreeform: React.FC<Props> = ({
         .${uid} .cv-el { position:relative; }
         .${uid} .cv-el > .cv-tools { opacity:0; transition:opacity .15s; }
         .${uid} .cv-el:hover > .cv-tools, .${uid} .cv-el.cv-active > .cv-tools { opacity:1; }
+        /* Element entrance animations (Advanced tab) */
+        .${uid} .cv-anim { animation-duration:.7s; animation-fill-mode:both; animation-timing-function:cubic-bezier(.22,.61,.36,1); }
+        .${uid} .cv-anim-fade-up   { animation-name:cvAnimFadeUp; }
+        .${uid} .cv-anim-fade-in   { animation-name:cvAnimFadeIn; }
+        .${uid} .cv-anim-slide-left  { animation-name:cvAnimSlideLeft; }
+        .${uid} .cv-anim-slide-right { animation-name:cvAnimSlideRight; }
+        .${uid} .cv-anim-zoom-in   { animation-name:cvAnimZoomIn; }
+        @keyframes cvAnimFadeUp   { from{opacity:0;transform:translateY(24px);} to{opacity:1;transform:none;} }
+        @keyframes cvAnimFadeIn   { from{opacity:0;} to{opacity:1;} }
+        @keyframes cvAnimSlideLeft  { from{opacity:0;transform:translateX(40px);} to{opacity:1;transform:none;} }
+        @keyframes cvAnimSlideRight { from{opacity:0;transform:translateX(-40px);} to{opacity:1;transform:none;} }
+        @keyframes cvAnimZoomIn   { from{opacity:0;transform:scale(.9);} to{opacity:1;transform:none;} }
+        @media (prefers-reduced-motion: reduce) { .${uid} .cv-anim { animation:none; } }
       `}</style>
 
       {/* Image-only background overlay */}
@@ -306,10 +319,20 @@ export const CanvasFreeform: React.FC<Props> = ({
             const curWidth = String((el.style as any)?.width || '');
             const widthKey = curWidth === '100%' ? 'full' : curWidth === '50%' ? 'half' : curWidth === 'max-content' ? 'auto' : '';
             const isOver = overIndex === i && dragIndex !== null && dragIndex !== i;
+            // Element Advanced tab: custom id / classes / CSS / entrance animation.
+            const est = (el.style || {}) as any;
+            const elCustomId = String(est.customId || '').replace(/[^A-Za-z0-9_-]/g, '') || undefined;
+            const elCustomClasses = String(est.customClasses || '').trim();
+            const elAnim = est.entranceAnimation || '';
+            const elCssScope = elCustomId || `cvel-${String(el.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
+            const elScopedCss = typeof est.customCss === 'string' && est.customCss.trim()
+              ? est.customCss.replace(/selector/g, `#${elCssScope}, .${elCssScope}`)
+              : '';
             return (
               <div
                 key={el.id}
-                className={`cv-el ${active ? 'cv-active' : ''}`}
+                id={elCustomId}
+                className={`cv-el ${elCssScope} ${elCustomClasses} ${elAnim ? `cv-anim cv-anim-${elAnim}` : ''} ${active ? 'cv-active' : ''}`}
                 onDragOver={showItemTools ? (e) => { e.preventDefault(); if (overIndex !== i) setOverIndex(i); } : undefined}
                 onDrop={showItemTools ? (e) => { e.preventDefault(); if (dragIndex !== null) reorderTo(dragIndex, i); setDragIndex(null); setOverIndex(null); } : undefined}
                 style={{
@@ -319,6 +342,7 @@ export const CanvasFreeform: React.FC<Props> = ({
                   ...(isOver ? { boxShadow: `0 -3px 0 0 ${accent}` } : {}),
                 }}
               >
+                {elScopedCss && <style>{elScopedCss}</style>}
                 {showItemTools && (
                   <div className="cv-tools absolute -top-3 right-0 z-20 flex items-center gap-1">
                     {/* Drag handle — reorder by dragging (Elementor-style) */}

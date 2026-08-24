@@ -88,7 +88,7 @@ import { GlobalThemePanel } from './components/builder/layout/GlobalThemePanel';
 import { SectionSidebarHeader } from './components/builder/layout/SectionSidebarHeader';
 import { SectionSidebarBody } from './components/builder/layout/SectionSidebarBody';
 import { formatVariantName } from './components/builder/state/variantNameFormatter';
-import { BadgeStylesBlock, CardStylesBlock, AccordionStylesBlock, ButtonStylesBlock, FeatureBoxStylesBlock, StatCardStylesBlock, StarRatingStylesBlock, RowStylesBlock, ColumnStylesBlock, TestimonialCardStylesBlock, TrustStripStylesBlock, ListStylesBlock, NavMenuStylesBlock, AlertBoxStylesBlock, DividerStylesBlock, IconStylesBlock, HighlightTextStylesBlock, BlockquoteStylesBlock, CounterStylesBlock, ProgressBarStylesBlock, CountdownTimerStylesBlock, ToggleStylesBlock, TabsStylesBlock, PricingTableStylesBlock, PricingItemStylesBlock, FlipBoxStylesBlock, VideoStylesBlock, ImageBoxStylesBlock, LogoCloudStylesBlock, UserAvatarsStylesBlock, ReviewCarouselStylesBlock, HeadingStylesBlock, TextStylesBlock, TypographyBlock, LayoutSpacingBlock, BorderBlock, SectionImageSettingsBlock, ElementBackgroundOverlayBlock, ImageElementStylesBlock, SectionBackgroundBlock, BulkElementStylesBlock, ElementBackgroundBlock, SectionLayoutPresetsBlock, SectionDesignExtrasBlock, SectionDividersBlock } from './components/builder/style-editor';
+import { BadgeStylesBlock, CardStylesBlock, AccordionStylesBlock, ButtonStylesBlock, FeatureBoxStylesBlock, StatCardStylesBlock, StarRatingStylesBlock, RowStylesBlock, ColumnStylesBlock, TestimonialCardStylesBlock, TrustStripStylesBlock, ListStylesBlock, NavMenuStylesBlock, AlertBoxStylesBlock, DividerStylesBlock, IconStylesBlock, HighlightTextStylesBlock, BlockquoteStylesBlock, CounterStylesBlock, ProgressBarStylesBlock, CountdownTimerStylesBlock, ToggleStylesBlock, TabsStylesBlock, PricingTableStylesBlock, PricingItemStylesBlock, FlipBoxStylesBlock, VideoStylesBlock, ImageBoxStylesBlock, LogoCloudStylesBlock, UserAvatarsStylesBlock, ReviewCarouselStylesBlock, HeadingStylesBlock, TextStylesBlock, TypographyBlock, LayoutSpacingBlock, BorderBlock, SectionImageSettingsBlock, ElementBackgroundOverlayBlock, ImageElementStylesBlock, SectionBackgroundBlock, BulkElementStylesBlock, ElementBackgroundBlock, SectionLayoutPresetsBlock, SectionDesignExtrasBlock, SectionDividersBlock, ElementAdvancedBlock } from './components/builder/style-editor';
 
 import {
   resolveClientProjectId,
@@ -1871,6 +1871,11 @@ const AppContent: React.FC = () => {
               )}
               {showBorderBlock && (
                   <BorderBlock styles={styles} onUpdate={onUpdate} onBatchUpdate={onBatchUpdate} />
+              )}
+              {/* Element Advanced tab — transform, position, entrance animation,
+                  custom CSS/ID/classes (Elementor parity). */}
+              {isElementAdvancedTab && (
+                  <ElementAdvancedBlock styles={styles} onUpdate={onUpdate} onBatchUpdate={onBatchUpdate} elementId={sectionId} />
               )}
               {isElementDesignTab
                 && !ELEMENTS_WITH_BUILTIN_TYPOGRAPHY.has(elementType || '') && (
