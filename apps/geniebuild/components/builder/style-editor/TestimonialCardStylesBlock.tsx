@@ -81,6 +81,29 @@ export const TestimonialCardStylesBlock: React.FC<TestimonialCardStylesBlockProp
           <i className="fa-solid fa-rotate-left"></i> Reset to Theme
         </button>
       </div>
+      {/* ─────────── LAYOUT ─────────── (6 variants, was content-only) */}
+      <AccordionGroup title="Layout" defaultOpen={true}>
+        <div className="grid grid-cols-2 gap-1.5">
+          {[
+            { value: 'classic', label: 'Classic' },
+            { value: 'compact', label: 'Compact' },
+            { value: 'hero', label: 'Hero' },
+            { value: 'minimal', label: 'Minimal' },
+            { value: 'quote-first', label: 'Quote First' },
+            { value: 'split', label: 'Split' },
+          ].map(opt => {
+            const active = (styles.cardLayout || 'classic') === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onUpdate('cardLayout', opt.value)}
+                className={`py-2 text-[10px] font-bold rounded border transition-all ${active ? 'bg-blue-500/20 border-blue-500 text-blue-300' : 'bg-[#151515] border-[#333] text-white/50 hover:border-[#555]'}`}
+              >{opt.label}</button>
+            );
+          })}
+        </div>
+      </AccordionGroup>
       {/* ─────────── QUOTE ─────────── */}
       <AccordionGroup title="Quote Text" defaultOpen={true}>
         <div className="space-y-4">

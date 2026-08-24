@@ -3363,7 +3363,10 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             // Layout variant — 6 options
             type CardLayout = 'classic' | 'compact' | 'hero' | 'minimal' | 'quote-first' | 'split';
             const ALLOWED: CardLayout[] = ['classic','compact','hero','minimal','quote-first','split'];
-            const layout: CardLayout = (ALLOWED as string[]).includes(c.cardLayout) ? c.cardLayout : 'classic';
+            // Accept the layout from content OR style (many blocks/AI write it on
+            // the style object) so a testimonial isn't stuck on 'classic' by default.
+            const tcLayoutRaw = c.cardLayout || (renderStyle as any).cardLayout || (renderStyle as any).testimonialLayout;
+            const layout: CardLayout = (ALLOWED as string[]).includes(tcLayoutRaw) ? tcLayoutRaw : 'classic';
 
             // Resting / hover shadow — neutral, no accent glow
             const restShadow  = renderStyle.boxShadow || '0 1px 2px rgba(15,23,42,0.04)';
