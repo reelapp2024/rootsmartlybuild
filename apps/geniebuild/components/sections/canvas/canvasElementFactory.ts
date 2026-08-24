@@ -52,6 +52,7 @@ export const PALETTE_ELEMENTS: PaletteItem[] = [
   { type: 'trust-strip',   label: 'Trust Strip',  icon: 'fa-shield-halved',  group: 'Content' },
   { type: 'testimonial-card', label: 'Testimonial', icon: 'fa-comment',      group: 'Content' },
   // Interactive
+  { type: 'form',          label: 'Form',         icon: 'fa-list-check',     group: 'Interactive' },
   { type: 'call-to-action',label: 'CTA Block',    icon: 'fa-rectangle-ad',   group: 'Interactive' },
   { type: 'accordion',     label: 'Accordion',    icon: 'fa-bars-staggered', group: 'Interactive' },
   { type: 'tabs',          label: 'Tabs',         icon: 'fa-window-restore',  group: 'Interactive' },
@@ -114,6 +115,21 @@ function defaultForType(type: WebsiteElement['type']): { content: any; style: an
     case 'flip-box':       return { content: { frontTitle: 'Hover me', frontDesc: 'Front side', backTitle: 'Back side', backDesc: 'More detail on the back.', backBtnLabel: 'Learn more' }, style: {} };
     case 'countdown-timer':return { content: { text: 'Offer ends in', targetOffsetDays: 7 }, style: {} };
     case 'alert-box':      return { content: { message: 'This is an informational alert.', type: 'info' }, style: { borderRadius: '10px', padding: '14px 18px' } };
+    case 'form' as any:    return {
+      content: {
+        heading: 'Get in touch',
+        subheading: 'Fill the form and we’ll get back to you.',
+        fields: [
+          { name: 'name',    label: 'Name',    type: 'text',     required: true },
+          { name: 'email',   label: 'Email',   type: 'email',    required: true },
+          { name: 'phone',   label: 'Phone',   type: 'tel',      required: false },
+          { name: 'message', label: 'Message', type: 'textarea', required: false },
+        ],
+        buttonText: 'Send message',
+        successMessage: 'Thanks! We’ll be in touch soon.',
+      },
+      style: { padding: '1.5rem', borderRadius: '1rem', borderWidth: '1px', borderStyle: 'solid' },
+    };
     case 'row' as any:     return {
       content: {
         columnCount: 2,

@@ -31,6 +31,7 @@ import { resolveSectionBackground } from '../../utils/sectionBackground';
 import { ELEMENT_DEFAULTS, IMAGE_BOX_DEFAULT_TITLE_HEADING, PRESET_THEMES } from '../../constants';
 import * as LucideIcons from 'lucide-react';
 import { StatCardValue } from './StatCardValue';
+import { CanvasFormElement } from './CanvasFormElement';
 import { resolveElementBackground } from '../builder/style-editor/ElementBackgroundBlock';
 import {
   resolveSectionImageUrl,
@@ -5469,6 +5470,29 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             );
         }
         
+        case 'form' as any: {
+            const formChrome: React.CSSProperties = {
+                ...safeStyle,
+                ...resolveElementChrome(safeStyle, theme, {
+                    padding: '1.5rem', radius: '1rem',
+                    bg: theme?.cardBackgroundColor || 'transparent',
+                    borderWidth: safeStyle.borderWidth || '1px',
+                    borderColor: theme?.cardBorderColor || 'rgba(0,0,0,0.08)',
+                }),
+            };
+            return (
+                <div key={id} className={selectedClass} onClick={(e) => handleClick(e, el)} style={formChrome}>
+                    <CanvasFormElement
+                        content={content}
+                        style={renderStyle}
+                        theme={theme}
+                        readOnly={!!readOnly}
+                        formId={(content as any)?.formId || (sectionStyles as any)?.projectFormId || ''}
+                    />
+                </div>
+            );
+        }
+
         case 'alert-box': {
             // Variant palette (used as fallbacks; user can override every color via style props).
             const VARIANT_PALETTE: Record<string, { bg: string; border: string; text: string; icon: string }> = {

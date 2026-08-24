@@ -1850,7 +1850,7 @@ const AppContent: React.FC = () => {
           'counter', 'progress-bar', 'countdown-timer', 'toggle', 'tabs', 'pricing-table',
           'pricing-item', 'flip-box', 'image-box', 'logo-cloud', 'user-avatars', 'review-carousel',
           'button', 'call-to-action', 'cta-button', 'heading', 'text', 'image', 'video',
-          'divider', 'nav-menu', 'spacer', 'star-rating', 'row', 'column',
+          'divider', 'nav-menu', 'spacer', 'star-rating', 'row', 'column', 'form',
       ]);
 
       return (

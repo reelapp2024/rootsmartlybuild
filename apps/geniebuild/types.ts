@@ -12,6 +12,8 @@ export type ElementType =
   // Layout
   | 'row'
   | 'column'
+  // Interactive
+  | 'form'
   // Basic
   | 'card'
   | 'heading'
