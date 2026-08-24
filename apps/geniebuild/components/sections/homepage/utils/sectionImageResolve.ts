@@ -1,9 +1,42 @@
 import type { Section } from '../../../../types';
 import { toAbsoluteMediaUrl } from '../../../../config';
 
-/** Shown when section has no `content.images[]` and no legacy `imageUrl` / element URL */
+/** Shown when a section has no `content.images[]` / legacy `imageUrl` / element URL.
+ *  Kept for back-compat (single value). Prefer `pickPlaceholderImage(seed)` so
+ *  different sections/elements don't all show the SAME stock photo. */
 export const SECTION_IMAGE_PLACEHOLDER =
   'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80';
+
+/** A small neutral pool so empty images vary across a page instead of repeating
+ *  one photo everywhere. Deterministic per seed (id/index) so a given slot stays
+ *  stable across renders. These are generic workspace/city/people shots that read
+ *  fine on most business sites; real per-business images (uploaded or AI-seeded
+ *  into content.images[]) always take priority over these. */
+const PLACEHOLDER_POOL: string[] = [
+  'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1573164713988-8665fc963095?auto=format&fit=crop&w=800&q=80',
+];
+
+/** Pick a placeholder deterministically from a string/number seed (element id,
+ *  slot index, etc.) so different slots get different photos but the same slot is
+ *  stable. Empty seed → the legacy single placeholder. */
+export function pickPlaceholderImage(seed?: string | number): string {
+  const s = String(seed ?? '').trim();
+  if (!s) return SECTION_IMAGE_PLACEHOLDER;
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return PLACEHOLDER_POOL[h % PLACEHOLDER_POOL.length];
+}
 
 function pushUrl(urls: string[], raw: unknown) {
   if (typeof raw === 'string' && raw.trim()) urls.push(raw.trim());
@@ -116,7 +149,8 @@ export function resolveSectionImageUrl(
   if (elUrl) return elUrl;
   if (sectionLegacy) return sectionLegacy;
   if (fromList) return fromList;
-  return SECTION_IMAGE_PLACEHOLDER;
+  // Vary the fallback by element/slot so empty images don't all repeat one photo.
+  return pickPlaceholderImage(options.elementId || index);
 }
 
 export function resolveSectionImageUrlForElement(
