@@ -31,6 +31,13 @@ const SHORTCUTS: ShortcutGroup[] = [
     ],
   },
   {
+    title: 'Selected Section',
+    shortcuts: [
+      { keys: ['Ctrl', 'D'], description: 'Duplicate the selected section' },
+      { keys: ['Delete'], description: 'Delete the selected section' },
+    ],
+  },
+  {
     title: 'Help',
     shortcuts: [
       { keys: ['?'], description: 'Show this shortcuts panel' },

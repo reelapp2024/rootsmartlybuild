@@ -1740,6 +1740,31 @@ const AppContent: React.FC = () => {
     }
   };
 
+  // Keyboard shortcuts for the selected SECTION: Ctrl/Cmd+D duplicate,
+  // Delete/Backspace to remove. Skipped while typing in an input/textarea or
+  // editing text inline, and while previewing. (Element-level copy/paste/
+  // duplicate/delete live in the canvas element chrome.)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isPreviewMode) return;
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (typing) return;
+      // Section-scoped only when a section is selected and no element is.
+      if (!selectedSectionId || selectedElementId) return;
+      const meta = e.ctrlKey || e.metaKey;
+      if (meta && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        duplicateSection(selectedSectionId);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteSection(selectedSectionId);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedSectionId, selectedElementId, isPreviewMode]);
+
   const addNewSection = (type: SectionType) => {
     const newSection = buildNewSection(type, getActiveGlobalTheme());
 
