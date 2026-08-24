@@ -544,6 +544,16 @@ export const FeatureBoxStylesBlock: React.FC<FeatureBoxStylesBlockProps> = ({ st
       {elementType === 'icon-box' && (
         <AccordionGroup title="Layout & Spacing" defaultOpen={false}>
           <div className="space-y-3">
+            <SelectInput
+              label="Icon Position"
+              value={styles.iconPosition || 'left'}
+              options={[
+                { label: 'Left of text', value: 'left' },
+                { label: 'Top (vertical)', value: 'top' },
+                { label: 'Right of text', value: 'right' },
+              ]}
+              onChange={(v) => onUpdate('iconPosition', v)}
+            />
             <NumericUnitInput
               label="Icon ↔ Content Gap"
               value={styles.iconSpace || ''}

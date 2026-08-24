@@ -2701,8 +2701,17 @@ export const ElementsSection: React.FC<ElementsSectionProps> = ({
             const ibGap = ibs.iconSpace || ibs.contentGap || '1rem';
             const ibPad = safeStyle.padding || '1rem';
             const ibRadius = safeStyle.borderRadius || '0.5rem';
+            // Icon position (Elementor icon-box): left (default) | top | right.
+            // Was hardcoded horizontal icon-left; now the arrangement follows the
+            // author's choice so an icon-box can be a vertical card too.
+            const ibIconPos = String((content as any).iconPosition || ibs.iconPosition || 'left');
+            const ibFlexDir = ibIconPos === 'top' ? 'flex-col'
+              : ibIconPos === 'right' ? 'flex-row-reverse'
+              : 'flex-row';
+            const ibAlignClass = ibIconPos === 'top' ? 'items-start' : 'items-start';
+            const ibTextAlign = resolveTextAlign(renderStyle);
             return (
-                <div key={id} className={`flex relative ${ibResolvedBg.overlay ? 'overflow-hidden' : ''} ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={{ ...safeStyle, gap: ibGap, padding: ibPad, borderRadius: ibRadius, backgroundColor: safeStyle.backgroundColor || theme?.cardBackgroundColor || 'rgba(255,255,255,0.05)', borderColor: safeStyle.borderColor || theme?.cardBorderColor || 'rgba(255,255,255,0.08)', borderWidth: safeStyle.borderWidth || '1px', borderStyle: safeStyle.borderStyle || 'solid', ...ibResolvedBg.backgroundStyle }}>
+                <div key={id} className={`flex ${ibFlexDir} ${ibAlignClass} relative ${ibResolvedBg.overlay ? 'overflow-hidden' : ''} ${selectedClass}`} onClick={(e) => handleClick(e, el)} style={{ ...safeStyle, gap: ibGap, padding: ibPad, borderRadius: ibRadius, textAlign: ibIconPos === 'top' ? (ibTextAlign.textAlignClass ? undefined : (renderStyle.textAlign as any)) : undefined, backgroundColor: safeStyle.backgroundColor || theme?.cardBackgroundColor || 'rgba(255,255,255,0.05)', borderColor: safeStyle.borderColor || theme?.cardBorderColor || 'rgba(255,255,255,0.08)', borderWidth: safeStyle.borderWidth || '1px', borderStyle: safeStyle.borderStyle || 'solid', ...ibResolvedBg.backgroundStyle }}>
                     {ibResolvedBg.overlay && (
                         <div aria-hidden className="absolute inset-0 pointer-events-none" style={{ backgroundColor: ibResolvedBg.overlay.color, opacity: ibResolvedBg.overlay.opacity, mixBlendMode: ibResolvedBg.overlay.blendMode as any, zIndex: 0 }} />
                     )}
