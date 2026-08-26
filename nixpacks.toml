@@ -1,15 +1,12 @@
 # Railway / Nixpacks — monorepo root (do NOT set a subdirectory Root Directory)
 # Each Railway service overrides Build + Start; install always runs from this root.
 
-providers = ["...", "node"]
-
 [variables]
 NIXPACKS_NODE_VERSION = "20"
-NODE_ENV = "production"
 
 [phases.setup]
 nixPkgs = ["nodejs_20", "pnpm"]
 
 [phases.install]
-# Always install the full workspace so @geniebuild / @schema/core resolve
+# Full workspace install so @geniebuild / @schema/core resolve for Next/Vite apps
 cmds = ["pnpm install --frozen-lockfile=false"]

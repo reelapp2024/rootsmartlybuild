@@ -16,10 +16,10 @@
     "start:sitenextjs": "pnpm --filter custom-sites start",
     "build:admin": "pnpm --filter smartlybuildadmin build",
     "start:admin": "pnpm --filter smartlybuildadmin start",
-    "build:geniebuild": "pnpm --filter @geniebuild build",
+    "build:geniebuild": "pnpm --filter \"@geniebuild\" build",
     "dev:sitenextjs": "pnpm --filter custom-sites dev",
     "dev:admin": "pnpm --filter smartlybuildadmin dev",
-    "dev:geniebuild": "pnpm --filter @geniebuild dev",
+    "dev:geniebuild": "pnpm --filter \"@geniebuild\" dev",
     "install:backend": "npm --prefix backend install",
     "start:backend": "npm --prefix backend run start:prod",
     "dev:backend": "npm --prefix backend start"

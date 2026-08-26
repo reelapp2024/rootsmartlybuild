@@ -4,7 +4,7 @@ const root = path.join(__dirname, "..");
 const t = fs.readFileSync(path.join(root, "apps/geniebuild/constants.tsx"), "utf8");
 const start = t.indexOf("export const PRESET_THEMES = [");
 const slice = t.slice(start);
-const catalog = require(path.join(root, "packages/schema/presetThemeCatalog.json"));
+const catalog = require(path.join(root, "apps/schema/presetThemeCatalog.json"));
 
 const re2 =
   /"name":\s*"([^"]+)"[\s\S]*?"heading":\s*"([^"]+)"[\s\S]*?"description":\s*"([^"]+)"[\s\S]*?"surface":\s*"([^"]+)"[\s\S]*?"primaryButton":\s*\{\s*"bg":\s*"([^"]+)"/g;
@@ -33,7 +33,7 @@ const swatches = catalog.map((entry) => {
 });
 
 fs.writeFileSync(
-  path.join(root, "packages/schema/presetThemeSwatches.json"),
+  path.join(root, "apps/schema/presetThemeSwatches.json"),
   JSON.stringify(swatches, null, 2) + "\n"
 );
 console.log("wrote", swatches.length, "swatches");
