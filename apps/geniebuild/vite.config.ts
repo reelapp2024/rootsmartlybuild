@@ -21,6 +21,13 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
         strictPort: true,
+        allowedHosts: true, // <-- ADDED THIS
+      },
+      preview: {              // <-- ADDED THIS ENTIRE BLOCK
+        port: 3000,
+        host: '0.0.0.0',
+        strictPort: true,
+        allowedHosts: true, 
       },
       plugins: [react()],
       define: {
