@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "::",
       port: 8080,
+      allowedHosts: true, // <-- ADDED THIS
       watch: {
         ignored: [
           "**/node_modules/**",
@@ -38,6 +39,11 @@ export default defineConfig(({ mode }) => {
         allow: [".."],
         strict: false,
       },
+    },
+    preview: {              // <-- ADDED THIS ENTIRE BLOCK
+      host: "::",
+      port: 8080,
+      allowedHosts: true,
     },
     build: {
       target: "es2020",
