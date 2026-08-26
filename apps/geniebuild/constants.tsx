@@ -250,13 +250,13 @@ export {
   DEFAULT_FONT_FAMILY,
   normalizePresetFontFamily,
   buildGoogleFontsCssUrl,
-} from '../../packages/schema/src/presetFonts';
+} from '../schema/src/presetFonts';
 export {
   resolveSiteTypography,
   resolveSiteFontSizes,
   buildSiteTypographyCss,
   typographyFromDefaultTypographyState,
-} from '../../packages/schema/src/siteTypography';
+} from '../schema/src/siteTypography';
 export {
   sortSectionObjectsByCanonicalOrder,
   sortSectionIdsByCanonicalOrder,
@@ -275,7 +275,7 @@ const THEME_TYPOGRAPHY = {
 export const PRESET_THEMES = [
   // SOURCE OF TRUTH for live site colors.
   // Admin swatches/catalog are derived via: node scripts/extract-theme-swatches.cjs
-  // → packages/schema/presetThemeSwatches.json + presetThemeCatalog.json
+  // → apps/schema/presetThemeSwatches.json + presetThemeCatalog.json
   {
     // === Dark & Bold — matches plumbing-landing.html: near-black navy + amber ===
     "name": "Dark & Bold",

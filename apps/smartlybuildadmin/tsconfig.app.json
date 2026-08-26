@@ -24,8 +24,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@schema/core": ["../../packages/schema/src"],
-      "@schema/core/*": ["../../packages/schema/src/*"],
+      "@schema/core": ["../schema/src"],
+      "@schema/core/*": ["../schema/src/*"],
       "@shared/siteSectionOrder": ["../../backend/additional/siteSectionOrder.mjs"]
     }
   },

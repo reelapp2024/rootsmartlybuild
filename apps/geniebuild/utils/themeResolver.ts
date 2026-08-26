@@ -5,18 +5,18 @@
 
 import { DEFAULT_TYPOGRAPHY, PRESET_THEMES } from '../constants';
 import type { WebsiteData } from '../types';
-import { buildGoogleFontsCssUrl } from '../../../packages/schema/src/presetFonts';
+import { buildGoogleFontsCssUrl } from '../../schema/src/presetFonts';
 import {
   findPresetIndexFromSettings,
   getPresetCatalogEntryByIndex,
   getThemeSlugForApiFromIndex,
   normalizeThemeSlug,
-} from '../../../packages/schema/src/presetThemeCatalog';
+} from '../../schema/src/presetThemeCatalog';
 import {
   buildSiteTypographyCss,
   resolveSiteFontSizes,
   resolveSiteTypography,
-} from '../../../packages/schema/src/siteTypography';
+} from '../../schema/src/siteTypography';
 
 export type ThemeSettingsInput = {
   presetId?: string | number | null;

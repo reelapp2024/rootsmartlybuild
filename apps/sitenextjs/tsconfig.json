@@ -33,10 +33,10 @@
         "../geniebuild/*"
       ],
       "@schema/core": [
-        "../../packages/schema/src"
+        "../schema/src"
       ],
       "@schema/core/*": [
-        "../../packages/schema/src/*"
+        "../schema/src/*"
       ],
       "@shared/siteSectionOrder": [
         "../../backend/additional/siteSectionOrder.mjs"

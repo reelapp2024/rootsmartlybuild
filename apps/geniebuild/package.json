@@ -1,8 +1,17 @@
 {
-  "name": "geniebuild-ai-website-builder",
+  "name": "@geniebuild",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    "./*": "./*",
+    "./*.tsx": "./*.tsx",
+    "./*.ts": "./*.ts"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -10,6 +19,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@schema/core": "workspace:*",
     "@google/genai": "^1.40.0",
     "lucide-react": "^0.475.0",
     "motion": "^12.38.0",

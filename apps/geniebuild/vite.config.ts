@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
           '@ui/blocks': path.resolve(__dirname, './src/ui-blocks/index.tsx'),
-          '@schema/core': path.resolve(__dirname, '../../packages/schema/src'),
+          '@schema/core': path.resolve(__dirname, '../schema/src'),
           '@shared/siteSectionOrder': path.resolve(__dirname, '../../backend/additional/siteSectionOrder.mjs'),
         }
       }

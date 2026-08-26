@@ -5,6 +5,7 @@ const isStaticExport = process.env.NEXT_DEPLOY_TARGET === 'static';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Workspace packages must be transpiled (pnpm install from monorepo root)
   transpilePackages: ['@geniebuild', '@schema/core', 'motion'],
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
@@ -20,7 +21,7 @@ const nextConfig = {
     resolveAlias: {
       '@ui/blocks': path.resolve(__dirname, '../geniebuild/src/ui-blocks/index.tsx'),
       '@geniebuild': path.resolve(__dirname, '../geniebuild'),
-      '@schema/core': path.resolve(__dirname, '../../packages/schema/src'),
+      '@schema/core': path.resolve(__dirname, '../schema/src'),
       '@shared/siteSectionOrder': path.resolve(
         __dirname,
         '../../backend/additional/siteSectionOrder.mjs'
@@ -33,7 +34,7 @@ const nextConfig = {
       ...config.resolve.alias,
       '@ui/blocks': path.resolve(__dirname, '../geniebuild/src/ui-blocks/index.tsx'),
       '@geniebuild': path.resolve(__dirname, '../geniebuild'),
-      '@schema/core': path.resolve(__dirname, '../../packages/schema/src'),
+      '@schema/core': path.resolve(__dirname, '../schema/src'),
       '@shared/siteSectionOrder': path.resolve(
         __dirname,
         '../../backend/additional/siteSectionOrder.mjs'

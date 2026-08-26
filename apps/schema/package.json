@@ -4,6 +4,13 @@
   "type": "module",
   "main": "src/index.ts",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
   "devDependencies": {
     "typescript": "^5.6.2"
   }

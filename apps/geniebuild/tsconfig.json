@@ -27,10 +27,10 @@
         "./src/ui-blocks/index.tsx"
       ],
       "@schema/core": [
-        "../../packages/schema/src"
+        "../schema/src"
       ],
       "@schema/core/*": [
-        "../../packages/schema/src/*"
+        "../schema/src/*"
       ],
       "@shared/siteSectionOrder": [
         "../../backend/additional/siteSectionOrder.mjs"

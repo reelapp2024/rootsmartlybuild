@@ -2,13 +2,26 @@
   "name": "smartlybuild",
   "private": true,
   "version": "1.0.0",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "type": "module",
-  "scripts": {
-    "install:all": "pnpm install && cd backend && npm install"
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.9.0",
+    "pnpm": ">=9.0.0"
   },
-  "packageManager": "pnpm@9.15.0"
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "install:all": "pnpm install && npm --prefix backend install",
+    "build:sitenextjs": "pnpm --filter custom-sites build",
+    "start:sitenextjs": "pnpm --filter custom-sites start",
+    "build:admin": "pnpm --filter smartlybuildadmin build",
+    "start:admin": "pnpm --filter smartlybuildadmin start",
+    "build:geniebuild": "pnpm --filter @geniebuild build",
+    "dev:sitenextjs": "pnpm --filter custom-sites dev",
+    "dev:admin": "pnpm --filter smartlybuildadmin dev",
+    "dev:geniebuild": "pnpm --filter @geniebuild dev",
+    "install:backend": "npm --prefix backend install",
+    "start:backend": "npm --prefix backend run start:prod",
+    "dev:backend": "npm --prefix backend start"
+  }
 }

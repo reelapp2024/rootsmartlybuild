@@ -2,15 +2,20 @@
   "name": "custom-sites",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev --webpack -p 3030",
     "build": "next build --webpack",
     "build:static": "node scripts/prepare-deploy-target.js static && next build --webpack && node scripts/prepare-deploy-target.js node",
     "build:node": "node scripts/prepare-deploy-target.js node && next build --webpack",
-    "start": "next start -p 3030",
+    "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
+    "@geniebuild": "workspace:*",
+    "@schema/core": "workspace:*",
     "next": "^16.0.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

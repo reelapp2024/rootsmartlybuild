@@ -1,16 +1,20 @@
 {
-  "name": "lovable-project",
+  "name": "smartlybuildadmin",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "node clear-vite-cache.js && vite",
     "dev:fast": "vite",
     "dev:clean": "node clear-vite-cache.js && vite",
     "build": "tsc && vite build",
-    "postbuild": "react-snap --source dist --dest dist",
+    "postbuild": "node -e \"if(process.env.RAILWAY_ENVIRONMENT||process.env.CI||process.env.SKIP_REACT_SNAP==='1'){console.log('[postbuild] skip react-snap');process.exit(0)}require('child_process').execSync('react-snap --source dist --dest dist',{stdio:'inherit'})\"",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "vite preview --host 0.0.0.0 --port ${PORT:-4173}"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

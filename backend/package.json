@@ -2,8 +2,12 @@
   "name": "nodeprojects",
   "version": "0.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "start": "nodemon ai.js",
+    "start:prod": "node ai.js",
     "fix-page-index": "node scripts/dropWebsitePageNameIndex.js"
   },
   "dependencies": {

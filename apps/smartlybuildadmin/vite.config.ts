@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => ({
       ignored: [
         '**/node_modules/**',
         '!**/node_modules/@ui/**',
-        '!**/packages/**'
+        '!**/apps/schema/**'
       ],
       // Use polling for better file system watching (helps with workspace packages)
       usePolling: false,
@@ -48,7 +48,7 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@schema/core": path.resolve(__dirname, "../../packages/schema/src"),
+      "@schema/core": path.resolve(__dirname, "../schema/src"),
       "@shared/siteSectionOrder": path.resolve(__dirname, "../../backend/additional/siteSectionOrder.mjs"),
       "react": path.resolve(__dirname, "./node_modules/react"),
       "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),

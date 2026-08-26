@@ -1,6 +1,6 @@
 import type { WebsiteData, Section } from '../../../types';
 import { DEFAULT_TYPOGRAPHY, SECTION_TEMPLATES } from '../../../constants';
-import { resolveSiteTypography } from '../../../../../packages/schema/src/siteTypography';
+import { resolveSiteTypography } from '../../../../schema/src/siteTypography';
 
 export interface DefaultSizes {
   h1: string; h2: string; h3: string; h4: string; h5: string; h6: string;
