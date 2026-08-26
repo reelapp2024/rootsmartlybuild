@@ -35,8 +35,10 @@ const {
   getDefaultParallelWorkers,
 } = require("../services/aiBlogGenerationProgress");
 
-const redisHost = process.env.redisHost;
-const redisPort = process.env.redisPort;
+const {
+  getBullRedisConfig,
+  getRedisConnectionLabel,
+} = require("../config/bullRedis");
 const WORKERS = getDefaultParallelWorkers();
 const AIBLOGS_MODEL =
   String(process.env.AIBLOGS_MODEL || "gpt-4o-mini").trim() || "gpt-4o-mini";
@@ -45,7 +47,7 @@ const SEED_REVIEWS =
   String(process.env.AIBLOGS_SEED_REVIEWS || "0").trim() === "1";
 
 const aiblogsQueue = new Bull("aiblogsQueue", {
-  redis: { host: redisHost, port: redisPort },
+  redis: getBullRedisConfig(),
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: "fixed", delay: 12000 },
@@ -183,7 +185,7 @@ async function pingSitemap(projectId) {
 }
 
 console.log(
-  `[aiblogsQueue] registering ${WORKERS} parallel workers · model=${AIBLOGS_MODEL} · seedReviews=${SEED_REVIEWS} (Redis ${redisHost}:${redisPort})`
+  `[aiblogsQueue] registering ${WORKERS} parallel workers · model=${AIBLOGS_MODEL} · seedReviews=${SEED_REVIEWS} (Redis ${getRedisConnectionLabel()})`
 );
 
 aiblogsQueue.process(WORKERS, async (job) => {

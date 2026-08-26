@@ -584,7 +584,7 @@ async function generateSeoAfterSectionGeneration({
 // CONFIG
 // =========================
 
-const { getBullRedisConfig, bullQueueName } = require("../config/bullRedis");
+const { getBullRedisConfig, bullQueueName, getRedisConnectionLabel } = require("../config/bullRedis");
 const crypto = require("crypto");
 
 const SECTION_GENERATION_QUEUE = bullQueueName("section-generation");
@@ -724,7 +724,7 @@ function startSectionGenerationWorker() {
   });
 
   console.log(
-    `🔥 Section queue worker started queue="${SECTION_GENERATION_QUEUE}" redis=${redisConfig.host}:${redisConfig.port}`
+    `🔥 Section queue worker started queue="${SECTION_GENERATION_QUEUE}" redis=${getRedisConnectionLabel(redisConfig)}`
   );
   return sectionGenerationQueue;
 }

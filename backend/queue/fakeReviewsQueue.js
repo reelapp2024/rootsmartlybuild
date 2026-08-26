@@ -26,8 +26,10 @@ const {
   getChunkSize,
 } = require("../services/fakeReviewsGenerationProgress");
 
-const redisHost = process.env.redisHost;
-const redisPort = process.env.redisPort;
+const {
+  getBullRedisConfig,
+  getRedisConnectionLabel,
+} = require("../config/bullRedis");
 const WORKERS = getDefaultParallelWorkers();
 const CHUNK = getChunkSize();
 const MODEL =
@@ -35,7 +37,7 @@ const MODEL =
   "gpt-4o-mini";
 
 const fakeReviewsQueue = new Bull("fakeReviewsQueue", {
-  redis: { host: redisHost, port: redisPort },
+  redis: getBullRedisConfig(),
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: "fixed", delay: 10000 },
@@ -128,7 +130,7 @@ async function saveOneReview({ blogId, row }) {
 }
 
 console.log(
-  `[fakeReviewsQueue] registering ${WORKERS} parallel workers · chunk=${CHUNK} · model=${MODEL} (Redis ${redisHost}:${redisPort})`
+  `[fakeReviewsQueue] registering ${WORKERS} parallel workers · chunk=${CHUNK} · model=${MODEL} (Redis ${getRedisConnectionLabel()})`
 );
 
 fakeReviewsQueue.process(WORKERS, async (job) => {

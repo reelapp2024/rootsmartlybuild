@@ -13,8 +13,6 @@ const State = require("../models/adminStates");
 const City = require("../models/adminCities");
 const LocalArea = require('../models/adminLocalAreas');
 const BusinessLocation = require('../models/businessLocation');
-const redisHost = process.env.redisHost;
-const redisPort = process.env.redisPort;
 const https = require('https');
 const sharp = require('sharp');
 const helper = require('../additional/addon');
@@ -22,10 +20,11 @@ const path = require('path');
 const fs = require('fs'); 
 const { fetchJSONFromOpenAI, fetchStringFromOpenAI } = require('../additional/openaiHelpers');
 const fetchFreepikImagesTracked = require('../additional/freePik');
+const { getBullRedisConfig } = require('../config/bullRedis');
 const FREEPIK_API_KEY = process.env.FREEPIK_API_KEY;
 
 const generateServiceDescQueue = new Bull('generateServiceDescQueue', {
-  redis: { host: redisHost, port: redisPort },
+  redis: getBullRedisConfig(),
 });
 
 const MAX_OPENAI_RETRIES = 3;

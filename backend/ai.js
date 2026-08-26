@@ -84,19 +84,18 @@ app.use(cors({
 
 // Redis Setup (utility client for /api/queues admin helpers — Bull uses ioredis via bullRedis.js)
 const redis = require('redis');
-const client = redis.createClient({
-  socket: {
-    host: process.env.redisHost || '127.0.0.1',
-    port: Number(process.env.redisPort || 6379),
-  },
-});
+const {
+  getNodeRedisClientOptions,
+  getRedisConnectionLabel,
+  logRedisConfigSource,
+} = require('./config/bullRedis');
+logRedisConfigSource();
+const client = redis.createClient(getNodeRedisClientOptions());
 client.on('error', (err) => {
   console.error('[redis-client] error:', err?.message || err);
 });
 client.on('ready', () => {
-  console.log(
-    `[redis-client] ready ${process.env.redisHost || '127.0.0.1'}:${process.env.redisPort || 6379}`
-  );
+  console.log(`[redis-client] ready ${getRedisConnectionLabel()}`);
 });
 client.connect().catch((err) => {
   console.error('[redis-client] connect failed:', err?.message || err);

@@ -14,10 +14,9 @@ const {
   fetchSeoContentForPage
 } = require('../additional/openaiHelpers');
 // Initialize Bull Queue for Locations (country, state, city, local_area)
-const redisHost = process.env.redisHost;
-const redisPort = process.env.redisPort;
+const { getBullRedisConfig } = require('../config/bullRedis');
 const redisQueue = new Bull('redisQueue', {
-  redis: { host: redisHost, port: redisPort },
+  redis: getBullRedisConfig(),
 });
 
 // Generic retry helper

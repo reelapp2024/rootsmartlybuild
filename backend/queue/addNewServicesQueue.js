@@ -14,12 +14,10 @@ const { getSubcategoriesFromOpenAI } = require('../openAi/openAi');
 const { fetchSeoContentForPage } = require('../additional/openaiHelpers');
 
 const redisServiceDesc = require('./redisServiceDesc'); // adjust path if needed
+const { getBullRedisConfig } = require('../config/bullRedis');
 
-// Redis connection
-const redisHost = process.env.redisHost;
-const redisPort = process.env.redisPort;
 const addNewServicesQueue = new Bull('addNewServicesQueue', {
-  redis: { host: redisHost, port: redisPort }
+  redis: getBullRedisConfig(),
 });
 
 // FontAwesome icons metadata

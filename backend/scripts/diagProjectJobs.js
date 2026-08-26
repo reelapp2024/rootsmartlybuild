@@ -1,10 +1,10 @@
 require("dotenv").config();
 const Bull = require("bull");
-const crypto = require("crypto");
+const { getBullRedisConfig, bullQueueName } = require("../config/bullRedis");
 
 (async () => {
-  const q = new Bull("section-generation", {
-    redis: { host: process.env.redisHost || "127.0.0.1", port: Number(process.env.redisPort || 6379) },
+  const q = new Bull(bullQueueName("section-generation"), {
+    redis: getBullRedisConfig(),
   });
   const pid = "6a5788d81c1685702a350ff9";
   for (const state of ["failed", "completed", "waiting", "active", "delayed"]) {

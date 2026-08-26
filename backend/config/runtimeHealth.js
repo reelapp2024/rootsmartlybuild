@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 const Redis = require("ioredis");
-const { getBullRedisConfig, bullQueueName } = require("./bullRedis");
+const {
+  getBullRedisConfig,
+  getRedisConnectionLabel,
+  bullQueueName,
+} = require("./bullRedis");
 
 function mongoStateLabel(state) {
   return (
@@ -24,6 +28,8 @@ async function checkRuntimeHealth(options = {}) {
     redisHost: redisCfg.host,
     redisPort: redisCfg.port,
     redisDb: redisCfg.db ?? 0,
+    redisLabel: getRedisConnectionLabel(redisCfg),
+    redisViaUrl: Boolean(process.env.REDIS_URL || process.env.redisUrl),
     bullPrefix: process.env.BULL_PREFIX || "ldt",
     sectionQueue: bullQueueName("section-generation"),
     mongoState: mongoStateLabel(mongoose.connection.readyState),
@@ -38,6 +44,8 @@ async function checkRuntimeHealth(options = {}) {
     port: redisCfg.port,
     db: redisCfg.db ?? 0,
     password: redisCfg.password,
+    username: redisCfg.username,
+    tls: redisCfg.tls,
     connectTimeout: timeoutMs,
     maxRetriesPerRequest: 1,
     lazyConnect: true,
@@ -99,15 +107,15 @@ function printRuntimeHealthBanner(result) {
   line(
     "Redis",
     d.redisOk
-      ? `connected ${d.redisHost}:${d.redisPort} db=${d.redisDb} ping=${d.redisPingMs}ms`
-      : `NOT connected ${d.redisHost}:${d.redisPort} — ${d.redisError || "unknown error"}`,
+      ? `connected ${d.redisLabel || `${d.redisHost}:${d.redisPort}`} ping=${d.redisPingMs}ms${d.redisViaUrl ? " via REDIS_URL" : ""}`
+      : `NOT connected ${d.redisLabel || `${d.redisHost}:${d.redisPort}`} — ${d.redisError || "unknown error"}`,
     Boolean(d.redisOk)
   );
   line("Bull prefix", `${d.bullPrefix} (section queue="${d.sectionQueue}")`, true);
   line("Section AI queue", d.sectionQueue, true);
   if (!d.redisOk) {
     console.log(
-      "[startup][FAIL] Section/content generation will NOT run until Redis is up (redis-server on redisHost:redisPort)."
+      "[startup][FAIL] Section/content generation will NOT run until Redis is up (set REDIS_URL, e.g. redis://127.0.0.1:6379)."
     );
   }
   if (!d.mongoOk) {

@@ -3,24 +3,21 @@ const Redis = require('ioredis'); // Use ioredis for Redis client
 const Bull = require('bull');
 const GptContent = require("../models/GptContent");
 const express = require('express');
+const { getBullRedisConfig } = require('../config/bullRedis');
 const router = express.Router();
 
+const redisCfg = getBullRedisConfig();
+
 // Redis Client - using ioredis now
-const client = new Redis({
-  host: 'localhost',  // Your Redis connection details
-  port: 6379,         // Adjust according to your Redis configuration
-});
+const client = new Redis(redisCfg);
 
 client.on('error', (err) => {
-  console.log('Redis error:', err);
+  console.log('Redis error:', err?.message || err);
 });
 
 // Bull Queue Setup
 const queue = new Bull('RedQueueLatest', {
-  redis: {
-    host: 'localhost',
-    port: 6379, // Adjust according to your Redis configuration
-  },
+  redis: redisCfg,
 });
 
 // Increase the max listeners to avoid MaxListenersExceededWarning

@@ -1,9 +1,10 @@
 require("dotenv").config();
 const Bull = require("bull");
+const { getBullRedisConfig, bullQueueName } = require("../config/bullRedis");
 
 (async () => {
-  const q = new Bull("section-generation", {
-    redis: { host: process.env.redisHost || "127.0.0.1", port: Number(process.env.redisPort || 6379) },
+  const q = new Bull(bullQueueName("section-generation"), {
+    redis: getBullRedisConfig(),
   });
   const failed = await q.getFailed(0, 20);
   console.log("failed count", failed.length);
@@ -18,8 +19,7 @@ const Bull = require("bull");
     console.log("stack", String(j.stacktrace?.[0] || "").slice(0, 300));
   }
   const waiting = await q.getWaiting(0, 5);
-  const delayed = await q.getDelayed(0, 5);
-  console.log("waiting", waiting.length, "delayed", delayed.length);
+  console.log("waiting sample", waiting.map((j) => j.id));
   await q.close();
   process.exit(0);
 })();

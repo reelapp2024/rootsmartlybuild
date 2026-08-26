@@ -17,13 +17,12 @@ const fetchFreepikImagesTracked = require('../additional/freePik');
 
 require('dotenv').config();
 
+const { getBullRedisConfig } = require('../config/bullRedis');
+
 const MAX_OPENAI_RETRIES = 3;
 
 const projectBackgroundQueue = new Bull('projectBackgroundQueue', {
-  redis: {
-    host: process.env.redisHost,
-    port: process.env.redisPort,
-  },
+  redis: getBullRedisConfig(),
   defaultJobOptions: {
     attempts: 1,
     backoff: { type: 'fixed', delay: 30_000 },
