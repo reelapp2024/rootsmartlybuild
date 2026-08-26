@@ -16,6 +16,10 @@ import {
   buildLocalBlogEditorCss,
   normalizeProjectId as normalizeEditorProjectIdFromHook,
 } from "@/hooks/useBlogEditorTheme";
+import {
+  resolveAdminApiUrl,
+  resolveMediaBaseUrl,
+} from "@/lib/backendUrl";
 
 const EDITOR_FONT_OPTIONS = [
   { name: "Theme default", value: "" },
@@ -107,12 +111,10 @@ function stripConflictingHeadStyles(head: string): string {
 
 const DEFAULT_UPLOAD_URL =
   (import.meta as any).env?.VITE_UPLOAD_URL ||
-  "https://apis.smartlybuild.dev/admin/v1/uploadFile";
+  `${resolveAdminApiUrl().replace(/\/+$/, "")}/uploadFile`;
 
-// Build absolute URL using env VITE_IMAGES_BASE_URL
-const IMG_BASE: string =
-  (import.meta as any).env?.VITE_IMAGES_BASE_URL ||
-  "https://apis.smartlybuild.dev";
+// Build absolute URL from BackendUrl
+const IMG_BASE: string = resolveMediaBaseUrl();
 
 function toAbs(url?: string): string {
   if (!url) return "";

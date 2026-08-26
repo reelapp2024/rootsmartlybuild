@@ -13,14 +13,12 @@ import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { httpFile } from "../../config.js";
 import { resolveAdminProjectId, blogPostsListPath } from "@/lib/adminProjectPaths";
 import { useBlogEditorTheme } from "@/hooks/useBlogEditorTheme";
+import { resolveAdminApiUrl, resolveMediaBaseUrl } from "@/lib/backendUrl";
 
-const BASE_URL = import.meta.env.VITE_API_URL ;
+const BASE_URL = resolveAdminApiUrl();
 const UPLOAD_URL = `${BASE_URL.replace(/\/$/, "")}/uploadFile`;
 
-const IMG_BASE =
-  import.meta.env.VITE_IMAGES_BASE_URL ||
-  import.meta.env.REACT_APP_IMAGES_BASE_URL ||
-  "https://apis.smartlybuild.dev";
+const IMG_BASE = resolveMediaBaseUrl();
 
 function makeAbsUrl(url?: string): string {
   if (!url) return "";

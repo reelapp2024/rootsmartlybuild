@@ -1,40 +1,30 @@
 // Centralized runtime configuration — Vite (GenieBuild) or Next (SiteNextJS).
-// All API/media URL references across the app must use these exports.
+// All API/media URL references must go through BackendUrl (see lib/backendUrl.ts).
 
-function readEnvApiUrl(): string {
-  try {
-    const fromNext =
-      typeof process !== 'undefined'
-        ? String(
-            process.env?.NEXT_PUBLIC_API_URL ||
-              process.env?.NEXT_PUBLIC_SITENEXTJS_API_URL ||
-              ''
-          ).trim()
-        : '';
-    if (fromNext) return fromNext;
-  } catch {
-    /* ignore */
-  }
-  try {
-    const fromVite = String((import.meta as any).env?.VITE_API_URL || '').trim();
-    if (fromVite) return fromVite;
-  } catch {
-    /* ignore */
-  }
-  return 'http://localhost:1111/admin/v1';
-}
+import {
+  resolveAdminApiUrl,
+  resolveBackendUrl,
+  resolveMediaBaseUrl,
+  resolveSiteNextApiUrl,
+} from './lib/backendUrl';
 
-export const API_BASE_URL: string = readEnvApiUrl();
+/** Backend origin — e.g. http://localhost:1111 */
+export const BACKEND_URL: string = resolveBackendUrl();
 
-export const MEDIA_BASE_URL: string = (() => {
-  const apiUrl = API_BASE_URL;
-  try {
-    const parsed = new URL(apiUrl.includes('://') ? apiUrl : `http://${apiUrl}`);
-    return `${parsed.protocol}//${parsed.host}`;
-  } catch {
-    return 'http://localhost:1111';
-  }
+/** Admin API base — `${BackendUrl}/admin/v1` */
+export const API_BASE_URL: string = (() => {
+  const admin = resolveAdminApiUrl();
+  if (admin) return admin;
+  // If env was a full …/sitenextjs/v1 URL, still expose a usable admin path
+  const origin = resolveBackendUrl();
+  return origin ? `${origin}/admin/v1` : '';
 })();
+
+/** SiteNext public API — `${BackendUrl}/sitenextjs/v1` */
+export const SITENEXT_API_URL: string = resolveSiteNextApiUrl();
+
+/** Media / uploads host = backend origin */
+export const MEDIA_BASE_URL: string = resolveMediaBaseUrl();
 
 /** Returns true only for absolute http/https URLs — rejects javascript:, data:, etc. */
 export function isValidHttpUrl(url: string): boolean {
@@ -56,7 +46,6 @@ export function extractMediaUrl(value: unknown): string {
   if (typeof value === 'string') {
     const s = value.trim();
     if (!s || /^\[object\s+object\]$/i.test(s)) return '';
-    // JSON-encoded { url } payloads
     if (
       (s.startsWith('{') && s.endsWith('}')) ||
       (s.startsWith('[') && s.endsWith(']'))
@@ -89,12 +78,13 @@ export function extractMediaUrl(value: unknown): string {
 /**
  * Converts a relative path to an absolute media URL using MEDIA_BASE_URL.
  * Returns '' for empty input. Passes through already-absolute URLs unchanged.
- * Safe with objects / bad "[object Object]" strings.
  */
 export function toAbsoluteMediaUrl(url: unknown): string {
   const u = extractMediaUrl(url);
   if (!u) return '';
   if (u.startsWith('http://') || u.startsWith('https://') || u.startsWith('data:')) return u;
   if (u.startsWith('//')) return `https:${u}`;
-  return `${MEDIA_BASE_URL}${u.startsWith('/') ? '' : '/'}${u}`;
+  const base = MEDIA_BASE_URL;
+  if (!base) return u.startsWith('/') ? u : `/${u}`;
+  return `${base}${u.startsWith('/') ? '' : '/'}${u}`;
 }

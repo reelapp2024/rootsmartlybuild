@@ -1,20 +1,8 @@
 // src/socket.js
 import { io } from 'socket.io-client';
+import { resolveBackendUrl } from './lib/backendUrl';
 
-function resolveSocketUrl() {
-  const raw = (import.meta.env.VITE_API_URL || '').trim();
-  if (raw) {
-    try {
-      const u = new URL(raw.includes('://') ? raw : `http://${raw}`);
-      return u.origin;
-    } catch {
-      /* fall through */
-    }
-  }
-  return 'http://localhost:1111';
-}
-
-const socket = io(resolveSocketUrl(), {
+const socket = io(resolveBackendUrl() || undefined, {
   transports: ['websocket', 'polling'],
   reconnection: true,
 });

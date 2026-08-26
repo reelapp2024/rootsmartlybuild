@@ -1,4 +1,5 @@
 import React from 'react';
+import { toAbsoluteMediaUrl } from '../../../config';
 
 interface VideoControlProps {
   label: string;
@@ -25,7 +26,7 @@ export const VideoControl: React.FC<VideoControlProps> = ({ label, value, onChan
       if (isYouTubeUrl(url)) return convertToEmbedUrl(url);
       return url;
     }
-    return `http://localhost:1111${url.startsWith('/') ? '' : '/'}${url}`;
+    return toAbsoluteMediaUrl(url);
   };
 
   const previewUrl = getVideoUrl(value);

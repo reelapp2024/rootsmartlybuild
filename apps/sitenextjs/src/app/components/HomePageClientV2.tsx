@@ -333,7 +333,7 @@ export default function HomePageClientV2({
         const isNetwork = /network error/i.test(raw);
         setError(
           isNetwork
-            ? `${raw}. SiteNext cannot reach the API. Ensure backend is on :1111 and apps/sitenextjs/.env.local has NEXT_PUBLIC_SITENEXTJS_API_URL=http://localhost:1111/sitenextjs/v1 (then restart next dev).`
+            ? `${raw}. SiteNext cannot reach the API. Ensure backend is running and apps/sitenextjs/.env.local has NEXT_PUBLIC_BackendUrl=http://localhost:1111 (then restart next dev).`
             : raw
         );
         setSections([]);

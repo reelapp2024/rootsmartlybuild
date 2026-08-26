@@ -4,6 +4,12 @@
  */
 
 import { API_BASE_URL } from '../config';
+import {
+  resolveAdminApiUrl,
+  resolveBackendUrl,
+  resolveSiteNextApiUrl,
+  resolveWebappApiUrl,
+} from './backendUrl';
 
 export type BlogReviewComment = {
   id?: string;
@@ -33,32 +39,14 @@ function resolveReviewApiBases(): string[] {
     from.test(base) ? base.replace(from, to) : base;
 
   push(API_BASE_URL);
-
-  try {
-    const nextAdmin =
-      typeof process !== 'undefined'
-        ? process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_SITENEXTJS_API_URL
-        : '';
-    const trimmed = String(nextAdmin || '').trim().replace(/\/+$/, '');
-    if (trimmed) {
-      if (/\/sitenextjs\/v1$/i.test(trimmed)) {
-        push(trimmed);
-        push(trimmed.replace(/\/sitenextjs\/v1$/i, '/webapp/v1'));
-        push(trimmed.replace(/\/sitenextjs\/v1$/i, '/admin/v1'));
-      } else if (/\/admin\/v1$/i.test(trimmed)) {
-        push(trimmed);
-        push(trimmed.replace(/\/admin\/v1$/i, '/sitenextjs/v1'));
-        push(trimmed.replace(/\/admin\/v1$/i, '/webapp/v1'));
-      } else if (/\/webapp\/v1$/i.test(trimmed)) {
-        push(trimmed);
-      } else {
-        push(`${trimmed}/sitenextjs/v1`);
-        push(`${trimmed}/webapp/v1`);
-        push(`${trimmed}/admin/v1`);
-      }
-    }
-  } catch {
-    /* ignore */
+  push(resolveSiteNextApiUrl());
+  push(resolveWebappApiUrl());
+  push(resolveAdminApiUrl());
+  const origin = resolveBackendUrl();
+  if (origin) {
+    push(`${origin}/sitenextjs/v1`);
+    push(`${origin}/webapp/v1`);
+    push(`${origin}/admin/v1`);
   }
 
   // Prefer public mounts first for anonymous review submit
@@ -70,9 +58,6 @@ function resolveReviewApiBases(): string[] {
   const unique: string[] = [];
   for (const b of preferred) {
     if (b && !unique.includes(b)) unique.push(b);
-  }
-  if (!unique.length) {
-    unique.push('http://localhost:1111/sitenextjs/v1', 'http://localhost:1111/webapp/v1');
   }
   return unique;
 }

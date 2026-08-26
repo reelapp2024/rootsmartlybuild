@@ -1,4 +1,9 @@
 import { API_BASE_URL } from '../config';
+import {
+  resolveAdminApiUrl,
+  resolveBackendUrl,
+  resolveSiteNextApiUrl,
+} from './backendUrl';
 
 export type PublishedBlogItem = {
   id?: string;
@@ -84,30 +89,14 @@ function resolveBlogApiBases(): string[] {
   };
 
   push(API_BASE_URL);
-
-  try {
-    const nextAdmin =
-      typeof process !== 'undefined'
-        ? process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_SITENEXTJS_API_URL
-        : '';
-    const trimmed = String(nextAdmin || '').trim().replace(/\/+$/, '');
-    if (trimmed) {
-      if (/\/sitenextjs\/v1$/i.test(trimmed)) {
-        push(trimmed);
-        push(trimmed.replace(/\/sitenextjs\/v1$/i, '/admin/v1'));
-      } else if (/\/admin\/v1$/i.test(trimmed)) {
-        push(trimmed);
-        push(trimmed.replace(/\/admin\/v1$/i, '/sitenextjs/v1'));
-      } else {
-        push(`${trimmed}/admin/v1`);
-        push(`${trimmed}/sitenextjs/v1`);
-      }
-    }
-  } catch {
-    /* ignore */
+  push(resolveAdminApiUrl());
+  push(resolveSiteNextApiUrl());
+  const origin = resolveBackendUrl();
+  if (origin) {
+    push(`${origin}/admin/v1`);
+    push(`${origin}/sitenextjs/v1`);
   }
 
-  if (!bases.length) push('http://localhost:1111/admin/v1');
   return bases;
 }
 

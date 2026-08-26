@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { httpFile } from "../../config.js";
+import { resolveMediaBaseUrl } from "@/lib/backendUrl";
 import { toast } from "react-toastify";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -896,7 +897,7 @@ export function FormsManagement(props: FormsManagementProps = {}) {
                                       <div className="text-sm text-gray-800">
                                         {typeof value === 'string' && value.startsWith('/files/') ? (
                                           <a
-                                            href={`${import.meta.env.VITE_API_BASE_URL || 'https://apis.smartlybuild.dev'}${value}`}
+                                            href={`${resolveMediaBaseUrl()}${value}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-blue-600 hover:underline flex items-center gap-1"
@@ -1666,7 +1667,7 @@ export function FormsManagement(props: FormsManagementProps = {}) {
                                 <div className="text-sm text-gray-800">
                                   {typeof value === 'string' && value.startsWith('/files/') ? (
                                     <a
-                                      href={`${import.meta.env.VITE_API_BASE_URL || 'https://apis.smartlybuild.dev'}${value}`}
+                                      href={`${resolveMediaBaseUrl()}${value}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="text-blue-600 hover:underline flex items-center gap-1"

@@ -17,6 +17,7 @@ import {
   createBlogPostAiPath,
   editBlogPostPath,
 } from "@/lib/adminProjectPaths";
+import { resolveAdminApiUrl } from "@/lib/backendUrl";
 
 type ApiBlog = {
   _id: string;
@@ -127,7 +128,7 @@ export default function BlogPosts() {
   const [aiPostTitle, setAiPostTitle] = useState("");
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const BASE_URL = String(import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+  const BASE_URL = resolveAdminApiUrl().replace(/\/+$/, "");
   const apiUrl = (path: string) => `${BASE_URL}/${String(path).replace(/^\/+/, "")}`;
 
   const mapStatus = (s: ApiBlog["status"]) => (s === 1 ? "published" : s === 2 ? "archived" : "draft");

@@ -1,6 +1,12 @@
-
 import axios from "axios";
-const apiUrl = import.meta.env.VITE_API_URL 
+import { resolveAdminApiUrl } from "./lib/backendUrl";
+
+const apiUrl = resolveAdminApiUrl().replace(/\/+$/, "") + "/";
+if (!apiUrl || apiUrl === "/") {
+  console.error(
+    "[config] VITE_BackendUrl is missing. Set origin only, e.g. VITE_BackendUrl=http://localhost:1111"
+  );
+}
 console.log("API URL:", apiUrl);
 
 export const http = axios.create({
@@ -8,7 +14,7 @@ export const http = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 30000, // 30 second timeout for hosting operations
+  timeout: 30000,
 });
 
 export const httpFile = axios.create({
@@ -16,7 +22,7 @@ export const httpFile = axios.create({
   headers: {
     "Content-Type": "multipart/form-data",
   },
-  timeout: 120000, // deploy start + uploads; static build runs server-side after 200
+  timeout: 120000,
 });
 
 export const httpFileData = axios.create({
@@ -29,11 +35,10 @@ export const httpFileData = axios.create({
   timeout: 60000,
 });
 
-// Hosting API instance
 export const httpHosting = axios.create({
   baseURL: `${apiUrl}hosting/`,
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 120000, // 2 minute timeout for hosting operations
+  timeout: 120000,
 });
