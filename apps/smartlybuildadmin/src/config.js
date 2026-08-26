@@ -1,16 +1,20 @@
 import axios from "axios";
 import { resolveAdminApiUrl } from "./lib/backendUrl";
 
-const apiUrl = resolveAdminApiUrl().replace(/\/+$/, "") + "/";
-if (!apiUrl || apiUrl === "/") {
+const resolved = resolveAdminApiUrl().replace(/\/+$/, "");
+const apiUrl = resolved ? `${resolved}/` : "";
+
+if (!apiUrl || !/^https?:\/\//i.test(apiUrl)) {
   console.error(
-    "[config] VITE_BackendUrl is missing. Set origin only, e.g. VITE_BackendUrl=http://localhost:1111"
+    "[config] FATAL: API base URL is empty. Login will POST to this same site and 404. " +
+      "Set VITE_BackendUrl on Railway (origin only) and redeploy admin."
   );
+} else {
+  console.log("[config] API URL:", apiUrl);
 }
-console.log("API URL:", apiUrl);
 
 export const http = axios.create({
-  baseURL: apiUrl,
+  baseURL: apiUrl || undefined,
   headers: {
     "Content-Type": "application/json",
   },
@@ -18,7 +22,7 @@ export const http = axios.create({
 });
 
 export const httpFile = axios.create({
-  baseURL: apiUrl,
+  baseURL: apiUrl || undefined,
   headers: {
     "Content-Type": "multipart/form-data",
   },
@@ -26,7 +30,7 @@ export const httpFile = axios.create({
 });
 
 export const httpFileData = axios.create({
-  baseURL: apiUrl,
+  baseURL: apiUrl || undefined,
   headers: {
     "Content-Type": "multipart/form-data,application/json",
     secret_key: "Bbz3G9AwLNqKuG5OSn5GriwXvw==",
@@ -36,9 +40,24 @@ export const httpFileData = axios.create({
 });
 
 export const httpHosting = axios.create({
-  baseURL: `${apiUrl}hosting/`,
+  baseURL: apiUrl ? `${apiUrl}hosting/` : undefined,
   headers: {
     "Content-Type": "application/json",
   },
   timeout: 120000,
+});
+
+// Guard: never silently hit same-origin relative /login
+[http, httpFile, httpFileData, httpHosting].forEach((client) => {
+  client.interceptors.request.use((config) => {
+    const base = String(config.baseURL || "");
+    if (!base || !/^https?:\/\//i.test(base)) {
+      return Promise.reject(
+        new Error(
+          "VITE_BackendUrl is not baked into this build. Set it on Railway and redeploy."
+        )
+      );
+    }
+    return config;
+  });
 });

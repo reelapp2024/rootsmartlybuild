@@ -25,43 +25,43 @@ function toOrigin(raw: string): string {
   }
 }
 
+/** Static Vite env reads — required for production replacement. */
 function readRawBackendUrl(): string {
-  const candidates: string[] = [];
+  const viteCandidates = [
+    // Keep these as direct import.meta.env.VITE_* property access (static).
+    String(import.meta.env.VITE_BackendUrl || ""),
+    String(import.meta.env.VITE_BACKEND_URL || ""),
+    String(import.meta.env.VITE_API_URL || ""),
+    String(import.meta.env.VITE_IMAGES_BASE_URL || ""),
+  ];
+
+  for (const c of viteCandidates) {
+    const origin = toOrigin(c);
+    if (origin && !/localhost|127\.0\.0\.1/i.test(origin)) return origin;
+    if (origin && import.meta.env.DEV) return origin;
+  }
 
   try {
     if (typeof process !== "undefined" && process.env) {
-      candidates.push(
+      const nextCandidates = [
         process.env.NEXT_PUBLIC_BackendUrl || "",
         process.env.NEXT_PUBLIC_BACKEND_URL || "",
         process.env.BackendUrl || "",
         process.env.BACKEND_URL || "",
-        process.env.VITE_BackendUrl || "",
-        process.env.VITE_BACKEND_URL || "",
-        // legacy full API URLs — origin extracted below
         process.env.NEXT_PUBLIC_SITENEXTJS_API_URL || "",
         process.env.NEXT_PUBLIC_API_URL || "",
-        process.env.VITE_API_URL || "",
-        process.env.VITE_IMAGES_BASE_URL || ""
-      );
+      ];
+      for (const c of nextCandidates) {
+        const origin = toOrigin(c);
+        if (origin) return origin;
+      }
     }
   } catch {
     /* ignore */
   }
 
-  try {
-    const viteEnv = (import.meta as any)?.env || {};
-    candidates.push(
-      viteEnv.VITE_BackendUrl || "",
-      viteEnv.VITE_BACKEND_URL || "",
-      viteEnv.BackendUrl || "",
-      viteEnv.VITE_API_URL || "",
-      viteEnv.VITE_IMAGES_BASE_URL || ""
-    );
-  } catch {
-    /* ignore */
-  }
-
-  for (const c of candidates) {
+  // Dev localhost fallback only
+  for (const c of viteCandidates) {
     const origin = toOrigin(c);
     if (origin) return origin;
   }
@@ -74,14 +74,7 @@ export function resolveBackendUrl(): string {
   if (origin) return origin;
 
   // Local-only safety net so `pnpm dev` works before .env is filled.
-  try {
-    const isDev =
-      (typeof process !== "undefined" && process.env?.NODE_ENV === "development") ||
-      Boolean((import.meta as any)?.env?.DEV);
-    if (isDev) return "http://localhost:1111";
-  } catch {
-    /* ignore */
-  }
+  if (import.meta.env.DEV) return "http://localhost:1111";
 
   if (typeof console !== "undefined") {
     console.error(

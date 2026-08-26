@@ -62,6 +62,17 @@ export default defineConfig(({ mode }) => {
   console.log("[vite] BackendUrl=", backendUrl || "(missing)");
   console.log("[vite] API_URL=", apiUrl || "(missing)");
 
+  if (
+    (process.env.RAILWAY_ENVIRONMENT || process.env.CI) &&
+    !backendUrl &&
+    !legacyApi
+  ) {
+    throw new Error(
+      "[vite] VITE_BackendUrl is required for Railway/CI builds. " +
+        "Set VITE_BackendUrl=https://your-backend.up.railway.app (origin only) on the admin service."
+    );
+  }
+
   return {
     server: {
       host: "::",

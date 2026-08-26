@@ -1,6 +1,11 @@
 /**
  * Canonical backend origin for Admin (Vite).
- * Prefer VITE_BackendUrl=https://host (origin only, no /admin/v1).
+ *
+ * IMPORTANT: Vite only statically replaces `import.meta.env.VITE_*`.
+ * Never read env via `import.meta.env[key]` or a dynamic object — it breaks in production.
+ *
+ * Set on Railway (origin only, no /admin/v1):
+ *   VITE_BackendUrl=https://backend-xxxxx.up.railway.app
  */
 
 function stripSlash(s: string): string {
@@ -18,29 +23,34 @@ function toOrigin(raw: string): string {
   }
 }
 
-function readRaw(): string {
-  const env = (import.meta as any)?.env || {};
-  const candidates = [
-    env.VITE_BackendUrl,
-    env.VITE_BACKEND_URL,
-    env.BackendUrl,
-    env.VITE_API_URL,
-    env.VITE_IMAGES_BASE_URL,
-    env.VITE_API_BASE_URL,
-  ];
-  for (const c of candidates) {
-    const origin = toOrigin(String(c || ""));
-    if (origin) return origin;
-  }
-  return "";
-}
+/** Static Vite env reads (required for production bundle replacement). */
+const BAKED_BACKEND_URL = toOrigin(
+  String(import.meta.env.VITE_BackendUrl || "")
+);
+const BAKED_BACKEND_URL_ALT = toOrigin(
+  String(import.meta.env.VITE_BACKEND_URL || "")
+);
+const BAKED_API_URL = toOrigin(String(import.meta.env.VITE_API_URL || ""));
+const BAKED_IMAGES = toOrigin(
+  String(import.meta.env.VITE_IMAGES_BASE_URL || "")
+);
 
 export function resolveBackendUrl(): string {
-  const origin = readRaw();
-  if (origin) return origin;
-  if ((import.meta as any)?.env?.DEV) return "http://localhost:1111";
+  // Prefer dedicated BackendUrl; ignore localhost image base when a real backend is set
+  if (BAKED_BACKEND_URL) return BAKED_BACKEND_URL;
+  if (BAKED_BACKEND_URL_ALT) return BAKED_BACKEND_URL_ALT;
+  if (BAKED_API_URL) return BAKED_API_URL;
+  if (
+    BAKED_IMAGES &&
+    !/localhost|127\.0\.0\.1/i.test(BAKED_IMAGES)
+  ) {
+    return BAKED_IMAGES;
+  }
+
+  if (import.meta.env.DEV) return "http://localhost:1111";
+
   console.error(
-    "[backendUrl] Set VITE_BackendUrl (origin only), e.g. http://localhost:1111"
+    "[backendUrl] VITE_BackendUrl missing in production bundle. Set it on Railway and redeploy."
   );
   return "";
 }
