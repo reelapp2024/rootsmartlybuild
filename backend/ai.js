@@ -212,13 +212,16 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
+
+
+// Error handling ****
 // Error handler
 app.use(function (err, req, res, next) {
   // Check if this is an API request (starts with /admin, /api, etc.)
   const isApiRequest = req.path.startsWith('/admin') || req.path.startsWith('/api') || req.path.startsWith('/custom-site') || req.path.startsWith('/webapp');
   
   if (isApiRequest) {
-    // Handle specific error types
+    // Handle specific err  or types
     let statusCode = err.status || 500;
     let errorMessage = err.message || 'Internal server error';
     
