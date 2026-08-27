@@ -1,5 +1,5 @@
-/** Shared with packages/schema/presetThemeCatalog.json — keep in sync. */
-const PRESET_THEME_CATALOG = require("../../packages/schema/presetThemeCatalog.json");
+/** Shared with apps/schema/presetThemeCatalog.json — keep in sync. */
+const PRESET_THEME_CATALOG = require("../../apps/schema/presetThemeCatalog.json");
 
 function normalizeThemeSlug(value) {
   return String(value || "")
