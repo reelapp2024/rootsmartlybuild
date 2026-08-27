@@ -8,6 +8,10 @@
  *
  * Value must be the origin only (no /admin/v1). Paths are derived below.
  * Legacy VITE_API_URL / NEXT_PUBLIC_*_API_URL still work (origin is extracted).
+ *
+ * This module is shared with SiteNext (Next.js). Under webpack, `import.meta.env`
+ * may be undefined — never dereference it without a guard. Keep `import.meta.env.VITE_*`
+ * as static member access so Vite can still replace them in GenieBuild builds.
  */
 
 function stripSlash(s: string): string {
@@ -25,20 +29,55 @@ function toOrigin(raw: string): string {
   }
 }
 
+/** Catch missing `import.meta.env` when this file is bundled by Next.js. */
+function viteEnvString(read: () => unknown): string {
+  try {
+    return String(read() ?? "");
+  } catch {
+    return "";
+  }
+}
+
+function isViteDev(): boolean {
+  try {
+    return Boolean(import.meta.env.DEV);
+  } catch {
+    return false;
+  }
+}
+
+function isNextDev(): boolean {
+  try {
+    return (
+      typeof process !== "undefined" &&
+      !!process.env &&
+      process.env.NODE_ENV === "development"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isDevRuntime(): boolean {
+  return isViteDev() || isNextDev();
+}
+
 /** Static Vite env reads — required for production replacement. */
 function readRawBackendUrl(): string {
   const viteCandidates = [
     // Keep these as direct import.meta.env.VITE_* property access (static).
-    String(import.meta.env.VITE_BackendUrl || ""),
-    String(import.meta.env.VITE_BACKEND_URL || ""),
-    String(import.meta.env.VITE_API_URL || ""),
-    String(import.meta.env.VITE_IMAGES_BASE_URL || ""),
+    viteEnvString(() => import.meta.env.VITE_BackendUrl),
+    viteEnvString(() => import.meta.env.VITE_BACKEND_URL),
+    viteEnvString(() => import.meta.env.VITE_API_URL),
+    viteEnvString(() => import.meta.env.VITE_IMAGES_BASE_URL),
   ];
+
+  const isDev = isDevRuntime();
 
   for (const c of viteCandidates) {
     const origin = toOrigin(c);
     if (origin && !/localhost|127\.0\.0\.1/i.test(origin)) return origin;
-    if (origin && import.meta.env.DEV) return origin;
+    if (origin && isDev) return origin;
   }
 
   try {
@@ -74,7 +113,7 @@ export function resolveBackendUrl(): string {
   if (origin) return origin;
 
   // Local-only safety net so `pnpm dev` works before .env is filled.
-  if (import.meta.env.DEV) return "http://localhost:1111";
+  if (isDevRuntime()) return "http://localhost:1111";
 
   if (typeof console !== "undefined") {
     console.error(
