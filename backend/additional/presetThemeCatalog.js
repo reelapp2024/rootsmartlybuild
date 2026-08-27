@@ -1,5 +1,33 @@
-/** Shared with apps/schema/presetThemeCatalog.json — keep in sync. */
-const PRESET_THEME_CATALOG = require("../../apps/schema/presetThemeCatalog.json");
+/**
+ * Theme preset catalog for updateProjectTheme.
+ * Keep in sync with apps/schema/presetThemeCatalog.json.
+ * Local copy lives here so Railway (Root Directory = backend) can require it.
+ */
+const path = require("path");
+const fs = require("fs");
+
+function loadPresetThemeCatalog() {
+  const candidates = [
+    // Deployed backend image / local backend-only layout
+    path.join(__dirname, "presetThemeCatalog.json"),
+    // Monorepo checkout (repo root → apps/schema)
+    path.join(__dirname, "..", "..", "apps", "schema", "presetThemeCatalog.json"),
+  ];
+  for (const file of candidates) {
+    try {
+      if (fs.existsSync(file)) {
+        return require(file);
+      }
+    } catch {
+      /* try next */
+    }
+  }
+  throw new Error(
+    "Cannot find presetThemeCatalog.json (tried backend/additional and apps/schema)"
+  );
+}
+
+const PRESET_THEME_CATALOG = loadPresetThemeCatalog();
 
 function normalizeThemeSlug(value) {
   return String(value || "")

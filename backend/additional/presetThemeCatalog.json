@@ -1,0 +1,21 @@
+[
+  { "id": "crimson-jet", "index": 0, "name": "Crimson Jet", "aliases": [] },
+  { "id": "midnight-emerald", "index": 1, "name": "Midnight Emerald", "aliases": [] },
+  { "id": "slate-violet", "index": 2, "name": "Slate Violet", "aliases": [] },
+  { "id": "warm-sand-stone", "index": 3, "name": "Warm Sand Stone", "aliases": ["warm-sandstone", "sand-stone"] },
+  { "id": "corporate-navy", "index": 4, "name": "Corporate Navy", "aliases": [] },
+  { "id": "obsidian-gold", "index": 5, "name": "Obsidian Gold", "aliases": ["obsidian", "black-gold"] },
+  { "id": "graphite-indigo", "index": 6, "name": "Graphite Indigo", "aliases": ["graphite", "zinc-indigo"] },
+  { "id": "teal-mist", "index": 7, "name": "Teal Mist", "aliases": ["teal", "cyan-mist"] },
+  { "id": "coral-dusk", "index": 8, "name": "Coral Dusk", "aliases": ["coral", "orange-dusk"] },
+  { "id": "royal-plum", "index": 9, "name": "Royal Plum", "aliases": ["plum", "purple-magenta"] },
+  { "id": "forest-sage", "index": 10, "name": "Forest Sage", "aliases": ["sage", "olive-green"] },
+  { "id": "copper-bronze", "index": 11, "name": "Copper Bronze", "aliases": ["copper", "bronze"] },
+  { "id": "steel-cyan", "index": 12, "name": "Steel Cyan", "aliases": ["cyan", "steel-blue"] },
+  { "id": "rosewood-blush", "index": 13, "name": "Rosewood Blush", "aliases": ["rosewood", "dusty-rose", "blush"] },
+  { "id": "arctic-blue", "index": 14, "name": "Arctic Blue", "aliases": ["arctic", "ice-blue"] },
+  { "id": "mocha-taupe", "index": 15, "name": "Mocha Taupe", "aliases": ["mocha", "taupe"] },
+  { "id": "aubergine-wine", "index": 16, "name": "Aubergine Wine", "aliases": ["aubergine", "wine", "burgundy"] },
+  { "id": "midnight-sapphire", "index": 17, "name": "Midnight Sapphire", "aliases": ["sapphire", "royal-blue"] },
+  { "id": "mustard-ochre", "index": 18, "name": "Mustard Ochre", "aliases": ["mustard", "ochre"] }
+]
